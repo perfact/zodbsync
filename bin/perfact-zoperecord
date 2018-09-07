@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+#
+# perfact-zoperecord  -  Make a snapshot of Data.fs and database.
+#
+
+import imp  # For config loading
+# for argument reading and parsing:
+import sys
+import argparse
+# for Data.fs reading / writing:
+import perfact.zodbsync
+try:
+    # for git snapshot
+    import perfact.pfcodechg as pfcodechg
+except ImportError:
+    pass
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Record the Data.fs and database')
+    parser.add_argument('--config', '-c', type=str,
+                        help='Path to config.py',
+                        default='/etc/perfact/modsync/config.py')
+    parser.add_argument('--path', '-p', type=str,
+                        help='Sub-Path in Data.fs to be recorded',
+                        default=None)
+    parser.add_argument('--since', '-s', type=str,
+                        help='Record only transactions since this timestamp (YYYY-MM-DD[ HH:MI:SS[ TZ]])',
+                        default=None)
+    parser.add_argument('--lasttxn', '-l', nargs='?', type=str,
+                        help='Record only transactions since this transaction (or the last used)',
+                        const='last', default=None)
+    parser.add_argument('--no-commit', action='store_true', default=False,
+                        help='Disable auto-commit (passing any argument except commitmsg implies --no-commit)',)
+    parser.add_argument('--schema', action='store_true', default=False,
+                        help='Dump the schema of the configured database(s)',)
+    parser.add_argument('--table', action='store_true', default=False,
+                        help='Dump the table contents of the configured database(s)',)
+    parser.add_argument('commitmsg', nargs='?', type=str,
+                        help='Commit message for standard run.',
+                        default=None)
+    args = parser.parse_args()
+    config_path = args.config
+    path = args.path
+    since = args.since
+    lasttxn = args.lasttxn
+    commit_message = args.commitmsg
+    no_commit = args.no_commit
+    dump_schema = args.schema
+    dump_table = args.table
+    dump_datafs = False
+    # no_commit is implied by all other arguments
+    if path or since or lasttxn or dump_schema or dump_table:
+        no_commit = True
+    # dump the Data.fs
+    # if any of path/since/lasttxn is given OR if no restriction is given
+    if (path or since or lasttxn or 
+            not (path or dump_table or dump_schema)
+            ):
+        dump_datafs = True
+    # dump tables and schemas unless somehow restricted
+    if not (path or dump_schema or dump_table or lasttxn or since):
+        dump_table = dump_schema = True
+
+    paths = None # paths = None means include everything
+    # If a path is given, always include that (even if --since is
+    # given as well)
+    if path:
+        paths = [path]
+
+    # Load configuration
+    config = imp.load_source(
+        'config',
+        config_path)
+
+    # Setup sync toolkit
+    sync = perfact.zodbsync.ZODBSync(config = config)
+
+    # Prepare the transaction argument
+    if lasttxn == 'last':
+        # We mean to read from the newest entry
+        lasttxn = sync.txn_read() or None
+
+    # Prepare to store the newest transaction id
+    newest_txnid = sync.recent_changes(limit=1)['newest_txnid']
+
+    if since or lasttxn:
+        # if since or lasttxn is given, only matching files are dumped
+        if paths is None:
+            paths = []
+        if since:
+            # Use the DateTime parser to get seconds (but any other parser
+            # would do)
+            from DateTime import DateTime
+            since_secs = DateTime(since).millis()/1000.
+        else:
+            since_secs = None
+        res = sync.recent_changes(since_secs=since_secs,
+                                  txnid=lasttxn,
+                                  limit=51)
+        if res['no_records']:
+            # If undo log is empty, we skip this operation
+            pass
+        elif res['search_limit_reached'] or res['limit_reached']:
+            # Limits reached mean we need to perform a full dump to
+            # recover
+            paths = None
+        elif len(res['paths']) == 0:
+            # Nothing happened. We don't need to rewrite the
+            # transaction id
+            newest_txnid = None
+        else:
+            paths.extend(res['paths'])
+
+    if dump_datafs:
+        if paths is None:
+            sync.record()
+        else:
+            #if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
+            paths.sort()
+            i = 0
+            while i < len(paths):
+                while i+1 < len(paths) and paths[i+1].startswith(paths[i]):
+                    del paths[i+1]
+                i+=1
+            for path in paths:
+                try:
+                    sync.record(path=path)
+                except AttributeError:
+                    print('Unable to record path ' + path)
+                    pass
+    if dump_schema:
+        sync.db_schema_dump()
+    if dump_table:
+        sync.db_table_dump()
+
+    if not no_commit:
+        # this fails (by design) if no repository is initialized.
+        if commit_message is None:
+            commit_message = config.commit_message
+        if hasattr(config, 'codechange_mail'):
+            commit_done = pfcodechg.git_snapshot(config.base_dir, commit_message)
+            # only send a mail if something has changed
+            if (commit_done is True and config.codechange_mail):
+                print('Commit was done! Sending mail...')
+                pfcodechg.git_mail(config.base_dir, config.codechange_mail)
+
+    if newest_txnid:
+        sync.txn_write(newest_txnid or '')
