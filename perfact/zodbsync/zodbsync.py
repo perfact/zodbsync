@@ -430,6 +430,13 @@ def cleanup_string(name,
 
     return out
 
+def conserv_split(val, splitby='\n'):
+    '''Split by a character, conserving it in the result.'''
+    output = [a+splitby for a in val.split(splitby)]
+    output[-1] = output[-1][:-len(splitby)]
+    if output[-1] == '': output.pop()
+    return output
+
 class ZODBSync:
     '''A ZODBSync instance is capable of mirroring a part of the ZODB
     object tree in the file system.
