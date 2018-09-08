@@ -10,6 +10,8 @@ setup(name='perfact-zodbsync',
       author='Ján Jockusch et.al.',
       author_email='devel@perfact.de',
       packages=[
+          'perfact',
+          'perfact.zodbsync',
       ],
       package_data={
       },

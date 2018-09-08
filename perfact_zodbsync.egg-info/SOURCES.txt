@@ -1,7 +1,0 @@
-MANIFEST.in
-bin/perfact-zopeplayback
-bin/perfact-zoperecord
-perfact_zodbsync.egg-info/PKG-INFO
-perfact_zodbsync.egg-info/SOURCES.txt
-perfact_zodbsync.egg-info/dependency_links.txt
-perfact_zodbsync.egg-info/top_level.txt
