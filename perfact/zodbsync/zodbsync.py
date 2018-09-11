@@ -491,6 +491,7 @@ class ZODBSync:
         self.ignore_objects = [
             re.compile('^MOD_SOURCE'),
             re.compile('^__'),
+            re.compile('^Control_Panel$')
         ]
 
         # We write the binary sources into files ending with
@@ -617,13 +618,16 @@ class ZODBSync:
                 base = '__source-utf8__'
             ext = self.source_ext_from_meta(meta)
             src_fname = '%s.%s' % (base, ext)
+        else:
+            src_fname = ''
 
-            # Check if there are stray __source files and remove them first.
-            source_files = [s for s in os.listdir(self.base_dir + '/' + path)
-                            if s.startswith('__source') and s != src_fname]
-            for source_file in source_files:
-                os.remove(os.path.join(self.base_dir,path,source_file))
+        # Check if there are stray __source* files and remove them first.
+        source_files = [s for s in os.listdir(self.base_dir + '/' + path)
+                        if s.startswith('__source') and s != src_fname]
+        for source_file in source_files:
+            os.remove(os.path.join(self.base_dir,path,source_file))
 
+        if write_source:
             # Check if content has changed!
             try:
                 old_data = open(os.path.join(self.base_dir,path,src_fname),
@@ -636,7 +640,7 @@ class ZODBSync:
                 fh.write(data)
                 fh.close()
 
-        # Check if the contents has changed (are there directories not in "contents"?)
+        # Check if the contents have changed (are there directories not in "contents"?)
         current_contents = os.listdir(self.base_dir + '/' + path)
         for item in current_contents:
             if self.is_ignored(item):
@@ -788,6 +792,9 @@ class ZODBSync:
         # Make sure contents reflects status of file system
         fs_data = self.merge_contents(fs_data, fs_path)
         data_dict = dict(fs_data)
+        if 'unsupported' in data_dict:
+            logger.warn('Skipping unsupported object ' + path)
+            return
 
         contents = data_dict.get('contents', [])
         if obj and hasattr(obj, 'objectItems'):

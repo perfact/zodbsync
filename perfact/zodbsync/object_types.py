@@ -11,7 +11,7 @@ def str_to_bytes(value, enc='utf-8'):
         return value.encode(enc)
     return value
 
-# Functions ported from perfact.generic
+# Functions copied from perfact.generic
 
 def read_pdata(obj):
     '''Avoid authentication problems when reading linked pdata.'''
@@ -95,7 +95,7 @@ class AccessControlObj(ModObj):
         ownerinfo = obj.owner_info()
         if ownerinfo:
             owner = ownerinfo['id']
-            if owner != 'perfact': ac.append(('owner', owner))
+            ac.append(('owner', owner))
 
         # The object's settings where they differ from the default (acquire)
         try:
@@ -158,9 +158,13 @@ class AccessControlObj(ModObj):
             for perm, val in list(args.items()):
                 obj.manage_permission(perm, val['roles'], val['acquire'])
 
-        # XXX TODO: set ownership
-
-
+        # set ownership
+        if 'owner' in d:
+            user_folder = obj.acl_users
+            user = user_folder.getUserById(d['owner'])
+            if not hasattr(user, 'aq_base'):
+                user = user.__of__(user_folder)
+            obj.changeOwnership(user)
 
 class UserFolderObj(ModObj):
     meta_types = ['User Folder',]
