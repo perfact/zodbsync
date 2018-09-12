@@ -10,6 +10,7 @@ import os
 import tempfile
 import string
 import ast, operator
+import base64
 # Python2 backward compatibility
 try:
     ast.Bytes
@@ -27,29 +28,34 @@ import Zope2
 # for making an annotation to the transaction
 import transaction
 # for "logging in"
-from AccessControl.SecurityManagement import newSecurityManager
+import AccessControl.SecurityManagement 
 
 # Monkey patch ZRDB not to connect to databases immediately.
 from Shared.DC.ZRDB import Connection
 Connection.Connection.connect_on_load = False
 
-# Logging
-import logging
 import pprint
 import difflib
 
+# Logging
+import logging
+logger = logging.getLogger('ZODBSync')
+
 try:
     import systemd.journal
+    try:
+        logging_handler = systemd.journal.JournalHandler()
+    except AttributeError:
+        # structure of module changed? check debian-packages?
+        logging_handler = systemd.journal.JournaldLogHandler()
 except ImportError:
-    # No systemd module available
-    pass
+    # Fall back to a standard syslog handler
+    import logging.handlers
+    logging_handler = logging.handlers.SysLogHandler()
 
-logger = logging.getLogger('ZODBSync')
-#handler = systemd.journal.JournalHandler()
-handler = logging.StreamHandler()
-logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 logger.propagate = False
+logger.addHandler(logging_handler)
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
@@ -526,14 +532,13 @@ class ZODBSync:
         user = uf.getUserById(self.manager_user)
         if not hasattr(user, 'aq_base'):
             user = user.__of__(uf)
-        newSecurityManager(None, user)
+        AccessControl.SecurityManagement.newSecurityManager(None, user)
 
         txn_mgr = transaction  # Zope2.zpublisher_transactions_manager
         txn_mgr.begin()
         # Set a label for the transaction
         transaction.get().note(note)
         return txn_mgr
-
 
     def source_ext_from_meta(self, meta):
         '''Guess a good extension from meta data.'''
