@@ -10,7 +10,6 @@ import os
 import tempfile
 import string
 import ast, operator
-import base64
 # Python2 backward compatibility
 try:
     ast.Bytes
@@ -34,28 +33,12 @@ import AccessControl.SecurityManagement
 from Shared.DC.ZRDB import Connection
 Connection.Connection.connect_on_load = False
 
-import pprint
+# for showing changes in playback
 import difflib
 
 # Logging
-import logging
-logger = logging.getLogger('ZODBSync')
-
-try:
-    import systemd.journal
-    try:
-        logging_handler = systemd.journal.JournalHandler()
-    except AttributeError:
-        # structure of module changed? check debian-packages?
-        logging_handler = systemd.journal.JournaldLogHandler()
-except ImportError:
-    # Fall back to a standard syslog handler
-    import logging.handlers
-    logging_handler = logging.handlers.SysLogHandler()
-
-logger.setLevel(logging.INFO)
-logger.propagate = False
-logger.addHandler(logging_handler)
+from perfact.zodbsync.logger import get_logger
+logger = get_logger('ZODBSync')
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
@@ -851,8 +834,8 @@ class ZODBSync:
                         if getattr(self,'differ',None) is None:
                             self.differ = difflib.Differ()
                         logger.error("Write failed!")
-                        uploaded = pprint.pformat(fs_data)
-                        readback = pprint.pformat(test_data)
+                        uploaded = mod_format(fs_data)
+                        readback = mod_format(test_data)
                         diff = '\n'.join(self.differ.compare(
                             uploaded.split('\n'),readback.split('\n')))
                         logger.warn(diff)
