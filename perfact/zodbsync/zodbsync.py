@@ -113,7 +113,7 @@ def mod_format(data=None, indent=0, as_list=False):
     else:
         return '\n'.join(output)
 
-def mod_read(obj=None, onerrorstop=False):
+def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistend metadata dictionary for all types.'''
 
     # Known types:
@@ -188,9 +188,18 @@ def mod_read(obj=None, onerrorstop=False):
     # Hash friendly, sorted list of tuples.
     meta.sort()
 
+    # if default owner is set, remove the owner attribute if it matches the
+    # default owner
+    if default_owner is not None:
+        for i in range(len(meta)):
+            if meta[i][0] == 'owner':
+                if meta[i][1] == default_owner:
+                    del meta[i]
+                break
+
     return meta
 
-def mod_write(data, parent=None, override=False, root=None):
+def mod_write(data, parent=None, override=False, root=None, default_owner = None):
     '''
     Given object data in <data>, store the object, creating it if it was
     missing. If <parent> is not given, the context is used. With
@@ -208,6 +217,9 @@ def mod_write(data, parent=None, override=False, root=None):
     d = dict(data)
     id = d['id']
     meta_type = d['type']
+
+    if default_owner is not None and 'owner' not in d:
+        d['owner'] = default_owner
 
     # Plugin data
 
@@ -726,7 +738,7 @@ class ZODBSync:
     def record_obj(self, obj, recurse=True):
         '''Record a Zope object into the local filesystem'''
 
-        data = mod_read(obj)
+        data = mod_read(obj, default_owner = self.manager_user)
         path = self.site + ('/'.join(obj.getPhysicalPath()))
         contents = self.fs_write(path, data)
 
@@ -776,7 +788,7 @@ class ZODBSync:
 
         fs_path = self.site + '/' + path
         fs_data = self.fs_read(fs_path)
-        srv_data = mod_read(obj) if obj else None
+        srv_data = mod_read(obj, default_owner = self.manager_user) if obj else None
         # Make sure contents reflects status of file system
         fs_data = self.merge_contents(fs_data, fs_path)
         data_dict = dict(fs_data)
@@ -816,14 +828,16 @@ class ZODBSync:
                 logger.warn("Type unsupported. Not uploading %s" % path)
             else:
                 logger.warn("Uploading: %s" % path)
-                mod_write(fs_data, parent_obj, override=override, root=root_obj)
+                mod_write(fs_data, parent_obj, 
+                        override=override, root=root_obj, 
+                        default_owner = self.manager_user)
                 if True:  # Enable checkback
                     # Read the object back to confirm
                     if root_obj is not None:
                         new_obj = root_obj
                     else:
                         new_obj = getattr(parent_obj, obj_id)
-                    test_data = mod_read(new_obj)
+                    test_data = mod_read(new_obj, default_owner = self.manager_user)
                     # Replace "contents"
                     test_dict = dict(test_data)
                     if 'contents' in test_dict:
