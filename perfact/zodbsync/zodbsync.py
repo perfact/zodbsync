@@ -24,6 +24,7 @@ import time  # for periodic output
 
 # for accessing Data.fs directly:
 import Zope2
+import zExceptions
 # for making an annotation to the transaction
 import transaction
 # for "logging in"
@@ -764,7 +765,8 @@ class ZODBSync:
                 self.record_obj(obj=new_obj)
 
     def playback(self, path=None, recurse=True, override=False,
-                 encoding=None):
+            skip_errors=False,
+            encoding=None):
         '''Play back (write) objects from the local filesystem into Zope.'''
         obj = self.app
         parent_obj = None
@@ -828,9 +830,13 @@ class ZODBSync:
                 logger.warn("Type unsupported. Not uploading %s" % path)
             else:
                 logger.warn("Uploading: %s" % path)
-                mod_write(fs_data, parent_obj, 
-                        override=override, root=root_obj, 
-                        default_owner = self.manager_user)
+                try:
+                    mod_write(fs_data, parent_obj, 
+                            override=override, root=root_obj, 
+                            default_owner = self.manager_user)
+                except zExceptions.NotFound:
+                    logger.warn('ERROR while uploading ' + path)
+                    return
                 if True:  # Enable checkback
                     # Read the object back to confirm
                     if root_obj is not None:

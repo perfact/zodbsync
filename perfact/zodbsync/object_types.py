@@ -162,9 +162,13 @@ class AccessControlObj(ModObj):
         if 'owner' in d:
             user_folder = obj.acl_users
             user = user_folder.getUserById(d['owner'])
-            if not hasattr(user, 'aq_base'):
-                user = user.__of__(user_folder)
-            obj.changeOwnership(user)
+            if user is None:
+                #TODO: Handle this better! The user might be found in a acl_users further above
+                print("Owner %s not found in users!" % d['owner'])
+            else:
+                if not hasattr(user, 'aq_base'):
+                    user = user.__of__(user_folder)
+                obj.changeOwnership(user)
 
 class UserFolderObj(ModObj):
     meta_types = ['User Folder',]

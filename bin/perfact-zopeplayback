@@ -23,6 +23,10 @@ if __name__ == '__main__':
             help="Only upload metadata, do not remove elements or recurse",
             default=False)
     parser.add_argument(
+            '--skip-errors', action='store_true',
+            help="Skip failed objects and continue",
+            default=False)
+    parser.add_argument(
         'path', nargs='+', type=str,
         help='Sub-Path in Data.fs to be recorded',
         )
@@ -47,7 +51,7 @@ if __name__ == '__main__':
 
     try:
         for path in paths:
-            sync.playback(path=path, override=override, recurse=recurse)
+            sync.playback(path=path, override=override, recurse=recurse, skip_errors=args.skip_errors)
     except:
         print('Error with path ' + path)
         txn_mgr.abort()
