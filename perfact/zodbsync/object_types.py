@@ -168,6 +168,12 @@ class AccessControlObj(ModObj):
 
         # set ownership
         if 'owner' in d:
+            owner = d['owner']
+            if type(owner) == type(''):
+                # backward compatibility for older behavior, where the
+                # corresponding UserFolder was not included
+                owner = (['acl_users'],owner)
+
             obj._owner = d['owner']
 
 class UserFolderObj(ModObj):

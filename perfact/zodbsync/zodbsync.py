@@ -835,6 +835,9 @@ class ZODBSync:
                             override=override, root=root_obj, 
                             default_owner = self.manager_user)
                 except zExceptions.NotFound:
+                    # If we do not want to get errors from missing
+                    # ExternalMethods, this can be used to skip them
+                    raise
                     logger.warn('ERROR while uploading ' + path)
                     return
                 if True:  # Enable checkback
