@@ -194,7 +194,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     if default_owner is not None:
         for i in range(len(meta)):
             if meta[i][0] == 'owner':
-                if meta[i][1] == default_owner:
+                if meta[i][1] == (['acl_users'],default_owner):
                     del meta[i]
                 break
 
@@ -220,7 +220,7 @@ def mod_write(data, parent=None, override=False, root=None, default_owner = None
     meta_type = d['type']
 
     if default_owner is not None and 'owner' not in d:
-        d['owner'] = default_owner
+        d['owner'] = (['acl_users'],default_owner)
 
     # Plugin data
 

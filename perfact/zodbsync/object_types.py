@@ -92,10 +92,11 @@ class AccessControlObj(ModObj):
         local_roles = sorted([role for role in local_roles if role[1] != ('Owner',)])
         if local_roles: ac.append(('local_roles', list(local_roles)))
 
-        ownerinfo = obj.owner_info()
-        if ownerinfo:
-            owner = ownerinfo['id']
-            ac.append(('owner', owner))
+        try:
+            ownerinfo = obj._owner
+            ac.append(('owner', ownerinfo))
+        except:
+            pass
 
         # The object's settings where they differ from the default (acquire)
         try:
@@ -146,29 +147,28 @@ class AccessControlObj(ModObj):
                 obj.manage_setLocalRoles(userid, roles)
 
         # Permission settings
-        if d.get('perms', None):
-            args = {}
-            all_perms = obj.ac_inherited_permissions(1)
-            for perm in all_perms:
-                args[perm[0]] = { 'acquire': not obj.isTopLevelPrincipiaApplicationObject, 'roles': [], }
-            for perm, acquire, roles in d['perms']:
-                if perm in args:
-                    args[perm]['acquire'] = acquire
-                    args[perm]['roles'] = roles
-            for perm, val in list(args.items()):
-                obj.manage_permission(perm, val['roles'], val['acquire'])
+        # permissions that are not stored are understood to be acquired, with
+        # no additional roles being granted this permission
+        # An exception is the root application object, which can not acquire
+        stored_perms = d.get('perms', [])
+        # construct default perms
+        perms = {
+                perm[0]: {
+                    'acquire': not obj.isTopLevelPrincipiaApplicationObject,
+                    'roles': [],
+                }
+                for perm in obj.ac_inherited_permissions(1)
+                }
+        for perm, acquire, roles in stored_perms:
+            if perm in perms:
+                perms[perm]['acquire'] = acquire
+                perms[perm]['roles'] = roles
+        for perm, val in perms.items():
+            obj.manage_permission(perm, val['roles'], val['acquire'])
 
         # set ownership
         if 'owner' in d:
-            user_folder = obj.acl_users
-            user = user_folder.getUserById(d['owner'])
-            if user is None:
-                #TODO: Handle this better! The user might be found in a acl_users further above
-                print("Owner %s not found in users!" % d['owner'])
-            else:
-                if not hasattr(user, 'aq_base'):
-                    user = user.__of__(user_folder)
-                obj.changeOwnership(user)
+            obj._owner = d['owner']
 
 class UserFolderObj(ModObj):
     meta_types = ['User Folder',]
