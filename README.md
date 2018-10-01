@@ -19,11 +19,13 @@ Viktor Dick <viktor.dick@perfact.de>
 ## Installation
 
 The package should be installed using `pip` in the same virt-env as `zope`, p.e.
+
     zope/bin/pip install git+https://github.com/perfact/zodbsync
 
 On PerFact systems, it should automatically be pulled by the `requirements.txt`
 of the package `perfact-dbutils-zope2` and included there. If installing on an
 older system, run
+
     sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
 
 ## Configuration
