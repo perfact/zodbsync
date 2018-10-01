@@ -16,22 +16,22 @@ Viktor Dick <viktor.dick@perfact.de>
 
     git clone https://github.com/perfact/zodbsync.git
 
-## Install
+## Installation
 
-The package should be installed using pip in the same virt-env as zope, p.e.
-zope/bin/pip install perfact-zodbsync
+The package should be installed using `pip` in the same virt-env as `zope`, p.e.
+    zope/bin/pip install git+https://github.com/perfact/zodbsync
 
-On PerFact systems, it should automatically be pulled by the requirements.txt
-of the package perfact-dbutils-zope2 and included there. If installing on an
+On PerFact systems, it should automatically be pulled by the `requirements.txt`
+of the package `perfact-dbutils-zope2` and included there. If installing on an
 older system, run
-sudo -H /opt/zope/zope2.13/bin/pip install perfact-zodbsync
+    sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
 
 ## Configuration
 
-Use the config.py as a starting point for your configuration. At the moment, it
-is not automatically installed. The canonical path for the configuration is
-/etc/perfact/modsync/config.py, so if you do not want to supply the path to the
-configuration when calling the binaries, copy the configuration file there
+Use the `config.py` as a starting point for your configuration. At the moment,
+it is not automatically installed. The canonical path for the configuration is
+`/etc/perfact/modsync/config.py`, so if you do not want to supply the path to
+the configuration when calling the scripts, copy the configuration file there
 (this will change in a future version).
 
 The most important settings are:
@@ -42,8 +42,8 @@ instance). If using a WSGI server (Zope 2 or Zope 4), set `wsgi_conf_path`
 accordingly.
 
 ### `base_dir`
-Inside this folder (in a subfolder named `__root__`), the serialized objects are
-placed. 
+Inside this folder (actually, in a subfolder named `__root__`), the serialized
+objects are placed. 
 
 ### `manager_user`
 The name of a user that must be defined in the top-level UserFolder (`acl_users`)
