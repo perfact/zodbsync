@@ -838,46 +838,48 @@ class ZODBSync:
             if self.is_unsupported(fs_data):
                 logger.warn("Type unsupported. Not uploading %s" % path)
             else:
-                logger.warn("Uploading: %s" % path)
+                logger.debug("Uploading: %s:%s" % (data_dict['type'], path))
                 try:
                     mod_write(fs_data, parent_obj, 
                             override=override, root=root_obj, 
                             default_owner = self.manager_user)
-                except zExceptions.NotFound:
+                except:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
-                    raise
-                    logger.warn('ERROR while uploading ' + path)
-                    return
-                if True:  # Enable checkback
-                    # Read the object back to confirm
-                    if root_obj is not None:
-                        new_obj = root_obj
-                    else:
-                        new_obj = getattr(parent_obj, obj_id)
-                    test_data = mod_read(new_obj, default_owner = self.manager_user)
-                    # Replace "contents"
-                    test_dict = dict(test_data)
-                    if 'contents' in test_dict:
-                        test_dict['contents'] = contents
-                        test_data = list(test_dict.items())
-                        test_data.sort()
-                    if test_data != fs_data:
-                        if getattr(self,'differ',None) is None:
-                            self.differ = difflib.Differ()
-                        logger.error("Write failed!")
-                        uploaded = mod_format(fs_data)
-                        readback = mod_format(test_data)
-                        diff = '\n'.join(self.differ.compare(
-                            uploaded.split('\n'),readback.split('\n')))
-                        logger.warn(diff)
+                    if skip_errors is False:
+                        logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
+                        raise
+                    logger.warn('ERROR while uploading ' + path + ' that is a %s but skipping' % data_dict['type'])
+                else:
+                    if True:  # Enable checkback
+                        # Read the object back to confirm
+                        if root_obj is not None:
+                            new_obj = root_obj
+                        else:
+                            new_obj = getattr(parent_obj, obj_id)
+                        test_data = mod_read(new_obj, default_owner = self.manager_user)
+                        # Replace "contents"
+                        test_dict = dict(test_data)
+                        if 'contents' in test_dict:
+                            test_dict['contents'] = contents
+                            test_data = list(test_dict.items())
+                            test_data.sort()
+                        if test_data != fs_data:
+                            if getattr(self,'differ',None) is None:
+                                self.differ = difflib.Differ()
+                            logger.error("Write failed!")
+                            uploaded = mod_format(fs_data)
+                            readback = mod_format(test_data)
+                            diff = '\n'.join(self.differ.compare(
+                                uploaded.split('\n'),readback.split('\n')))
+                            logger.warn(diff)
 
         if recurse:
             for item in contents:
                 if self.is_ignored(item):
                     continue
                 self.playback(path=os.path.join(path, item), override=override,
-                        encoding=encoding)
+                        encoding=encoding, skip_errors=skip_errors)
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50, search_limit=100):
         '''Retrieve all distinct paths which have changed recently.  Control
