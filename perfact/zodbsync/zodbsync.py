@@ -467,6 +467,7 @@ class ZODBSync:
         self.databases = getattr(config,'databases') or []
         self.db_tables = getattr(config,'db_tables') or {}
         self.manager_user = getattr(config,'manager_user','perfact')
+        self.create_manager_user = getattr(config, 'create_manager_user', False)
 
         # Setup Zope
         if getattr(config, 'conf_path'):
@@ -527,8 +528,11 @@ class ZODBSync:
         uf = self.app.acl_users
         user = uf.getUserById(self.manager_user)
         if (user is None):
-            user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
-            logger.warn('Created user %s with password admin because this user does not exist!')
+            if (self.create_manager_user):
+                user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
+                logger.warn('Created user %s with password admin because this user does not exist!')
+            else:
+                raise Exception('User %s is not available in database. Perhaps you need to set create_manager_user in config.py?' % self.manager_user)
 
         logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
