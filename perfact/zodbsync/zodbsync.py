@@ -838,7 +838,7 @@ class ZODBSync:
             if self.is_unsupported(fs_data):
                 logger.warn("Type unsupported. Not uploading %s" % path)
             else:
-                logger.debug("Uploading: %s:%s" % (data_dict['type'], path))
+                logger.debug("Uploading: %s:%s" % (path, data_dict['type']))
                 try:
                     mod_write(fs_data, parent_obj, 
                             override=override, root=root_obj, 
@@ -849,7 +849,7 @@ class ZODBSync:
                     if skip_errors is False:
                         logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
                         raise
-                    logger.warn('ERROR while uploading ' + path + ' that is a %s but skipping' % data_dict['type'])
+                    logger.warn('Skipping %s:%s' % (path, data_dict['type']))
                 else:
                     if True:  # Enable checkback
                         # Read the object back to confirm
@@ -867,12 +867,12 @@ class ZODBSync:
                         if test_data != fs_data:
                             if getattr(self,'differ',None) is None:
                                 self.differ = difflib.Differ()
-                            logger.error("Write failed!")
+                            logger.error("Write failed of %s:%s! Comparison yields a difference. If not already set log level to DEBUG to see it." % (path, data_dict['type']))
                             uploaded = mod_format(fs_data)
                             readback = mod_format(test_data)
                             diff = '\n'.join(self.differ.compare(
                                 uploaded.split('\n'),readback.split('\n')))
-                            logger.warn(diff)
+                            logger.debug(diff)
 
         if recurse:
             for item in contents:
