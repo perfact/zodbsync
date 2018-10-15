@@ -9,8 +9,6 @@ import sys
 import argparse
 # for Data.fs reading / writing:
 import perfact.zodbsync
-# for delays in watcher mode
-import time
 try:
     # for git snapshot
     import perfact.pfcodechg as pfcodechg
@@ -18,7 +16,8 @@ except ImportError:
     pass
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Record the Data.fs and database')
+    parser = argparse.ArgumentParser(
+        description='Record the Data.fs and database')
     parser.add_argument('--config', '-c', type=str,
                         help='Path to config.py',
                         default='/etc/perfact/modsync/config.py')
@@ -26,19 +25,25 @@ if __name__ == '__main__':
                         help='Sub-Path in Data.fs to be recorded',
                         default=None)
     parser.add_argument('--since', '-s', type=str,
-                        help='Record only transactions since this timestamp (YYYY-MM-DD[ HH:MI:SS[ TZ]])',
+                        help='Record only transactions since this '
+                        + 'timestamp (YYYY-MM-DD[ HH:MI:SS[ TZ]])',
                         default=None)
     parser.add_argument('--lasttxn', '-l', nargs='?', type=str,
-                        help='Record only transactions since this transaction (or the last used)',
+                        help='Record only transactions since this '
+                        + 'transaction (or the last used)',
                         const='last', default=None)
     parser.add_argument('--no-commit', action='store_true', default=False,
-                        help='Disable auto-commit (passing any argument except commitmsg implies --no-commit)',)
+                        help='Disable auto-commit (passing any '
+                        + 'argument except commitmsg implies --no-commit)',)
     parser.add_argument('--schema', action='store_true', default=False,
                         help='Dump the schema of the configured database(s)',)
     parser.add_argument('--table', action='store_true', default=False,
-                        help='Dump the table contents of the configured database(s)',)
+                        help='Dump the table contents of the configured '
+                        + 'database(s)',)
     parser.add_argument('--watch', action='store_true', default=False,
-            help='Start watcher that records ZODB changes as they occur. Ignores all other parameters except --config.')
+                        help='Start watcher that records ZODB changes '
+                        + 'as they occur. Ignores all other parameters '
+                        + 'except --config.')
     parser.add_argument('commitmsg', nargs='?', type=str,
                         help='Commit message for standard run.',
                         default=None)
@@ -57,15 +62,14 @@ if __name__ == '__main__':
         no_commit = True
     # dump the Data.fs
     # if any of path/since/lasttxn is given OR if no restriction is given
-    if (path or since or lasttxn or 
-            not (path or dump_table or dump_schema)
-            ):
+    if (path or since or lasttxn or
+            not (path or dump_table or dump_schema)):
         dump_datafs = True
     # dump tables and schemas unless somehow restricted
     if not (path or dump_schema or dump_table or lasttxn or since):
         dump_table = dump_schema = True
 
-    paths = None # paths = None means include everything
+    paths = None  # paths = None means include everything
     # If a path is given, always include that (even if --since is
     # given as well)
     if path:
@@ -77,11 +81,11 @@ if __name__ == '__main__':
         config_path)
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(config = config)
+    sync = perfact.zodbsync.ZODBSync(config=config)
 
     # Watch mode
     if args.watch:
-        watcher = perfact.zodbsync.Watcher(sync=sync,config=config)
+        watcher = perfact.zodbsync.Watcher(sync=sync, config=config)
         watcher.run()
         sys.exit(0)
 
@@ -125,13 +129,13 @@ if __name__ == '__main__':
         if paths is None:
             sync.record()
         else:
-            #if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
+            # if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
             paths.sort()
             i = 0
             while i < len(paths):
                 while i+1 < len(paths) and paths[i+1].startswith(paths[i]):
                     del paths[i+1]
-                i+=1
+                i += 1
             for path in paths:
                 try:
                     sync.record(path=path)
@@ -143,16 +147,16 @@ if __name__ == '__main__':
     if dump_table:
         sync.db_table_dump()
 
-    if not no_commit:
-        # this fails (by design) if no repository is initialized.
+    if not no_commit and 'perfact.pfcodechg' in sys.modules:
         if commit_message is None:
             commit_message = config.commit_message
-        if hasattr(config, 'codechange_mail'):
-            commit_done = pfcodechg.git_snapshot(config.base_dir, commit_message)
-            # only send a mail if something has changed
-            if (commit_done is True and config.codechange_mail):
-                print('Commit was done! Sending mail...')
-                pfcodechg.git_mail(config.base_dir, config.codechange_mail)
+        # this fails (by design) if no repository is initialized.
+        commit_done = pfcodechg.git_snapshot(config.base_dir, commit_message)
+        # only send a mail if something has changed
+        if (commit_done
+                and getattr(config, 'codechange_mail', False)):
+            print('Commit was done! Sending mail...')
+            pfcodechg.git_mail(config.base_dir, config.codechange_mail)
 
     if newest_txnid:
         sync.txn_write(newest_txnid or '')
