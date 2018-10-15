@@ -526,6 +526,11 @@ class ZODBSync:
         # Log in as a manager
         uf = self.app.acl_users
         user = uf.getUserById(self.manager_user)
+        if (user is None):
+            user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
+            logger.warn('Created user %s with password admin because this user does not exist!')
+
+        logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
             user = user.__of__(uf)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
