@@ -530,7 +530,7 @@ class ZODBSync:
         if (user is None):
             if (self.create_manager_user):
                 user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
-                logger.warn('Created user %s with password admin because this user does not exist!')
+                logger.warn('Created user %s with password admin because this user does not exist!' % self.manager_user)
             else:
                 raise Exception('User %s is not available in database. Perhaps you need to set create_manager_user in config.py?' % self.manager_user)
 
