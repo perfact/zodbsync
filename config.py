@@ -9,6 +9,9 @@ datafs_path = '/var/lib/zope2.13/zeo/emazeo/var/Data.fs'
 # user that is used to create commits and as default owner of objects
 manager_user = 'perfact'
 
+# create the manager user on empty databases
+create_manager_user = False
+
 # Base directory of the repository
 base_dir = '/opt/perfact/dbutils-zoperepo'
 

@@ -467,6 +467,7 @@ class ZODBSync:
         self.databases = getattr(config,'databases') or []
         self.db_tables = getattr(config,'db_tables') or {}
         self.manager_user = getattr(config,'manager_user','perfact')
+        self.create_manager_user = getattr(config, 'create_manager_user', False)
 
         # Setup Zope
         if getattr(config, 'conf_path'):
@@ -526,6 +527,14 @@ class ZODBSync:
         # Log in as a manager
         uf = self.app.acl_users
         user = uf.getUserById(self.manager_user)
+        if (user is None):
+            if (self.create_manager_user):
+                user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
+                logger.warn('Created user %s with password admin because this user does not exist!' % self.manager_user)
+            else:
+                raise Exception('User %s is not available in database. Perhaps you need to set create_manager_user in config.py?' % self.manager_user)
+
+        logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
             user = user.__of__(uf)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
@@ -829,46 +838,48 @@ class ZODBSync:
             if self.is_unsupported(fs_data):
                 logger.warn("Type unsupported. Not uploading %s" % path)
             else:
-                logger.warn("Uploading: %s" % path)
+                logger.debug("Uploading: %s:%s" % (path, data_dict['type']))
                 try:
                     mod_write(fs_data, parent_obj, 
                             override=override, root=root_obj, 
                             default_owner = self.manager_user)
-                except zExceptions.NotFound:
+                except:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
-                    raise
-                    logger.warn('ERROR while uploading ' + path)
-                    return
-                if True:  # Enable checkback
-                    # Read the object back to confirm
-                    if root_obj is not None:
-                        new_obj = root_obj
-                    else:
-                        new_obj = getattr(parent_obj, obj_id)
-                    test_data = mod_read(new_obj, default_owner = self.manager_user)
-                    # Replace "contents"
-                    test_dict = dict(test_data)
-                    if 'contents' in test_dict:
-                        test_dict['contents'] = contents
-                        test_data = list(test_dict.items())
-                        test_data.sort()
-                    if test_data != fs_data:
-                        if getattr(self,'differ',None) is None:
-                            self.differ = difflib.Differ()
-                        logger.error("Write failed!")
-                        uploaded = mod_format(fs_data)
-                        readback = mod_format(test_data)
-                        diff = '\n'.join(self.differ.compare(
-                            uploaded.split('\n'),readback.split('\n')))
-                        logger.warn(diff)
+                    if skip_errors is False:
+                        logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
+                        raise
+                    logger.warn('Skipping %s:%s' % (path, data_dict['type']))
+                else:
+                    if True:  # Enable checkback
+                        # Read the object back to confirm
+                        if root_obj is not None:
+                            new_obj = root_obj
+                        else:
+                            new_obj = getattr(parent_obj, obj_id)
+                        test_data = mod_read(new_obj, default_owner = self.manager_user)
+                        # Replace "contents"
+                        test_dict = dict(test_data)
+                        if 'contents' in test_dict:
+                            test_dict['contents'] = contents
+                            test_data = list(test_dict.items())
+                            test_data.sort()
+                        if test_data != fs_data:
+                            if getattr(self,'differ',None) is None:
+                                self.differ = difflib.Differ()
+                            logger.error("Write failed of %s:%s! Comparison yields a difference. If not already set log level to DEBUG to see it." % (path, data_dict['type']))
+                            uploaded = mod_format(fs_data)
+                            readback = mod_format(test_data)
+                            diff = '\n'.join(self.differ.compare(
+                                uploaded.split('\n'),readback.split('\n')))
+                            logger.debug(diff)
 
         if recurse:
             for item in contents:
                 if self.is_ignored(item):
                     continue
                 self.playback(path=os.path.join(path, item), override=override,
-                        encoding=encoding)
+                        encoding=encoding, skip_errors=skip_errors)
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50, search_limit=100):
         '''Retrieve all distinct paths which have changed recently.  Control
