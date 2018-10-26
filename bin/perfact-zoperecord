@@ -151,7 +151,14 @@ if __name__ == '__main__':
         if commit_message is None:
             commit_message = config.commit_message
         # this fails (by design) if no repository is initialized.
-        commit_done = pfcodechg.git_snapshot(config.base_dir, commit_message)
+        commit_done = pfcodechg.git_snapshot(
+            config.base_dir,
+            commit_message + ' (Database)',
+            subdir='__psql__')
+        if commit_done:
+            commit_done = pfcodechg.git_snapshot(
+                config.base_dir,
+                commit_message)
         # only send a mail if something has changed
         if (commit_done
                 and getattr(config, 'codechange_mail', False)):
