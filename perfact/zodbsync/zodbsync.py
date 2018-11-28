@@ -468,6 +468,7 @@ class ZODBSync:
         self.db_tables = getattr(config,'db_tables') or {}
         self.manager_user = getattr(config,'manager_user','perfact')
         self.create_manager_user = getattr(config, 'create_manager_user', False)
+        self.default_owner = getattr(config,'default_owner','perfact')
 
         # Setup Zope
         if getattr(config, 'conf_path'):
@@ -842,7 +843,7 @@ class ZODBSync:
                 try:
                     mod_write(fs_data, parent_obj, 
                             override=override, root=root_obj, 
-                            default_owner = self.manager_user)
+                            default_owner = self.default_owner)
                 except:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them

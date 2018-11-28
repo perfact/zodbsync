@@ -12,6 +12,9 @@ manager_user = 'perfact'
 # create the manager user on empty databases
 create_manager_user = False
 
+# sets the default owner for objects that have no owner in the exported
+default_owner = 'perfact'
+
 # Base directory of the repository
 base_dir = '/opt/perfact/dbutils-zoperepo'
 
