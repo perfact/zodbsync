@@ -471,7 +471,7 @@ class ZODBSync:
         self.default_owner = getattr(config,'default_owner','perfact')
 
         # Setup Zope
-        if getattr(config, 'conf_path'):
+        if getattr(config, 'conf_path', None):
             # Zope2 uses the system argument list, which confuses things.
             # We clear that list here. If arguments to Zope2 are required,
             # these can be added here.
@@ -749,7 +749,7 @@ class ZODBSync:
     def record_obj(self, obj, recurse=True):
         '''Record a Zope object into the local filesystem'''
 
-        data = mod_read(obj, default_owner = self.manager_user)
+        data = mod_read(obj, default_owner = self.default_owner)
         path = self.site + ('/'.join(obj.getPhysicalPath()))
         contents = self.fs_write(path, data)
 
