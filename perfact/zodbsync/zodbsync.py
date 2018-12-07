@@ -38,8 +38,7 @@ Connection.Connection.connect_on_load = False
 import difflib
 
 # Logging
-from perfact.zodbsync.logger import get_logger
-logger = get_logger('ZODBSync')
+import perfact.zodbsync.logger
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
@@ -460,7 +459,7 @@ class ZODBSync:
             site='__root__', 
             recurse=True,
             ):
-
+        self.logger = perfact.zodbsync.logger.get_logger('ZODBSync')
         self.site = site
         self.base_dir = config.base_dir
         self.recurse = recurse

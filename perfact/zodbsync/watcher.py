@@ -18,10 +18,6 @@ import AccessControl.SecurityManagement
 
 import perfact.zodbsync.zodbsync
 
-# Logging
-from perfact.zodbsync.logger import get_logger
-logger = get_logger('ZODBSyncWatcher')
-
 
 class ZODBSyncWatcher:
     """
@@ -83,9 +79,10 @@ class ZODBSyncWatcher:
         self.sync = sync
         self.base_dir = os.path.join(self.sync.base_dir, self.sync.site)
         self.app = sync.app
+        self.logger = self.sync.logger
         if not hasattr(config, 'datafs_path'):
             err = "--watch requires datafs_path in config"
-            logger.error(err)
+            self.logger.error(err)
             raise AssertionError(err)
         self.datafs_path = config.datafs_path
 
@@ -159,7 +156,7 @@ class ZODBSyncWatcher:
 
         self._remove_subpaths(paths)
         for path in paths:
-            logger.info('Recording %s' % path)
+            self.logger.info('Recording %s' % path)
             self.sync.record(path)
 
         transaction.abort()
@@ -168,7 +165,7 @@ class ZODBSyncWatcher:
         if self.txnid_on_disk != self.last_visible_txn:
             self.txnid_on_disk = self.last_visible_txn
             self.sync.txn_write(base64.b64encode(self.last_visible_txn))
-        logger.info("Setup complete")
+        self.logger.info("Setup complete")
 
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every
@@ -203,7 +200,7 @@ class ZODBSyncWatcher:
         if self.last_report is None:
             self.last_report = now
         if now - self.last_report > 2:
-            logger.info("Building tree: " + path)
+            self.logger.info("Building tree: " + path)
             self.last_report = now
 
         self.object_tree[oid] = {
@@ -275,7 +272,7 @@ class ZODBSyncWatcher:
         Store data of an object at the path stored in our object tree.
         '''
         path = self.object_tree[oid]['path']
-        logger.info('Recording %s' % path)
+        self.logger.info('Recording %s' % path)
 
         obj = self.app._p_jar[oid]
         data = perfact.zodbsync.zodbsync.mod_read(
@@ -303,7 +300,7 @@ class ZODBSyncWatcher:
 
         if not len(self.changed_oids):
             return
-        logger.info('Found %s changed objects' % len(self.changed_oids))
+        self.logger.info('Found %s changed objects' % len(self.changed_oids))
 
         self.adoption_list = set()
 
@@ -340,7 +337,7 @@ class ZODBSyncWatcher:
 
         self._remove_subpaths(remove_paths)
         for path in remove_paths:
-            logger.info('Removing %s' % path)
+            self.logger.info('Removing %s' % path)
             shutil.rmtree(self.base_dir+path)
 
     def _update_children(self, oid):
@@ -366,7 +363,7 @@ class ZODBSyncWatcher:
                 self.adoption_list.add(child_oid)
             elif child_id != newchildren[child_oid]:
                 # child still there, but renamed
-                logger.info(
+                self.logger.info(
                     'Renaming %s{%s => %s}' % (
                         node['path'],
                         child_id,
@@ -382,7 +379,7 @@ class ZODBSyncWatcher:
                     self.base_dir+node['path']+child_id,
                     self.base_dir+node['path']+newchildren[child_oid],
                 )
-                logger.info(args)
+                self.logger.info(args)
                 os.rename(*args)
 
         # go through new children and check if they have old parents
@@ -395,7 +392,7 @@ class ZODBSyncWatcher:
             if child_oid in self.object_tree:
                 # the parent changed
                 child = self.object_tree[child_oid]
-                logger.info(
+                self.logger.info(
                     'Moving %s => %s' % (
                         child['path'],
                         newpath,
@@ -431,7 +428,7 @@ class ZODBSyncWatcher:
 
         # event handler for signals
         def quit(signo, _frame):
-            logger.info('Caught signal, exiting...')
+            self.logger.info('Caught signal, exiting...')
             exit.set()
         for sig in ('TERM', 'HUP', 'INT'):
             signal.signal(getattr(signal, 'SIG'+sig), quit)
@@ -455,4 +452,4 @@ class ZODBSyncWatcher:
 
             # a wait that is interrupted immediately if exit.set() is called
             exit.wait(interval)
-        logger.info('')
+        self.logger.info('')
