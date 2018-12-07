@@ -580,7 +580,7 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
-    def fs_write(self, path, data):
+    def fs_write(self, path, data, remove_orphans=True):
         '''Write object data out to a file with the given path.'''
 
         # Read the basic information
@@ -599,7 +599,7 @@ class ZODBSync:
         try:
             os.stat(self.base_dir + '/' + path)
         except OSError:
-            logger.info("Will create new directory %s" % path)
+            logger.debug("Will create new directory %s" % path)
             os.makedirs(os.path.join(self.base_dir, path))
 
         # Metadata
@@ -611,7 +611,7 @@ class ZODBSync:
         except:
             old_data = None
         if old_data is None or old_data != fmt:
-            logger.info("Will write %d bytes of metadata" % len(fmt))
+            logger.debug("Will write %d bytes of metadata" % len(fmt))
             fh = open(self.base_dir + '/' +
                       path + '/' + data_fname, 'wb')
             fh.write(fmt)
@@ -646,20 +646,22 @@ class ZODBSync:
             except:
                 old_data = None
             if old_data is None or old_data != data:
-                logger.info("Will write %d bytes of source" % len(data))
+                logger.debug("Will write %d bytes of source" % len(data))
                 fh = open(os.path.join(self.base_dir,path,src_fname), 'wb')
                 fh.write(data)
                 fh.close()
 
-        # Check if the contents have changed (are there directories not in "contents"?)
-        current_contents = os.listdir(self.base_dir + '/' + path)
-        for item in current_contents:
-            if self.is_ignored(item):
-                continue
+        if remove_orphans:
+            # Check if the contents have changed (are there directories not in
+            # "contents"?)
+            current_contents = os.listdir(self.base_dir + '/' + path)
+            for item in current_contents:
+                if self.is_ignored(item):
+                    continue
 
-            if item not in contents:
-                logger.info("Removing old item %s from filesystem" % item)
-                shutil.rmtree(os.path.join(self.base_dir,path,item))
+                if item not in contents:
+                    logger.info("Removing old item %s from filesystem" % item)
+                    shutil.rmtree(os.path.join(self.base_dir,path,item))
 
         return contents
 
