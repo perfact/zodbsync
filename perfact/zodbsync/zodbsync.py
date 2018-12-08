@@ -530,11 +530,11 @@ class ZODBSync:
         if (user is None):
             if (self.create_manager_user):
                 user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
-                logger.warn('Created user %s with password admin because this user does not exist!' % self.manager_user)
+                self.logger.warn('Created user %s with password admin because this user does not exist!' % self.manager_user)
             else:
                 raise Exception('User %s is not available in database. Perhaps you need to set create_manager_user in config.py?' % self.manager_user)
 
-        logger.info('Using user %s' % self.manager_user)
+        self.logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
             user = user.__of__(uf)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
@@ -598,7 +598,7 @@ class ZODBSync:
         try:
             os.stat(self.base_dir + '/' + path)
         except OSError:
-            logger.debug("Will create new directory %s" % path)
+            self.logger.debug("Will create new directory %s" % path)
             os.makedirs(os.path.join(self.base_dir, path))
 
         # Metadata
@@ -610,7 +610,7 @@ class ZODBSync:
         except:
             old_data = None
         if old_data is None or old_data != fmt:
-            logger.debug("Will write %d bytes of metadata" % len(fmt))
+            self.logger.debug("Will write %d bytes of metadata" % len(fmt))
             fh = open(self.base_dir + '/' +
                       path + '/' + data_fname, 'wb')
             fh.write(fmt)
@@ -645,7 +645,7 @@ class ZODBSync:
             except:
                 old_data = None
             if old_data is None or old_data != data:
-                logger.debug("Will write %d bytes of source" % len(data))
+                self.logger.debug("Will write %d bytes of source" % len(data))
                 fh = open(os.path.join(self.base_dir,path,src_fname), 'wb')
                 fh.write(data)
                 fh.close()
@@ -659,7 +659,7 @@ class ZODBSync:
                     continue
 
                 if item not in contents:
-                    logger.info("Removing old item %s from filesystem" % item)
+                    self.logger.info("Removing old item %s from filesystem" % item)
                     shutil.rmtree(os.path.join(self.base_dir,path,item))
 
         return contents
@@ -759,7 +759,7 @@ class ZODBSync:
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
-            logger.info('%d obj saved of an estimated %d, current path %s' % (
+            self.logger.info('%d obj saved of an estimated %d, current path %s' % (
                 self.num_obj_current, self.num_obj_total, path
             ))
             self.num_obj_last_report = now
@@ -792,7 +792,7 @@ class ZODBSync:
             parent_obj = obj
             obj_id = parts[-1]
             if obj_id == 'get':
-                logger.warn('Object "get" cannot be uploaded at path %s' %
+                self.logger.warn('Object "get" cannot be uploaded at path %s' %
                             path)
                 return
             obj = parent_obj._getOb(obj_id, None)  # getattr(parent_obj, obj_id, None)
@@ -806,7 +806,7 @@ class ZODBSync:
         fs_data = self.merge_contents(fs_data, fs_path)
         data_dict = dict(fs_data)
         if 'unsupported' in data_dict:
-            logger.warn('Skipping unsupported object ' + path)
+            self.logger.warn('Skipping unsupported object ' + path)
             return
 
         contents = data_dict.get('contents', [])
@@ -818,7 +818,7 @@ class ZODBSync:
         # Find IDs in Data.fs object not present in file system
         del_ids = list(filter(lambda a: a not in contents, srv_contents))
         if del_ids:
-            logger.warn('Deleting objects ' + repr(del_ids))
+            self.logger.warn('Deleting objects ' + repr(del_ids))
             obj.manage_delObjects(ids=del_ids)
 
         # Update statistics
@@ -826,7 +826,7 @@ class ZODBSync:
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
-            logger.info('%d obj uploaded of an estimated %d, current path %s' % (
+            self.logger.info('%d obj uploaded of an estimated %d, current path %s' % (
                 self.num_obj_current, self.num_obj_total, path
             ))
             self.num_obj_last_report = now
@@ -838,9 +838,9 @@ class ZODBSync:
         if fs_data != srv_data:
             # Unsupported type?
             if self.is_unsupported(fs_data):
-                logger.warn("Type unsupported. Not uploading %s" % path)
+                self.logger.warn("Type unsupported. Not uploading %s" % path)
             else:
-                logger.debug("Uploading: %s:%s" % (path, data_dict['type']))
+                self.logger.debug("Uploading: %s:%s" % (path, data_dict['type']))
                 try:
                     mod_write(fs_data, parent_obj, 
                             override=override, root=root_obj, 
@@ -849,9 +849,9 @@ class ZODBSync:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
                     if skip_errors is False:
-                        logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
+                        self.logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
                         raise
-                    logger.warn('Skipping %s:%s' % (path, data_dict['type']))
+                    self.logger.warn('Skipping %s:%s' % (path, data_dict['type']))
                 else:
                     if True:  # Enable checkback
                         # Read the object back to confirm
@@ -869,12 +869,12 @@ class ZODBSync:
                         if test_data != fs_data:
                             if getattr(self,'differ',None) is None:
                                 self.differ = difflib.Differ()
-                            logger.error("Write failed of %s:%s! Comparison yields a difference. If not already set log level to DEBUG to see it." % (path, data_dict['type']))
+                            self.logger.error("Write failed of %s:%s! Comparison yields a difference. If not already set log level to DEBUG to see it." % (path, data_dict['type']))
                             uploaded = mod_format(fs_data)
                             readback = mod_format(test_data)
                             diff = '\n'.join(self.differ.compare(
                                 uploaded.split('\n'),readback.split('\n')))
-                            logger.debug(diff)
+                            self.logger.debug(diff)
 
         if recurse:
             for item in contents:
@@ -967,10 +967,10 @@ class ZODBSync:
         try:
             os.stat(self.base_dir + '/' + path)
         except:
-            logger.info("Will create new directory %s" % path)
+            self.logger.info("Will create new directory %s" % path)
             os.makedirs(os.path.join(self.base_dir,path))
 
-        logger.info("Will dump database schema for %s" % dbname)
+        self.logger.info("Will dump database schema for %s" % dbname)
         outfile = self.base_dir + '/' + path + '/schema-%s.sql' % dbname
         cmds = []
         subprocess.call(
@@ -1007,10 +1007,10 @@ class ZODBSync:
         try:
             os.stat(self.base_dir + '/' + path)
         except:
-            logger.info("Will create new directory %s" % path)
+            self.logger.info("Will create new directory %s" % path)
             os.makedirs(os.path.join(self.base_dir,path))
 
-        logger.info("Will dump database table %s / %s" % (dbname, tablename))
+        self.logger.info("Will dump database table %s / %s" % (dbname, tablename))
         # Data must be dumped in an ordered fashion to be diff friendly.
         fh = open(self.base_dir + '/' + path + '/' + fname, 'wb')
         fh.write((u"COPY %s FROM STDIN;\n" % tablename).encode('utf-8'))

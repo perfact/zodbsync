@@ -452,4 +452,3 @@ class ZODBSyncWatcher:
 
             # a wait that is interrupted immediately if exit.set() is called
             exit.wait(interval)
-        self.logger.info('')
