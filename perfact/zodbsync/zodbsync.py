@@ -89,9 +89,13 @@ def mod_format(data=None, indent=0, as_list=False):
         elif type(item[1]) in (type(b''), type(u'')):
             # Multiline presentation of non-trivial text / blobs
             text = item[1]
-            if text != '' and (text.find('\n') != -1 or len(text) > 80):
+            if type(text) == type(b''):
+                newline = b'\n'
+            else:
+                newline = u'\n'
+            if text != '' and (text.find(newline) != -1 or len(text) > 80):
                 # Keep newlines after splitting.
-                lines = conserv_split(text, '\n')
+                lines = conserv_split(text, newline)
                 # Could be binary data. So, split superlong lines as well.
                 lines = split_longlines(lines)
 
