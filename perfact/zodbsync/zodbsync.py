@@ -1,44 +1,46 @@
 #!/usr/bin/env python
 
-# Plugins for handling different object types
-from perfact.zodbsync.object_types import object_types
-
 import re
-import urllib
 import sys
 import os
-import tempfile
 import string
-import ast, operator
-# Python2 backward compatibility
-try:
-    ast.Bytes
-except:
-    ast.Bytes = ast.Str
-    class DummyNameConstant: pass
-    ast.NameConstant = DummyNameConstant
-
+import ast
+import operator
+import difflib  # for showing changes in playback
 import shutil
-import subprocess
 import time  # for periodic output
+import six  # differentiating between python 2 and 3
 
 # for accessing Data.fs directly:
 import Zope2
-import zExceptions
 # for making an annotation to the transaction
 import transaction
 # for "logging in"
-import AccessControl.SecurityManagement 
+import AccessControl.SecurityManagement
+
+# Logging
+import perfact.zodbsync.logger
+# Plugins for handling different object types
+from perfact.zodbsync.object_types import object_types
+
+# Python2 backward compatibility
+try:
+    ast.Bytes
+except AttributeError:
+    ast.Bytes = ast.Str
+
+    class DummyNameConstant:
+        pass
+    ast.NameConstant = DummyNameConstant
 
 # Monkey patch ZRDB not to connect to databases immediately.
 from Shared.DC.ZRDB import Connection
 Connection.Connection.connect_on_load = False
 
-# for showing changes in playback
-import difflib
+if six.PY3:
+    # for calling isinstance later
+    unicode = str
 
-# Logging
-import perfact.zodbsync.logger
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
@@ -62,18 +64,19 @@ def mod_format(data=None, indent=0, as_list=False):
                 lines[index] = lines[index][:maxlen]
                 lines.insert(index+1, remainder)
             index += 1
-            if index == len(lines): break
+            if index == len(lines):
+                break
         return lines
 
-
     output = []
+
     def make_line(line):
         output.append(indent * ' ' + line)
 
     make_line('[')
     indent += 4
     for item in data:
-        if type(item[1]) == type([]):
+        if isinstance(item[1], list):
             # Non-trivial lists are shown on separate lines.
             lines = item[1]
             if len(lines) > 1:
@@ -86,10 +89,10 @@ def mod_format(data=None, indent=0, as_list=False):
             else:
                 make_line(str(item)+',')
 
-        elif type(item[1]) in (type(b''), type(u'')):
+        elif isinstance(item[1], (bytes, unicode)):
             # Multiline presentation of non-trivial text / blobs
             text = item[1]
-            if type(text) == type(b''):
+            if isinstance(text, bytes):
                 newline = b'\n'
             else:
                 newline = u'\n'
@@ -117,6 +120,7 @@ def mod_format(data=None, indent=0, as_list=False):
     else:
         return '\n'.join(output)
 
+
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistend metadata dictionary for all types.'''
 
@@ -127,9 +131,8 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     # - Preconditions ?
     # - Site Access Rules ?
 
-    #if obj is None: obj = context
+    # if obj is None: obj = context
     meta = []
-
 
     # The Zope object type is always in the same place
 
@@ -139,10 +142,9 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     # Modification data. This is not in the set now, because modification
     # dates should not affect the hashes and cannot be written back anyway.
 
-    #mtime = obj.bobobase_modification_time()
-    #meta.append(('mtime', mtime.strftime('%Y-%m-%d %H:%M:%S')))
-    #meta.append(('mtime', str(mtime)))
-
+    # mtime = obj.bobobase_modification_time()
+    # meta.append(('mtime', mtime.strftime('%Y-%m-%d %H:%M:%S')))
+    # meta.append(('mtime', str(mtime)))
 
     # ID is a method for some types
 
@@ -159,7 +161,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # Generic and meta type dependent handlers
 
-    handlers = ['Properties', 'AccessControl', 'ZCacheable',]
+    handlers = ['Properties', 'AccessControl', 'ZCacheable', ]
 
     handlers.append(meta_type)
 
@@ -167,7 +169,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
         if onerrorstop:
             assert False, "Unsupported type: %s" % meta_type
         else:
-            additions = [('unsupported', meta_type),]
+            additions = [('unsupported', meta_type), ]
             meta.extend(additions)
             meta.sort()
             return meta
@@ -178,7 +180,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
             if onerrorstop:
                 assert False, "Unsupported type: %s" % meta_type
             else:
-                additions = [('unsupported', meta_type),]
+                additions = [('unsupported', meta_type), ]
                 meta.extend(additions)
                 continue
 
@@ -197,13 +199,15 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     if default_owner is not None:
         for i in range(len(meta)):
             if meta[i][0] == 'owner':
-                if meta[i][1] == (['acl_users'],default_owner):
+                if meta[i][1] == (['acl_users'], default_owner):
                     del meta[i]
                 break
 
     return meta
 
-def mod_write(data, parent=None, override=False, root=None, default_owner = None):
+
+def mod_write(data, parent=None, override=False, root=None,
+              default_owner=None):
     '''
     Given object data in <data>, store the object, creating it if it was
     missing. If <parent> is not given, the context is used. With
@@ -223,11 +227,11 @@ def mod_write(data, parent=None, override=False, root=None, default_owner = None
     meta_type = d['type']
 
     if default_owner is not None and 'owner' not in d:
-        d['owner'] = (['acl_users'],default_owner)
+        d['owner'] = (['acl_users'], default_owner)
 
     # Plugin data
 
-    handlers = ['Properties', 'AccessControl', 'ZCacheable',]
+    handlers = ['Properties', 'AccessControl', 'ZCacheable', ]
 
     handlers.append(meta_type)
 
@@ -245,7 +249,7 @@ def mod_write(data, parent=None, override=False, root=None, default_owner = None
     if obj and obj.meta_type != meta_type:
         if override:
             # Remove the existing object in override mode
-            parent.manage_delObjects(ids=[id,])
+            parent.manage_delObjects(ids=[id, ])
             obj = None
         else:
             assert False, "Type mismatch for object " + repr(data)
@@ -264,9 +268,9 @@ def mod_write(data, parent=None, override=False, root=None, default_owner = None
     for handler in handlers:
         folder = object_types.get(handler)()
 
-        implements = getattr(folder, 'implements', None)
         if folder.implements(obj):
             folder.write(obj, data)
+
 
 def fix_encoding(data, encoding):
     '''Assume that strings in 'data' are encoded in 'encoding' and change
@@ -276,11 +280,15 @@ def fix_encoding(data, encoding):
     ...  ('id', 'body'),
     ...  ('owner', 'jan'),
     ...  ('props', [
-    ...    [('id', 'msg_deleted'), ('type', 'string'), ('value', 'Datens\xe4tze gel\xf6scht!')],
-    ...    [('id', 'content_type'), ('type', 'string'), ('value', 'text/html')],
+    ...    [('id', 'msg_deleted'), ('type', 'string'),
+    ...     ('value', 'Datens\xe4tze gel\xf6scht!')],
+    ...    [('id', 'content_type'), ('type', 'string'),
+    ...     ('value', 'text/html')],
     ...    [('id', 'height'), ('type', 'string'), ('value', 20)],
     ...    [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-    ...  ('source', '<p>\\nIm Bereich Limitplanung sind die Pl\\xe4ne und Auswertungen zusammengefa\\xdft.\\n'),
+    ...  ('source', '<p>\\nIm Bereich Limitplanung '
+    ...             +'sind die Pl\\xe4ne und Auswertungen '
+    ...             +'zusammengefa\\xdft.\\n'),
     ...  ('title', 'Werteplan Monats\xfcbersicht'),
     ...  ('type', 'DTML Method'),
     ... ]
@@ -450,12 +458,6 @@ class ZODBSync:
     given directory and can use the methods "record()" and
     "playback()" to get all objects from the ZODB or write them back,
     respectively.
-
-    Extension functions that are not required for the core functionality
-    but are also provided are:
-    * dump PostgreSQL-databases (complete schema and table contents of specific
-    tables)
-    * Make generic git commits
     '''
 
     def __init__(self, 
@@ -467,8 +469,6 @@ class ZODBSync:
         self.site = site
         self.base_dir = config.base_dir
         self.recurse = recurse
-        self.databases = getattr(config,'databases') or []
-        self.db_tables = getattr(config,'db_tables') or {}
         self.manager_user = getattr(config,'manager_user','perfact')
         self.create_manager_user = getattr(config, 'create_manager_user', False)
         self.default_owner = getattr(config,'default_owner','perfact')
@@ -957,74 +957,3 @@ class ZODBSync:
         except:
             txn = None
         return txn
-
-    def db_schema_dump(self, dbname=None):
-        '''Make a fresh database snapshot.'''
-        # Dump all databases if none is given.
-        if dbname is None:
-            for dbname in self.databases:
-                self.db_schema_dump(dbname)
-            return
-
-        # Make directory for the dump if it's not already there
-        path = '__psql__'
-        try:
-            os.stat(self.base_dir + '/' + path)
-        except:
-            self.logger.info("Will create new directory %s" % path)
-            os.makedirs(os.path.join(self.base_dir,path))
-
-        self.logger.info("Will dump database schema for %s" % dbname)
-        outfile = self.base_dir + '/' + path + '/schema-%s.sql' % dbname
-        cmds = []
-        subprocess.call(
-            ['pg_dump',
-             '--schema-only',
-             '--user', 'postgres',
-             '--file', outfile,
-             dbname, ])
-        return
-
-    def db_table_dump(self, dbname=None, tablename=None):
-        '''Dump the data of a given table into the repository.'''
-
-        if dbname is None:
-            # Dump all configured databases
-            for dbname in self.db_tables.keys():
-                self.db_table_dump(dbname)
-            return
-        if tablename is None:
-            # Dump all configured tables
-            for tablename in self.db_tables.get(dbname, []):
-                self.db_table_dump(dbname, tablename)
-            return
-
-        tablename = cleanup_string(
-            tablename, valid_chars=string.ascii_letters + string.digits + '_')
-        dbname = cleanup_string(
-            dbname, valid_chars=string.ascii_letters + string.digits + '_')
-
-        path = '__psql__/data-%s' % dbname
-        fname = tablename + '.sql'
-
-        # Make directory for the dump if it's not already there
-        try:
-            os.stat(self.base_dir + '/' + path)
-        except:
-            self.logger.info("Will create new directory %s" % path)
-            os.makedirs(os.path.join(self.base_dir,path))
-
-        self.logger.info("Will dump database table %s / %s" % (dbname, tablename))
-        # Data must be dumped in an ordered fashion to be diff friendly.
-        fh = open(self.base_dir + '/' + path + '/' + fname, 'wb')
-        fh.write((u"COPY %s FROM STDIN;\n" % tablename).encode('utf-8'))
-        output = subprocess.check_output(
-            ['psql',
-             '--dbname', dbname,
-             '--user', 'postgres',
-             '--command', "copy (select * from %s order by %s_id) to stdout" %
-             (tablename, tablename)])
-        fh.write(output)
-        fh.write(u"\\.\n".encode('utf-8'))
-        fh.close()
-        return

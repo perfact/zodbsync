@@ -3,9 +3,9 @@
 This package provides tools to serialize Zope objects and store them in a file
 system structure as well as to restore Zope objects from this structure.
 
-Additional functions that go beyond the main scope of the package are managing
-the file system structure in a git repository and dumping schemas and table
-contents from a PostgreSQL database. 
+An additional feature that goes beyond the main scope of the package is the
+possibility to create automatic git snapshots of the object tree, which
+requires the package perfact.pfcodechg.
 
 ## Maintainers:
 Ján Jockusch <jan.jockusch@perfact.de>
@@ -114,11 +114,11 @@ given object itself should be updated (properties, security settings etc.),
 
 ## Compatibility
 This package aims to replace similar functionality that was previously found in
-python-perfact and perfact-dbutils-zope2. For backwards compatibility, the plan
-is to change those packages so the corresponding calls try to import
+python-perfact and perfact-dbutils-zope2. For backwards compatibility, those
+packages were changed so the corresponding calls try to import
 `perfact.zodbsync` and use the functionality there, falling back to the
-previous implementation if that fails. Corresponding deprecation warnings will
-be included.
+previous implementation if that fails. Corresponding deprecation warnings are
+included.
 
 ## Caveats
 

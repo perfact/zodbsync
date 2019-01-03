@@ -18,44 +18,6 @@ default_owner = 'perfact'
 # Base directory of the repository
 base_dir = '/opt/perfact/dbutils-zoperepo'
 
-# Databases to store (usually only one)
-databases = ['perfactema', ]
-
-# Tables to dump on a regular basis
-db_tables = {
-    'perfactema': [
-        'apppref',
-        'appnavcustom',
-        'appcerttype',
-        'datadict',
-        'datadictint',
-        'dbcleanup',
-        'country',
-        'escalbasemethod',
-        'escalmethod',
-        'i18nlang',
-        'i18nlex',
-        #'i18nelem',
-        #'i18ntrans',
-        'qnattrtype',
-        # module SCA
-        'filestatus',
-        'filetype',
-        'gentemplate',
-        # module UCA
-        'cachereqlc',
-        'xferstatus',
-        # module PSA
-        'ean128',
-        'appdevtype',
-        'appdevtgt',
-        'brserv',
-        'brservitem',
-        'i18nelem',
-        'i18ntrans',
-    ],
-}
-
 # default settings for git repos
 commit_name = "Zope Developer"
 commit_email = "zope-devel@perfact.de"
