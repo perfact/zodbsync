@@ -626,7 +626,7 @@ class ZODBSync:
         try:
             old_data = open(self.base_dir + '/' +
                             path + '/' + data_fname, 'rb').read()
-        except FileNotFoundError:
+        except IOError:
             old_data = None
         if old_data is None or old_data != fmt:
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
@@ -661,7 +661,7 @@ class ZODBSync:
             try:
                 old_data = open(os.path.join(self.base_dir, path, src_fname),
                                 'rb').read()
-            except FileNotFoundError:
+            except IOError:
                 old_data = None
             if old_data is None or old_data != data:
                 self.logger.debug("Will write %d bytes of source" % len(data))
@@ -992,6 +992,6 @@ class ZODBSync:
         path = '__last_txn__'
         try:
             txn = open(self.base_dir + '/' + path, 'rb').read()
-        except FileNotFoundError:
+        except IOError:
             txn = None
         return txn
