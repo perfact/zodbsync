@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# perfact-zoperecord  -  Make a snapshot of Data.fs and database.
+# perfact-zoperecord  -  Make a snapshot of Data.fs
 #
 
 import imp  # For config loading
@@ -9,15 +9,27 @@ import sys
 import argparse
 # for Data.fs reading / writing:
 import perfact.zodbsync
+
 try:
     # for git snapshot
     import perfact.pfcodechg as pfcodechg
 except ImportError:
     pass
 
+try:
+    # psql dumps for backwards compatibility
+    import perfact.dbbackup
+except ImportError:
+    pass
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Record the Data.fs and database')
+        description='Record the Data.fs and database',
+        epilog='''
+The arguments --schema and --table are no longer supported.
+Use perfact-dbrecord from python-modules instead.
+'''
+    )
     parser.add_argument('--config', '-c', type=str,
                         help='Path to config.py',
                         default='/etc/perfact/modsync/config.py')
@@ -35,11 +47,6 @@ if __name__ == '__main__':
     parser.add_argument('--no-commit', action='store_true', default=False,
                         help='Disable auto-commit (passing any '
                         + 'argument except commitmsg implies --no-commit)',)
-    parser.add_argument('--schema', action='store_true', default=False,
-                        help='Dump the schema of the configured database(s)',)
-    parser.add_argument('--table', action='store_true', default=False,
-                        help='Dump the table contents of the configured '
-                        + 'database(s)',)
     parser.add_argument('--watch', action='store_true', default=False,
                         help='Start watcher that records ZODB changes '
                         + 'as they occur. Ignores all other parameters '
@@ -54,20 +61,9 @@ if __name__ == '__main__':
     lasttxn = args.lasttxn
     commit_message = args.commitmsg
     no_commit = args.no_commit
-    dump_schema = args.schema
-    dump_table = args.table
-    dump_datafs = False
     # no_commit is implied by all other arguments
-    if path or since or lasttxn or dump_schema or dump_table:
+    if path or since or lasttxn:
         no_commit = True
-    # dump the Data.fs
-    # if any of path/since/lasttxn is given OR if no restriction is given
-    if (path or since or lasttxn or
-            not (path or dump_table or dump_schema)):
-        dump_datafs = True
-    # dump tables and schemas unless somehow restricted
-    if not (path or dump_schema or dump_table or lasttxn or since):
-        dump_table = dump_schema = True
 
     paths = None  # paths = None means include everything
     # If a path is given, always include that (even if --since is
@@ -125,40 +121,43 @@ if __name__ == '__main__':
         else:
             paths.extend(res['paths'])
 
-    if dump_datafs:
-        if paths is None:
-            sync.record()
-        else:
-            # if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
-            paths.sort()
-            i = 0
-            while i < len(paths):
-                while i+1 < len(paths) and paths[i+1].startswith(paths[i]):
-                    del paths[i+1]
-                i += 1
-            for path in paths:
-                try:
-                    sync.record(path=path)
-                except AttributeError:
-                    print('Unable to record path ' + path)
-                    pass
-    if dump_schema:
-        sync.db_schema_dump()
-    if dump_table:
-        sync.db_table_dump()
+    if paths is None:
+        sync.record()
+    else:
+        # if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
+        paths.sort()
+        i = 0
+        while i < len(paths):
+            while i+1 < len(paths) and paths[i+1].startswith(paths[i]):
+                del paths[i+1]
+            i += 1
+        for path in paths:
+            try:
+                sync.record(path=path)
+            except AttributeError:
+                print('Unable to record path ' + path)
+                pass
+
+    # dump tables and schemas unless somehow restricted and if the
+    # corresponding variables are found in the config - this is only for
+    # backwards compatibility, this should be done by perfact-dbrecord instead.
+    databases = getattr(config, 'databases', None)
+    if not (path or lasttxn or since) and databases is not None:
+        sync.logger.warn('Deprecation warning: dumping PostgreSQL schema and '
+                         + 'tables, which should be done by perfact-dbrecord '
+                         + 'instead.')
+        msgbak = config.commit_message
+        config.commit_message += ' (Database)'
+        perfact.dbbackup.git_snapshot(config)
+        config.commit_message = msgbak
 
     if not no_commit and 'perfact.pfcodechg' in sys.modules:
         if commit_message is None:
             commit_message = config.commit_message
         # this fails (by design) if no repository is initialized.
-        commit_done_db = pfcodechg.git_snapshot(
-            config.base_dir,
-            commit_message + ' (Database)',
-            subdir='__psql__')
-        commit_done_code = pfcodechg.git_snapshot(
+        commit_done = pfcodechg.git_snapshot(
             config.base_dir,
             commit_message)
-        commit_done = (commit_done_db or commit_done_code)
         # only send a mail if something has changed
         if (commit_done
                 and getattr(config, 'codechange_mail', False)):
