@@ -496,7 +496,7 @@ class ZODBSync:
             configure_wsgi(config.wsgi_conf_path)
             from Zope2.App.startup import startup
             startup()
-        self.app=Zope2.app()
+        self.app = Zope2.app()
 
         # Statistics
         self.num_obj_total = 1
@@ -534,7 +534,7 @@ class ZODBSync:
             'Script (Python)': 'py',
         }
 
-    def start_transaction(self,note=''):
+    def start_transaction(self, note=''):
         ''' Start a transaction with a given note and return the transaction
         manager, so the caller can call commit() or abort()
         '''
@@ -543,10 +543,15 @@ class ZODBSync:
         user = uf.getUserById(self.manager_user)
         if (user is None):
             if (self.create_manager_user):
-                user = uf._doAddUser(self.manager_user, 'admin', ['Manager'], [])
-                self.logger.warn('Created user %s with password admin because this user does not exist!' % self.manager_user)
+                user = uf._doAddUser(self.manager_user, 'admin', ['Manager'],
+                                     [])
+                self.logger.warn('Created user %s with password admin '
+                                 'because this user does not exist!' %
+                                 self.manager_user)
             else:
-                raise Exception('User %s is not available in database. Perhaps you need to set create_manager_user in config.py?' % self.manager_user)
+                raise Exception('User %s is not available in database. '
+                                'Perhaps you need to set create_manager_user '
+                                'in config.py?' % self.manager_user)
 
         self.logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
@@ -621,7 +626,7 @@ class ZODBSync:
         try:
             old_data = open(self.base_dir + '/' +
                             path + '/' + data_fname, 'rb').read()
-        except:
+        except FileNotFoundError:
             old_data = None
         if old_data is None or old_data != fmt:
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
@@ -637,7 +642,7 @@ class ZODBSync:
             # Write bytes or utf-8 encoded text.
             data = source
             base = '__source__'
-            if type(data) == type(u''):
+            if isinstance(data, unicode):
                 data = data.encode('utf-8')
                 base = '__source-utf8__'
             ext = self.source_ext_from_meta(meta)
@@ -649,18 +654,18 @@ class ZODBSync:
         source_files = [s for s in os.listdir(self.base_dir + '/' + path)
                         if s.startswith('__source') and s != src_fname]
         for source_file in source_files:
-            os.remove(os.path.join(self.base_dir,path,source_file))
+            os.remove(os.path.join(self.base_dir, path, source_file))
 
         if write_source:
             # Check if content has changed!
             try:
-                old_data = open(os.path.join(self.base_dir,path,src_fname),
-                        'rb').read()
-            except:
+                old_data = open(os.path.join(self.base_dir, path, src_fname),
+                                'rb').read()
+            except FileNotFoundError:
                 old_data = None
             if old_data is None or old_data != data:
                 self.logger.debug("Will write %d bytes of source" % len(data))
-                fh = open(os.path.join(self.base_dir,path,src_fname), 'wb')
+                fh = open(os.path.join(self.base_dir, path, src_fname), 'wb')
                 fh.write(data)
                 fh.close()
 
@@ -673,8 +678,9 @@ class ZODBSync:
                     continue
 
                 if item not in contents:
-                    self.logger.info("Removing old item %s from filesystem" % item)
-                    shutil.rmtree(os.path.join(self.base_dir,path,item))
+                    self.logger.info("Removing old item %s from filesystem" %
+                                     item)
+                    shutil.rmtree(os.path.join(self.base_dir, path, item))
 
         return contents
 
@@ -685,12 +691,12 @@ class ZODBSync:
         into the data structure.'''
         data_fname = '__meta__'
         filenames = os.listdir(self.base_dir + '/' + path)
-        src_fnames = list(filter(lambda a: a.startswith('__source'), filenames))
+        src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
         src_fname = src_fnames and src_fnames[0] or None
 
         meta_str = open(os.path.join(self.base_dir, path, data_fname),
-                'rb').read()
+                        'rb').read()
         meta = literal_eval(meta_str)
 
         if src_fname:
@@ -764,7 +770,7 @@ class ZODBSync:
     def record_obj(self, obj, recurse=True):
         '''Record a Zope object into the local filesystem'''
 
-        data = mod_read(obj, default_owner = self.default_owner)
+        data = mod_read(obj, default_owner=self.default_owner)
         path = self.site + ('/'.join(obj.getPhysicalPath()))
         contents = self.fs_write(path, data)
 
@@ -773,9 +779,10 @@ class ZODBSync:
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
-            self.logger.info('%d obj saved of an estimated %d, current path %s' % (
-                self.num_obj_current, self.num_obj_total, path
-            ))
+            self.logger.info('%d obj saved of an estimated %d, '
+                             'current path %s'
+                             % (self.num_obj_current, self.num_obj_total, path)
+                             )
             self.num_obj_last_report = now
 
         for item in contents:
@@ -790,8 +797,8 @@ class ZODBSync:
                 self.record_obj(obj=new_obj)
 
     def playback(self, path=None, recurse=True, override=False,
-            skip_errors=False,
-            encoding=None):
+                 skip_errors=False,
+                 encoding=None):
         '''Play back (write) objects from the local filesystem into Zope.'''
         obj = self.app
         parent_obj = None
@@ -807,15 +814,18 @@ class ZODBSync:
             obj_id = parts[-1]
             if obj_id == 'get':
                 self.logger.warn('Object "get" cannot be uploaded at path %s' %
-                            path)
+                                 path)
                 return
-            obj = parent_obj._getOb(obj_id, None)  # getattr(parent_obj, obj_id, None)
+            obj = parent_obj._getOb(obj_id, None)
         else:
             root_obj = self.app
 
         fs_path = self.site + '/' + path
         fs_data = self.fs_read(fs_path)
-        srv_data = mod_read(obj, default_owner = self.manager_user) if obj else None
+        srv_data = (
+            mod_read(obj, default_owner=self.manager_user) if obj
+            else None
+        )
         # Make sure contents reflects status of file system
         fs_data = self.merge_contents(fs_data, fs_path)
         data_dict = dict(fs_data)
@@ -840,25 +850,27 @@ class ZODBSync:
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
-            self.logger.info('%d obj uploaded of an estimated %d, current path %s' % (
-                self.num_obj_current, self.num_obj_total, path
-            ))
+            self.logger.info('%d obj uploaded of an estimated %d, '
+                             'current path %s' %
+                             (self.num_obj_current, self.num_obj_total, path)
+                             )
             self.num_obj_last_report = now
 
         if encoding is not None:
             # Translate file system data
             fs_data = fix_encoding(fs_data, encoding)
-            
+
         if fs_data != srv_data:
             # Unsupported type?
             if self.is_unsupported(fs_data):
                 self.logger.warn("Type unsupported. Not uploading %s" % path)
             else:
-                self.logger.debug("Uploading: %s:%s" % (path, data_dict['type']))
+                self.logger.debug("Uploading: %s:%s"
+                                  % (path, data_dict['type']))
                 try:
-                    mod_write(fs_data, parent_obj, 
-                            override=override, root=root_obj, 
-                            default_owner = self.default_owner)
+                    mod_write(fs_data, parent_obj,
+                              override=override, root=root_obj,
+                              default_owner=self.default_owner)
                 except:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
