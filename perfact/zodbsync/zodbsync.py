@@ -318,9 +318,9 @@ def fix_encoding(data, encoding):
     skip_types = ['Image', ]
     if unpacked['type'] in skip_types:
         return data
-    
+
     # Check source
-    if 'source' in unpacked and type(unpacked['source']) == type(''):
+    if 'source' in unpacked and isinstance(unpacked['source'], bytes):
         # Only these types use ustrings, all others stay binary
         ustring_types = [
             # 'Page Template',
@@ -332,7 +332,7 @@ def fix_encoding(data, encoding):
         unpacked['source'] = conversion
 
     # Check title
-    if 'title' in unpacked and type(unpacked['title']) == type(''):
+    if 'title' in unpacked and isinstance(unpacked['title'], bytes):
         ustring_types = [
             'Page Template',
         ]
@@ -345,8 +345,10 @@ def fix_encoding(data, encoding):
     if 'props' in unpacked:
         for prop in unpacked['props']:
             if prop['type'] == 'string':
-                prop['value'] = str(prop['value']).decode(encoding).encode('utf-8')
-    
+                prop['value'] = (
+                    str(prop['value']).decode(encoding).encode('utf-8')
+                )
+
     if 'props' in unpacked:
         repacked_props = []
         for item in unpacked['props']:
@@ -357,6 +359,7 @@ def fix_encoding(data, encoding):
     repacked = unpacked.items()
     repacked.sort()
     return repacked
+
 
 def literal_eval(value):
     '''Literal evaluator (with a bit more power than PT).
@@ -402,12 +405,16 @@ def literal_eval(value):
         elif isinstance(node, ast.NameConstant):
             return node.value
         elif isinstance(node, ast.BinOp):
-            return bin_ops[type(node.op)](_convert(node.left), _convert(node.right))
+            return bin_ops[type(node.op)](
+                _convert(node.left),
+                _convert(node.right)
+            )
         elif isinstance(node, ast.UnaryOp):
             return unary_ops[type(node.op)](_convert(node.operand))
         else:
             raise Exception('Unsupported type {}'.format(repr(node)))
     return _convert(value)
+
 
 def cleanup_string(name,
                    valid_chars=string.printable,
@@ -423,8 +430,7 @@ def cleanup_string(name,
     merge = False
     for i in name:
         # Valid character? Add and continue.
-        if (i in valid_chars and
-            i not in invalid_chars):
+        if (i in valid_chars and i not in invalid_chars):
             out += i
             merge = False
             continue
@@ -443,12 +449,15 @@ def cleanup_string(name,
 
     return out
 
+
 def conserv_split(val, splitby='\n'):
     '''Split by a character, conserving it in the result.'''
     output = [a+splitby for a in val.split(splitby)]
     output[-1] = output[-1][:-len(splitby)]
-    if output[-1] == '': output.pop()
+    if output[-1] == '':
+        output.pop()
     return output
+
 
 class ZODBSync:
     '''A ZODBSync instance is capable of mirroring a part of the ZODB
@@ -460,18 +469,19 @@ class ZODBSync:
     respectively.
     '''
 
-    def __init__(self, 
-            config,
-            site='__root__', 
-            recurse=True,
-            ):
+    def __init__(self,
+                 config,
+                 site='__root__',
+                 recurse=True,
+                 ):
         self.logger = perfact.zodbsync.logger.get_logger('ZODBSync')
         self.site = site
         self.base_dir = config.base_dir
         self.recurse = recurse
-        self.manager_user = getattr(config,'manager_user','perfact')
-        self.create_manager_user = getattr(config, 'create_manager_user', False)
-        self.default_owner = getattr(config,'default_owner','perfact')
+        self.manager_user = getattr(config, 'manager_user', 'perfact')
+        self.create_manager_user = getattr(config, 'create_manager_user',
+                                           False)
+        self.default_owner = getattr(config, 'default_owner', 'perfact')
 
         # Setup Zope
         if getattr(config, 'conf_path', None):
@@ -853,9 +863,14 @@ class ZODBSync:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
                     if skip_errors is False:
-                        self.logger.warn('ERROR while uploading ' + path + ' that is a %s' % data_dict['type'])
+                        self.logger.warn(
+                            'ERROR while uploading %s that is a %s'
+                            % (path, data_dict['type'])
+                        )
                         raise
-                    self.logger.warn('Skipping %s:%s' % (path, data_dict['type']))
+                    self.logger.warn(
+                        'Skipping %s:%s' % (path, data_dict['type'])
+                    )
                 else:
                     if True:  # Enable checkback
                         # Read the object back to confirm
@@ -863,7 +878,10 @@ class ZODBSync:
                             new_obj = root_obj
                         else:
                             new_obj = getattr(parent_obj, obj_id)
-                        test_data = mod_read(new_obj, default_owner = self.manager_user)
+                        test_data = mod_read(
+                            new_obj,
+                            default_owner=self.manager_user
+                        )
                         # Replace "contents"
                         test_dict = dict(test_data)
                         if 'contents' in test_dict:
@@ -871,13 +889,20 @@ class ZODBSync:
                             test_data = list(test_dict.items())
                             test_data.sort()
                         if test_data != fs_data:
-                            if getattr(self,'differ',None) is None:
+                            if getattr(self, 'differ', None) is None:
                                 self.differ = difflib.Differ()
-                            self.logger.error("Write failed of %s:%s! Comparison yields a difference. If not already set log level to DEBUG to see it." % (path, data_dict['type']))
+                            self.logger.error(
+                                "Write failed of %s:%s! Comparison yields "
+                                "a difference. If not already set log level "
+                                "to DEBUG to see it."
+                                % (path, data_dict['type'])
+                            )
                             uploaded = mod_format(fs_data)
                             readback = mod_format(test_data)
                             diff = '\n'.join(self.differ.compare(
-                                uploaded.split('\n'),readback.split('\n')))
+                                uploaded.split('\n'),
+                                readback.split('\n')
+                            ))
                             self.logger.debug(diff)
 
         if recurse:
@@ -885,9 +910,10 @@ class ZODBSync:
                 if self.is_ignored(item):
                     continue
                 self.playback(path=os.path.join(path, item), override=override,
-                        encoding=encoding, skip_errors=skip_errors)
+                              encoding=encoding, skip_errors=skip_errors)
 
-    def recent_changes(self, since_secs=None, txnid=None, limit=50, search_limit=100):
+    def recent_changes(self, since_secs=None, txnid=None, limit=50,
+                       search_limit=100):
         '''Retrieve all distinct paths which have changed recently.  Control
         how far to look back in time by supplying the number of
         seconds in Unix time in "since_secs" or the transaction ID at
@@ -897,7 +923,7 @@ class ZODBSync:
         paths = []
         newest_txnid = None
         # Clear the request, so we can access undoable_transactions()
-        self.app.REQUEST={}
+        self.app.REQUEST = {}
         # Loop back collecting transactions
         step_size = 10
         cursor = 0
@@ -924,7 +950,7 @@ class ZODBSync:
                     continue
                 # Cut the method which originated the change, leaving
                 # only the object.
-                this_path = this_path.rsplit('/',1)[0]
+                this_path = this_path.rsplit('/', 1)[0]
                 if this_path not in paths:
                     paths.append(this_path)
                     if len(paths) >= limit:
@@ -954,6 +980,6 @@ class ZODBSync:
         path = '__last_txn__'
         try:
             txn = open(self.base_dir + '/' + path, 'rb').read()
-        except:
+        except FileNotFoundError:
             txn = None
         return txn
