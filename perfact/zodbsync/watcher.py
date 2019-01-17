@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import base64
+import binascii
 import signal
 import time
 import threading
@@ -273,6 +274,7 @@ class ZODBSyncWatcher:
         '''
         path = self.object_tree[oid]['path']
         self.logger.info('Recording %s' % path)
+        self.logger.debug('OID: ' + repr(oid))
 
         obj = self.app._p_jar[oid]
         data = perfact.zodbsync.zodbsync.mod_read(
@@ -301,8 +303,10 @@ class ZODBSyncWatcher:
         if not len(self.changed_oids):
             return
         self.logger.info('Found %s changed objects' % len(self.changed_oids))
+        self.logger.debug('OIDs: ' + str(sorted(self.changed_oids)))
 
         self.adoption_list = set()
+        shutil.rmtree(self.base_dir+'/../__orphans__/',ignore_errors=True)
 
         while len(self.changed_oids):
             # not all oids are part of our object tree yet, so we have to
@@ -358,35 +362,33 @@ class ZODBSyncWatcher:
 
         # go through old children and check if they are still there
         for child_oid, child_id in list(node['children'].items()):
-            if child_oid not in newchildren:
-                # put up for adoption. The new parent might show up later
+            if (child_oid not in newchildren 
+                    or child_id != newchildren[child_oid]):
+                # Put up for adoption. The new parent might show up later or it
+                # might be the same but the child was renamed.  However, we
+                # need to move the folder away immediately in case another
+                # object takes its place
                 self.adoption_list.add(child_oid)
-            elif child_id != newchildren[child_oid]:
-                # child still there, but renamed
+                del node['children'][child_oid]
+                self.object_tree[child_oid]['parent'] = None
+                oldpath = self.object_tree[child_oid]['path']
+                newpath = ('/../__orphans__/' +
+                           binascii.hexlify(child_oid).decode('ascii')
+                           )
                 self.logger.info(
-                    'Renaming %s{%s => %s}' % (
-                        node['path'],
-                        child_id,
-                        newchildren[child_oid],
+                    'Moving %s => %s' % (
+                        oldpath,
+                        newpath
                     )
                 )
-                node['children'][child_oid] = newchildren[child_oid]
-                self._update_path(child_oid,
-                                  node['path']+newchildren[child_oid]+'/'
-                                  )
-
-                args = (
-                    self.base_dir+node['path']+child_id,
-                    self.base_dir+node['path']+newchildren[child_oid],
-                )
-                self.logger.info(args)
-                os.rename(*args)
+                os.makedirs(self.base_dir+newpath)
+                os.rename(self.base_dir+oldpath, self.base_dir+newpath)
+                self._update_path(child_oid, newpath)
 
         # go through new children and check if they have old parents
         for child_oid, child_id in list(newchildren.items()):
             if child_oid in node['children']:
                 continue
-            node['children'][child_oid] = child_id
             newpath = node['path']+child_id+'/'
 
             if child_oid in self.object_tree:
@@ -402,7 +404,9 @@ class ZODBSyncWatcher:
                     self.base_dir+child['path'],
                     self.base_dir+newpath
                 )
-                del self.object_tree[child['parent']]['children'][child_oid]
+                if (child['parent'] is not None 
+                        and child['parent'] in self.object_tree):
+                    del self.object_tree[child['parent']]['children'][child_oid]
                 child['parent'] = oid
                 self._update_path(child_oid, node['path']+child_id+'/')
                 if child_oid in self.adoption_list:
@@ -417,8 +421,9 @@ class ZODBSyncWatcher:
                     'children': {},
                     'path': newpath,
                 }
+            node['children'][child_oid] = child_id
 
-    def run(self, interval=1):
+    def run(self, interval=10):
         '''Periodically read new transactions, update the object tree and
         record all changes. Handles SIGTERM and SIGINT so any running recording
         is finished before terminating.'''
