@@ -37,7 +37,7 @@ if __name__ == '__main__':
     recurse = not args.no_recurse
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(configfile=args.config)
+    sync = perfact.zodbsync.ZODBSync(conffile=args.config)
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:
