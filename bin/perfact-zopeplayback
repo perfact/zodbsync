@@ -3,17 +3,19 @@
 # perfact-zopeplayback  -  Upload a subpath into the Data.fs
 #
 
-import imp  # For config loading
 # for argument reading and parsing:
 import argparse
 # for Data.fs reading / writing:
 import perfact.zodbsync
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Upload objects to the Data.fs')
+    parser = argparse.ArgumentParser(
+        description='Upload objects to the Data.fs',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument('--config', '-c', type=str,
                         help='Path to config.py',
-                        default='/etc/perfact/modsync/config.py')
+                        default='/etc/perfact/modsync/zodb.py')
     parser.add_argument(
         '--override', '-o', action='store_true',
         help='Override object type changes when uploading',
@@ -37,9 +39,7 @@ if __name__ == '__main__':
     recurse = not args.no_recurse
 
     # Load configuration
-    config = imp.load_source(
-        'config',
-        config_path)
+    config = perfact.zodbsync.load_conf(config_path)
 
     # Setup sync toolkit
     sync = perfact.zodbsync.ZODBSync(config=config)

@@ -9,7 +9,6 @@ import operator
 import difflib  # for showing changes in playback
 import shutil
 import time  # for periodic output
-import six  # differentiating between python 2 and 3
 
 # for accessing Data.fs directly:
 import Zope2
@@ -23,24 +22,36 @@ import perfact.zodbsync.logger
 # Plugins for handling different object types
 from perfact.zodbsync.object_types import object_types
 
+PY2 = (sys.version_info[0] == 2)
+
 # Python2 backward compatibility
-try:
-    ast.Bytes
-except AttributeError:
+if PY2:
+    import imp # for config loading
     ast.Bytes = ast.Str
 
     class DummyNameConstant:
         pass
     ast.NameConstant = DummyNameConstant
+else:
+    import importlib # for config loading
 
 # Monkey patch ZRDB not to connect to databases immediately.
 from Shared.DC.ZRDB import Connection
 Connection.Connection.connect_on_load = False
 
-if six.PY3:
+if not PY2:
     # for calling isinstance later
     unicode = str
 
+def load_conf(filename):
+    # Load configuration
+    if PY2:
+        return imp.load_source('config', filename)
+    else:
+        return importlib.machinery.SourceFileLoader(
+            'config',
+            filename
+        ).load_module()
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
