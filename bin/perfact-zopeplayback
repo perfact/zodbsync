@@ -9,13 +9,12 @@ import argparse
 import perfact.zodbsync
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Upload objects to the Data.fs',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
+    parser = argparse.ArgumentParser(description='Upload objects to the Data.fs')
+    default_configfile = '/etc/perfact/modsync/zodb.py'
     parser.add_argument('--config', '-c', type=str,
-                        help='Path to config.py',
-                        default='/etc/perfact/modsync/zodb.py')
+                        help='Path to config (default: %s)'
+                        % default_configfile,
+                        default=default_configfile)
     parser.add_argument(
         '--override', '-o', action='store_true',
         help='Override object type changes when uploading',

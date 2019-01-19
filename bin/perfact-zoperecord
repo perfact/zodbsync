@@ -30,9 +30,11 @@ The arguments --schema and --table are no longer supported.
 Use perfact-dbrecord from python-modules instead.
 '''
     )
+    default_configfile = '/etc/perfact/modsync/zodb.py'
     parser.add_argument('--config', '-c', type=str,
-                        help='Path to config.py',
-                        default='/etc/perfact/modsync/zodb.py')
+                        help='Path to config (default: %s)'
+                        % default_configfile,
+                        default=default_configfile)
     parser.add_argument('--path', '-p', type=str,
                         help='Sub-Path in Data.fs to be recorded',
                         default=None)
