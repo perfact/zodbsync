@@ -9,7 +9,6 @@ import operator
 import difflib  # for showing changes in playback
 import shutil
 import time  # for periodic output
-import six  # differentiating between python 2 and 3
 
 # for accessing Data.fs directly:
 import Zope2
@@ -23,21 +22,24 @@ import perfact.zodbsync.logger
 # Plugins for handling different object types
 from perfact.zodbsync.object_types import object_types
 
+PY2 = (sys.version_info[0] == 2)
+
 # Python2 backward compatibility
-try:
-    ast.Bytes
-except AttributeError:
+if PY2:
+    import imp # for config loading
     ast.Bytes = ast.Str
 
     class DummyNameConstant:
         pass
     ast.NameConstant = DummyNameConstant
+else:
+    import importlib # for config loading
 
 # Monkey patch ZRDB not to connect to databases immediately.
 from Shared.DC.ZRDB import Connection
 Connection.Connection.connect_on_load = False
 
-if six.PY3:
+if not PY2:
     # for calling isinstance later
     unicode = str
 
@@ -470,14 +472,21 @@ class ZODBSync:
     '''
 
     def __init__(self,
-                 config,
+                 conffile,
                  site='__root__',
-                 recurse=True,
                  ):
         self.logger = perfact.zodbsync.logger.get_logger('ZODBSync')
+
+        # Load configuration
+        if PY2:
+            config = imp.load_source('config', conffile)
+        else:
+            config = importlib.machinery.SourceFileLoader(
+                'config', conffile).load_module()
+
+        self.config = config
         self.site = site
         self.base_dir = config.base_dir
-        self.recurse = recurse
         self.manager_user = getattr(config, 'manager_user', 'perfact')
         self.create_manager_user = getattr(config, 'create_manager_user',
                                            False)
