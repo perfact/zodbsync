@@ -24,7 +24,6 @@ except ImportError:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Record the Data.fs and database',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         epilog='''
 The arguments --schema and --table are no longer supported.
 Use perfact-dbrecord from python-modules instead.
