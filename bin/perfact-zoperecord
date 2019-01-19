@@ -71,11 +71,9 @@ Use perfact-dbrecord from python-modules instead.
     if path:
         paths = [path]
 
-    # Load configuration
-    config = perfact.zodbsync.load_conf(config_path)
-
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(config=config)
+    sync = perfact.zodbsync.ZODBSync(conffile=config_path)
+    config = sync.config
 
     # Watch mode
     if args.watch:

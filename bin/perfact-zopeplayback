@@ -33,16 +33,12 @@ if __name__ == '__main__':
         help='Sub-Path in Data.fs to be recorded',
         )
     args = parser.parse_args()
-    config_path = args.config
     paths = args.path
     override = args.override
     recurse = not args.no_recurse
 
-    # Load configuration
-    config = perfact.zodbsync.load_conf(config_path)
-
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(config=config)
+    sync = perfact.zodbsync.ZODBSync(configfile=args.config)
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:

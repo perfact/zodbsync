@@ -43,15 +43,6 @@ if not PY2:
     # for calling isinstance later
     unicode = str
 
-def load_conf(filename):
-    # Load configuration
-    if PY2:
-        return imp.load_source('config', filename)
-    else:
-        return importlib.machinery.SourceFileLoader(
-            'config',
-            filename
-        ).load_module()
 
 def mod_format(data=None, indent=0, as_list=False):
     '''Make a printable output of the given object data. Indent the lines
@@ -481,14 +472,21 @@ class ZODBSync:
     '''
 
     def __init__(self,
-                 config,
+                 conffile,
                  site='__root__',
-                 recurse=True,
                  ):
         self.logger = perfact.zodbsync.logger.get_logger('ZODBSync')
+
+        # Load configuration
+        if PY2:
+            config = imp.load_source('config', conffile)
+        else:
+            config = importlib.machinery.SourceFileLoader(
+                'config', conffile).load_module()
+
+        self.config = config
         self.site = site
         self.base_dir = config.base_dir
-        self.recurse = recurse
         self.manager_user = getattr(config, 'manager_user', 'perfact')
         self.create_manager_user = getattr(config, 'create_manager_user',
                                            False)
