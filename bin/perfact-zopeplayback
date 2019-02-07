@@ -6,6 +6,8 @@
 import sys
 # for argument reading and parsing:
 import argparse
+import sys
+import subprocess
 # for Data.fs reading / writing:
 import perfact.zodbsync
 
@@ -43,6 +45,10 @@ if __name__ == '__main__':
         'path', nargs='+', type=str,
         help='Sub-Path in Data.fs to be recorded',
         )
+    parser.add_argument(
+        '--commit', type=str,
+        help='Git commit ID which is cherry-picked and uploaded'
+    )
     if 'perfact.loggingtools' in sys.modules:
         perfact.loggingtools.addArgs(parser, name='ZODBSync')
 
@@ -56,8 +62,49 @@ if __name__ == '__main__':
     override = args.override
     recurse = not args.no_recurse
 
+    commit = args.commit
+
+    if (commit and paths):
+        print('Error: --commit and paths are exclusive')
+        sys.exit(1)
+    if (not commit and not paths):
+        print('Error: either a commit ID or at least one path are required')
+        sys.exit(2)
+
     # Setup sync toolkit
     sync = perfact.zodbsync.ZODBSync(conffile=args.config, logger=logger)
+
+    def gitcmd(*args):
+        return ['git', '-C', sync.base_dir] + list(args)
+
+    if commit:
+        base_dir = '/home/viktor/git/ema-devel-2018-test'
+        # obtain files affected by the commit
+        files = [
+            line for line in subprocess.check_output(
+                gitcmd('diff-tree', '--no-commit-id', '--name-only', '-r',
+                       commit), universal_newlines=True
+            ).split('\n')
+            if line
+        ]
+        paths = [
+            filename[len('__root__'):].rsplit('/',1)[0]
+            for filename in files
+        ]
+        print('Affected paths:')
+        for path in paths:
+            print('  ', path)
+
+        # check if these files currently differ from their state *before* the given commit
+        try:
+            subprocess.check_call(
+                gitcmd('diff', '--exit-code', commit+'~', 'HEAD~', '--', *files)
+            )
+        except subprocess.CalledProcessError:
+            print('Affected files differ between current HEAD and state before'
+                  ' commit that is to be applied')
+            sys.exit(1)
+        subprocess.check_call(gitcmd('cherry-pick', commit))
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:
