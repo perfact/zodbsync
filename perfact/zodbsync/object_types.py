@@ -1,4 +1,5 @@
 import sys
+import AccessControl.Permission
 
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
@@ -100,32 +101,37 @@ class AccessControlObj(ModObj):
 
         # The object's settings where they differ from the default (acquire)
         try:
-            perm_set = obj.permission_settings()
+            # we can not use permission_settings() since it only yields
+            # permissions for currently valid roles - however, in watch mode,
+            # we do not have the acquisition context and therefore might not
+            # know all roles, so we need to go one step further down, using
+            # Permission.getRoles()
+            perm_set = obj.ac_inherited_permissions(1)
+            perm_set = [
+                AccessControl.Permission.Permission(p[0], p[1], obj)
+                for p in perm_set
+            ]
         except AttributeError:
             perm_set = []
 
         out = []
-        for line in perm_set:
-            # Count checkboxes / Acquisition checkbox
-            has_roles = [a['checked'] for a in line['roles'] if a['checked']]
-            acquire = True if ((not is_root) and line['acquire']) else False
-
-            # Does not deviate from default? Don't store.
-            if acquire and not has_roles: continue
-
-            roles = []
-            for i in range(len(valid_roles)):
-                if line['roles'][i]['checked']:
-                    roles.append(valid_roles[i])
+        for perm in perm_set:
+            roles = perm.getRoles(default=[])
+            # for some reason, someone decided to encode whether a permission
+            # is acquired by returning either a tuple or a list...
+            acquire = isinstance(roles, list)
+            roles = list(roles)
             roles.sort()
-
-            out.append((line['name'], acquire, roles))
+            if acquire and len(roles) == 0:
+                # Does not deviate from default
+                continue
+            out.append((perm.name, acquire, roles))
 
         out.sort()
-        if out: ac.append(('perms', out))
+        if out:
+            ac.append(('perms', out))
 
         return ac
-
 
     def write(self, obj, data):
         d = dict(data)
@@ -150,21 +156,28 @@ class AccessControlObj(ModObj):
         # permissions that are not stored are understood to be acquired, with
         # no additional roles being granted this permission
         # An exception is the root application object, which can not acquire
-        stored_perms = d.get('perms', [])
-        # construct default perms
-        perms = {
-                perm[0]: {
-                    'acquire': not obj.isTopLevelPrincipiaApplicationObject,
-                    'roles': [],
-                }
-                for perm in obj.ac_inherited_permissions(1)
-                }
-        for perm, acquire, roles in stored_perms:
-            if perm in perms:
-                perms[perm]['acquire'] = acquire
-                perms[perm]['roles'] = roles
-        for perm, val in perms.items():
-            obj.manage_permission(perm, val['roles'], val['acquire'])
+        stored_perms = {
+            name: (acquire, roles)
+            for name, acquire, roles in d.get('perms', [])
+        }
+        for role in obj.ac_inherited_permissions(1):
+            name = role[0]
+            if name in stored_perms:
+                roles = stored_perms[name][1]
+                if not stored_perms[name][0]:
+                    # no acquire, which ist stored in a tuple instead of a list
+                    roles = tuple(roles)
+            else:
+                # the default is to acquire without additional roles - except
+                # for the top-level object, where it is not to acquire and
+                # allow Manager (read() will usually record all permissions for
+                # the top level object, but in case there are new permissions,
+                # we need to pick a sane default)
+                if obj.isTopLevelPrincipiaApplicationObject:
+                    roles = ('Manager',)
+                else:
+                    roles = []
+            AccessControl.Permission.Permission(name, [], obj).setRoles(roles)
 
         # set ownership
         if 'owner' in d:
