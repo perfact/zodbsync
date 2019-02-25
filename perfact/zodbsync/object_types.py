@@ -160,7 +160,6 @@ class AccessControlObj(ModObj):
             name: (acquire, roles)
             for name, acquire, roles in d.get('perms', [])
         }
-        print(obj.ac_inherited_permissions(1))
         for role in obj.ac_inherited_permissions(1):
             name = role[0]
             if name in stored_perms:
