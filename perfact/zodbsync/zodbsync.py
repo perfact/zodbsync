@@ -601,10 +601,10 @@ class ZODBSync:
         source = data_dict.get('source', None)
 
         # Only write out sources if unicode or string
-        write_source = (type(source) in (type(''), type(u'')))
+        write_source = (type(source) in (type(b''), type(u'')))
 
         # Build metadata. Remove source from metadata if it is there
-        meta = list(filter(lambda a: a[0] != 'source', data))
+        meta = [a for a in data if a[0] != 'source']
         fmt = mod_format(meta).encode('utf-8')
 
         # Make directory for the object if it's not already there
