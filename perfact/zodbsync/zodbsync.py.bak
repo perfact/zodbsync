@@ -332,11 +332,11 @@ def fix_encoding(data, encoding):
     if 'props' in unpacked:
         repacked_props = []
         for item in unpacked['props']:
-            pack = list(item.items())
+            pack = item.items()
             pack.sort()
             repacked_props.append(pack)
         unpacked['props'] = repacked_props
-    repacked = list(unpacked.items())
+    repacked = unpacked.items()
     repacked.sort()
     return repacked
 
@@ -723,7 +723,7 @@ class ZODBSync:
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
         filenames = os.listdir(self.base_dir + '/' + path)
-        contents = [a for a in filenames if not a.startswith('__')]
+        contents = list(filter(lambda a: not a.startswith('__'), filenames))
         contents.sort()
         return contents
 
@@ -749,7 +749,7 @@ class ZODBSync:
         obj = self.app
         if path is not None:
             # traverse into the object of interest
-            parts = list([_f for _f in path.split('/') if _f])
+            parts = list(filter(None, path.split('/')))
             for part in parts:
                 obj = getattr(obj, part)
         self.record_obj(obj, recurse=recurse)
@@ -824,11 +824,11 @@ class ZODBSync:
         contents = data_dict.get('contents', [])
         if obj and hasattr(obj, 'objectItems'):
             # Read contents from app
-            srv_contents = [a[0] for a in obj.objectItems()]
+            srv_contents = list(map(lambda a: a[0], obj.objectItems()))
         else:
             srv_contents = []
         # Find IDs in Data.fs object not present in file system
-        del_ids = [a for a in srv_contents if a not in contents]
+        del_ids = list(filter(lambda a: a not in contents, srv_contents))
         if del_ids:
             self.logger.warn('Deleting objects ' + repr(del_ids))
             obj.manage_delObjects(ids=del_ids)
