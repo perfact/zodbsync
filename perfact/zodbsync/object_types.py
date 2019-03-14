@@ -52,7 +52,8 @@ def prop_dict(data):
 
     # Get the properties from object data
     p = dict(data).get('props', None)
-    if not p: return props
+    if not p:
+        return props
 
     # Convert each property into a dictionary
     for item in p:
