@@ -133,18 +133,12 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     # - Preconditions ?
     # - Site Access Rules ?
 
-    # if obj is None: obj = context
     meta = []
 
     # The Zope object type is always in the same place
 
     meta_type = obj.meta_type
     meta.append(('type', meta_type))
-
-    # ID is a method for some types
-
-    obj_id = obj.getId()
-    meta.append(('id', obj_id))
 
     # The title should always be readable
     title = getattr(obj, 'title', None)
@@ -197,7 +191,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     return meta
 
 
-def mod_write(data, parent=None, override=False, root=None,
+def mod_write(data, parent=None, obj_id=None, override=False, root=None,
               default_owner=None):
     '''
     Given object data in <data>, store the object, creating it if it was
@@ -210,7 +204,6 @@ def mod_write(data, parent=None, override=False, root=None,
     # Retrieve the object ID and meta type.
 
     d = dict(data)
-    obj_id = d['id']
     meta_type = d['type']
 
     if default_owner is not None and 'owner' not in d:
@@ -244,8 +237,8 @@ def mod_write(data, parent=None, override=False, root=None,
     # ID is new? Create a minimal object (depending on type)
 
     if obj is None:
-        creator = object_types.get(meta_type)().create
-        creator(parent, data)
+        data['id'] = obj_id
+        object_types.get(meta_type)().create(parent, data)
         if hasattr(parent, 'aq_explicit'):
             obj = getattr(parent.aq_explicit, obj_id, None)
         else:
@@ -773,14 +766,15 @@ class ZODBSync:
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
-            self.logger.info('%d obj saved of an estimated %d, '
+            self.logger.info('%d obj saved of at least %d, '
                              'current path %s'
-                             % (self.num_obj_current, self.num_obj_total, path)
+                             % (self.num_obj_current,
+                                 self.num_obj_total,
+                                 path)
                              )
             self.num_obj_last_report = now
 
         for item in contents:
-
             # Check if one of the ignore patterns matches
             if self.is_ignored(item):
                 continue
@@ -862,9 +856,10 @@ class ZODBSync:
                 self.logger.debug("Uploading: %s:%s"
                                   % (path, data_dict['type']))
                 try:
-                    mod_write(fs_data, parent_obj,
-                              override=override, root=root_obj,
-                              default_owner=self.default_owner)
+                    mod_write(fs_data, parent=parent_obj,
+                            obj_id=obj_id,
+                            override=override, root=root_obj,
+                            default_owner=self.default_owner)
                 except:
                     # If we do not want to get errors from missing
                     # ExternalMethods, this can be used to skip them
