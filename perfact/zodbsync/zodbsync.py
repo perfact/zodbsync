@@ -143,8 +143,8 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # ID is a method for some types
 
-    id = obj.getId()
-    meta.append(('id', id))
+    obj_id = obj.getId()
+    meta.append(('id', obj_id))
 
     # The title should always be readable
     title = getattr(obj, 'title', None)
@@ -210,7 +210,7 @@ def mod_write(data, parent=None, override=False, root=None,
     # Retrieve the object ID and meta type.
 
     d = dict(data)
-    id = d['id']
+    obj_id = d['id']
     meta_type = d['type']
 
     if default_owner is not None and 'owner' not in d:
@@ -226,9 +226,9 @@ def mod_write(data, parent=None, override=False, root=None,
 
     if root is None:
         if hasattr(parent, 'aq_explicit'):
-            obj = getattr(parent.aq_explicit, id, None)
+            obj = getattr(parent.aq_explicit, obj_id, None)
         else:
-            obj = getattr(parent, id, None)
+            obj = getattr(parent, obj_id, None)
     else:
         obj = root
 
@@ -236,7 +236,7 @@ def mod_write(data, parent=None, override=False, root=None,
     if obj and obj.meta_type != meta_type:
         if override:
             # Remove the existing object in override mode
-            parent.manage_delObjects(ids=[id, ])
+            parent.manage_delObjects(ids=[obj_id, ])
             obj = None
         else:
             assert False, "Type mismatch for object " + repr(data)
@@ -247,9 +247,9 @@ def mod_write(data, parent=None, override=False, root=None,
         creator = object_types.get(meta_type)().create
         creator(parent, data)
         if hasattr(parent, 'aq_explicit'):
-            obj = getattr(parent.aq_explicit, id, None)
+            obj = getattr(parent.aq_explicit, obj_id, None)
         else:
-            obj = getattr(parent, id, None)
+            obj = getattr(parent, obj_id, None)
 
     # Send an update (depending on type)
     for handler in handlers:
