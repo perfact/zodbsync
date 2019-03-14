@@ -124,7 +124,7 @@ def mod_format(data=None, indent=0, as_list=False):
 
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
-    '''Build a consistend metadata dictionary for all types.'''
+    '''Build a consistent metadata dictionary for all types.'''
 
     # Known types:
     known_types = list(object_types.keys())
@@ -141,20 +141,9 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     meta_type = obj.meta_type
     meta.append(('type', meta_type))
 
-    # Modification data. This is not in the set now, because modification
-    # dates should not affect the hashes and cannot be written back anyway.
-
-    # mtime = obj.bobobase_modification_time()
-    # meta.append(('mtime', mtime.strftime('%Y-%m-%d %H:%M:%S')))
-    # meta.append(('mtime', str(mtime)))
-
     # ID is a method for some types
 
     id = obj.getId()
-    # if callable(id):
-    #     id = id()
-    # if not id:
-    #     id = obj.__name__
     meta.append(('id', id))
 
     # The title should always be readable
@@ -212,15 +201,11 @@ def mod_write(data, parent=None, override=False, root=None,
               default_owner=None):
     '''
     Given object data in <data>, store the object, creating it if it was
-    missing. If <parent> is not given, the context is used. With
-    <override> = True, this method will remove an existing object if there
-    is a meta_type mismatch.
-    If root is given, it should be the application root, which is then updated
-    with the metadata in data, ignoring parent.
+    missing. With <override> = True, this method will remove an existing object
+    if there is a meta_type mismatch.  If root is given, it should be the
+    application root, which is then updated with the metadata in data, ignoring
+    parent.
     '''
-
-    # Fall back to storing in context
-    # if parent is None: parent = context
 
     # Retrieve the object ID and meta type.
 
