@@ -6,7 +6,6 @@ import os
 import string
 import ast
 import operator
-import difflib  # for showing changes in playback
 import shutil
 import time  # for periodic output
 
@@ -859,39 +858,6 @@ class ZODBSync:
                     self.logger.warn(
                         'Skipping %s:%s' % (path, data_dict['type'])
                     )
-                else:
-                    if False:  # Enable checkback
-                        # Read the object back to confirm
-                        if root_obj is not None:
-                            new_obj = root_obj
-                        else:
-                            new_obj = getattr(parent_obj, obj_id)
-                        test_data = mod_read(
-                            new_obj,
-                            default_owner=self.manager_user
-                        )
-                        # Replace "contents"
-                        test_dict = dict(test_data)
-                        if 'contents' in test_dict:
-                            del test_dict['contents']
-                            test_data = list(test_dict.items())
-                            test_data.sort()
-                        if test_data != fs_data:
-                            if getattr(self, 'differ', None) is None:
-                                self.differ = difflib.Differ()
-                            self.logger.error(
-                                "Write failed of %s:%s! Comparison yields "
-                                "a difference. If not already set log level "
-                                "to DEBUG to see it."
-                                % (path, data_dict['type'])
-                            )
-                            uploaded = mod_format(fs_data)
-                            readback = mod_format(test_data)
-                            diff = '\n'.join(self.differ.compare(
-                                uploaded.split('\n'),
-                                readback.split('\n')
-                            ))
-                            self.logger.debug(diff)
 
         if recurse:
             contents = self.fs_contents(fs_path)
