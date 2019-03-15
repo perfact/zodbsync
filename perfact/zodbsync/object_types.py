@@ -437,17 +437,14 @@ class FolderObj(ModObj):
         meta = []
 
         # Contents
-
         ids = [a[0] for a in obj.objectItems()]
         ids.sort()
-
         meta.append(('contents', ids))
 
         # Site Access
-
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
-        except AttributeError:
+        except (AttributeError, KeyError):
             get_ar = None
         if get_ar:
             accessrule = get_ar and get_ar()
@@ -462,7 +459,6 @@ class FolderObj(ModObj):
         obj.manage_changeProperties(title=d['title'])
 
         # Access Rule
-
         accessrule = d.get('accessrule', None)
         if accessrule:
             obj.manage_addProduct['SiteAccess'].manage_addAccessRule(
@@ -483,7 +479,6 @@ class FolderOrderedObj(FolderObj):
         meta = []
 
         ids = [a[0] for a in obj.objectItems()]
-
         meta.append(('contents', ids))
 
         try:
@@ -500,13 +495,6 @@ class FolderOrderedObj(FolderObj):
         d = dict(data)
 
         obj.manage_changeProperties(title=d['title'])
-
-        # Ensure the ordering is as intended
-        ids = d['contents']
-        # Only use ids which are actually in the object
-        obj_ids = [a[0] for a in obj.objectItems()]
-        ids = [a for a in ids if a in obj_ids]
-        obj.moveObjectsByDelta(ids, -len(ids))
 
         # Access Rule
         accessrule = d.get('accessrule', None)
