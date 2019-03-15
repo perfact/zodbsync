@@ -1,18 +1,22 @@
 import sys
 import AccessControl.Permission
 
+
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
-    if sys.version_info > (3,0) and type(value) == type(b''):
+    if sys.version_info >= (3, 0) and isinstance(value, bytes):
         return value.decode(enc, 'ignore')
     return value
 
+
 def str_to_bytes(value, enc='utf-8'):
-    if sys.version_info > (3,0) and type(value) == type(''):
+    if sys.version_info >= (3, 0) and isinstance(value, str):
         return value.encode(enc)
     return value
 
+
 # Functions copied from perfact.generic
+
 
 def read_pdata(obj):
     '''Avoid authentication problems when reading linked pdata.'''
@@ -26,6 +30,7 @@ def read_pdata(obj):
             data = data.next
     return source
 
+
 def simple_html_unquote(value):
     '''Unquote quoted HTML text (minimal version)'''
     tokens = [
@@ -38,7 +43,9 @@ def simple_html_unquote(value):
         value = value.replace(before, after)
     return value
 
+
 # --- Functions ported over from the Data.fs
+
 
 def prop_dict(data):
     props = {}
@@ -56,10 +63,12 @@ def prop_dict(data):
     return props
 
 
+# --- Objects
 
 
 class ModObj:
     meta_types = []
+
     def create(self, obj, data):
         return
 
@@ -73,30 +82,33 @@ class ModObj:
         return True
 
 
-
-
 class AccessControlObj(ModObj):
-    meta_types = ['AccessControl',]
+    meta_types = ['AccessControl', ]
 
     def read(self, obj):
         ac = []
 
         is_root = obj.isTopLevelPrincipiaApplicationObject
-        if is_root: ac.append(('is_root', True))
+        if is_root:
+            ac.append(('is_root', True))
 
-        valid_roles = obj.valid_roles()
         userdefined_roles = tuple(sorted(obj.userdefined_roles()))
-        if userdefined_roles: ac.append(('roles', userdefined_roles))
+        if userdefined_roles:
+            ac.append(('roles', userdefined_roles))
 
         local_roles = obj.get_local_roles()
         # Ignore local owner role if it is trivial
-        local_roles = sorted([role for role in local_roles if role[1] != ('Owner',)])
-        if local_roles: ac.append(('local_roles', list(local_roles)))
+        local_roles = sorted([
+            role for role in local_roles
+            if role[1] != ('Owner',)]
+        )
+        if local_roles:
+            ac.append(('local_roles', list(local_roles)))
 
         try:
             ownerinfo = obj._owner
             ac.append(('owner', ownerinfo))
-        except:
+        except AttributeError:
             pass
 
         # The object's settings where they differ from the default (acquire)
@@ -182,18 +194,18 @@ class AccessControlObj(ModObj):
         # set ownership
         if 'owner' in d:
             owner = d['owner']
-            if type(owner) == type(''):
+            if isinstance(owner, str):
                 # backward compatibility for older behavior, where the
                 # corresponding UserFolder was not included
-                owner = (['acl_users'],owner)
+                owner = (['acl_users'], owner)
 
             obj._owner = d['owner']
 
+
 class UserFolderObj(ModObj):
-    meta_types = ['User Folder',]
+    meta_types = ['User Folder', ]
 
     def create(self, obj, data):
-        d = dict(data)
         obj.manage_addProduct['OFSP'].manage_addUserFolder()
         return
 
@@ -201,7 +213,7 @@ class UserFolderObj(ModObj):
         users = []
         for user in obj.getUsers():
             users.append((
-                user.getUserName(), 
+                user.getUserName(),
                 user._getPassword(),
                 user.roles,
                 user.getDomains(),
@@ -218,10 +230,10 @@ class UserFolderObj(ModObj):
             # according to AccessControl/userfolder.py, an existing user of the
             # same name is simply overwritten by _doAddUser
             obj._doAddUser(
-                    user[0], # username
-                    '', # password is set separately
-                    user[2], # roles
-                    user[3], #domains 
+                    user[0],  # username
+                    '',  # password is set separately
+                    user[2],  # roles
+                    user[3],  # domains
                     )
             # _doAddUser encrypts the given password, but the password in the
             # dump is already encrypted, so we have to set it manually
@@ -230,7 +242,7 @@ class UserFolderObj(ModObj):
 
 
 class DTMLDocumentObj(ModObj):
-    meta_types = ['DTML Document',]
+    meta_types = ['DTML Document', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -250,7 +262,7 @@ class DTMLDocumentObj(ModObj):
 
 
 class DTMLMethodObj(DTMLDocumentObj):
-    meta_types = ['DTML Method',]
+    meta_types = ['DTML Method', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -259,7 +271,7 @@ class DTMLMethodObj(DTMLDocumentObj):
 
 
 class DTMLTeXObj(DTMLDocumentObj):
-    meta_types = ['DTML TeX',]
+    meta_types = ['DTML TeX', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -268,7 +280,7 @@ class DTMLTeXObj(DTMLDocumentObj):
 
 
 class ZForceObj(ModObj):
-    meta_types = ['ZForce',]
+    meta_types = ['ZForce', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -296,7 +308,7 @@ class ZForceObj(ModObj):
 
 
 class ZSQLMethodObj(ModObj):
-    meta_types = ['Z SQL Method',]
+    meta_types = ['Z SQL Method', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -347,7 +359,7 @@ class ZSQLMethodObj(ModObj):
 
 
 class ExternalMethodObj(ModObj):
-    meta_types = ['External Method',]
+    meta_types = ['External Method', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -375,7 +387,7 @@ class ExternalMethodObj(ModObj):
 
 
 class FileObj(ModObj):
-    meta_types = ['File',]
+    meta_types = ['File', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -388,7 +400,7 @@ class FileObj(ModObj):
 
         # XXX Precondition
 
-        return [('source', source),]
+        return [('source', source), ]
 
     def write(self, obj, data):
         d = dict(data)
@@ -404,7 +416,7 @@ class FileObj(ModObj):
 
 
 class ImageObj(FileObj):
-    meta_types = ['Image',]
+    meta_types = ['Image', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -412,10 +424,8 @@ class ImageObj(FileObj):
         return
 
 
-
-
 class FolderObj(ModObj):
-    meta_types = ['Folder',]
+    meta_types = ['Folder', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -432,10 +442,8 @@ class FolderObj(ModObj):
 
         meta.append(('contents', ids))
 
-
         # Site Access
 
-        #get_ar = getattr(obj, 'manage_getAccessRule', None)
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
         except AttributeError:
@@ -456,13 +464,14 @@ class FolderObj(ModObj):
 
         accessrule = d.get('accessrule', None)
         if accessrule:
-            obj.manage_addProduct['SiteAccess'].manage_addAccessRule(method_id=accessrule)
+            obj.manage_addProduct['SiteAccess'].manage_addAccessRule(
+                method_id=accessrule
+            )
         return
 
 
-
 class FolderOrderedObj(FolderObj):
-    meta_types = ['Folder (Ordered)',]
+    meta_types = ['Folder (Ordered)', ]
 
     def create(self, obj, data):
         d = dict(data)
@@ -472,22 +481,13 @@ class FolderOrderedObj(FolderObj):
     def read(self, obj):
         meta = []
 
-        # Contents
-
         ids = [a[0] for a in obj.objectItems()]
-
-        # These IDs should not be sorted. They already are!
-        # ids.sort()
 
         meta.append(('contents', ids))
 
-
-        # Site Access
-
-        #get_ar = getattr(obj, 'manage_getAccessRule', None)
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
-        except:
+        except (KeyError, AttributeError):
             get_ar = None
         accessrule = get_ar and get_ar()
         if accessrule:
@@ -510,20 +510,25 @@ class FolderOrderedObj(FolderObj):
         # Access Rule
         accessrule = d.get('accessrule', None)
         if accessrule:
-            obj.manage_addProduct['SiteAccess'].manage_addAccessRule(method_id=accessrule)
+            obj.manage_addProduct['SiteAccess'].manage_addAccessRule(
+                method_id=accessrule
+            )
         return
 
 
 class PageTemplateObj(ModObj):
-    meta_types = ['Page Template',]
+    meta_types = ['Page Template', ]
 
     def create(self, obj, data):
         d = dict(data)
-        obj.manage_addProduct['PageTemplates'].manage_addPageTemplate(id=d['id'], text='')
+        obj.manage_addProduct['PageTemplates'].manage_addPageTemplate(
+            id=d['id'],
+            text=''
+        )
         return
 
     def read(self, obj):
-        return [('source', obj.read()),]
+        return [('source', obj.read()), ]
 
     def write(self, obj, data):
         d = dict(data)
@@ -532,9 +537,8 @@ class PageTemplateObj(ModObj):
         return
 
 
-
 class PropertiesObj(ModObj):
-    meta_types = ['Properties',]
+    meta_types = ['Properties', ]
 
     def implements(self, obj):
         if hasattr(obj, 'aq_explicit'):
@@ -562,7 +566,8 @@ class PropertiesObj(ModObj):
         props = [list(a.items()) for a in props]
 
         # Keep the items sorted and hash-friendly
-        for item in props: item.sort()
+        for item in props:
+            item.sort()
 
         if props:
             meta.append(('props', props))
@@ -578,7 +583,8 @@ class PropertiesObj(ModObj):
         for prop in props:
             pd = dict(prop)
             new_ids.append(pd['id'])
-            if obj.hasProperty(pd['id']): continue
+            if obj.hasProperty(pd['id']):
+                continue
             try:
                 obj.manage_addProperty(pd['id'], pd['value'], pd['type'])
             except zExceptions.BadRequest as e:
@@ -586,7 +592,7 @@ class PropertiesObj(ModObj):
 
         # Delete surplus properties
         old_ids = obj.propdict().keys()
-        del_ids = [a for a in old_ids if a not in new_ids+['title',]]
+        del_ids = [a for a in old_ids if a not in new_ids+['title', ]]
         try:
             obj.manage_delProperties(ids=del_ids)
         except zExceptions.BadRequest as e:
@@ -604,13 +610,14 @@ class PropertiesObj(ModObj):
         return
 
 
-
 class RAMCacheManagerObj(ModObj):
-    meta_types = ['RAM Cache Manager',]
+    meta_types = ['RAM Cache Manager', ]
 
     def create(self, obj, data):
         d = dict(data)
-        obj.manage_addProduct['StandardCacheManagers'].manage_addRAMCacheManager(id=d['id'])
+        obj.manage_addProduct[
+                'StandardCacheManagers'
+        ].manage_addRAMCacheManager(id=d['id'])
         return
 
     def read(self, obj):
@@ -634,20 +641,24 @@ class RAMCacheManagerObj(ModObj):
 
 
 class AcceleratedHTTPCacheManagerObj(RAMCacheManagerObj):
-    meta_types = ['Accelerated HTTP Cache Manager',]
+    meta_types = ['Accelerated HTTP Cache Manager', ]
 
     def create(self, obj, data):
         d = dict(data)
-        obj.manage_addProduct['StandardCacheManagers'].manage_addAcceleratedHTTPCacheManager(id=d['id'])
+        obj.manage_addProduct[
+                'StandardCacheManagers'
+                ].manage_addAcceleratedHTTPCacheManager(id=d['id'])
         return
 
 
 class ScriptPythonObj(ModObj):
-    meta_types = ['Script (Python)',]
+    meta_types = ['Script (Python)', ]
 
     def create(self, obj, data):
         d = dict(data)
-        obj.manage_addProduct['PythonScripts'].manage_addPythonScript(id=d['id'])
+        obj.manage_addProduct['PythonScripts'].manage_addPythonScript(
+                id=d['id']
+        )
         return
 
     def read(self, obj):
@@ -661,7 +672,7 @@ class ScriptPythonObj(ModObj):
 
         # Proxy roles
 
-        proxy_roles=[]
+        proxy_roles = []
         for role in obj.valid_roles():
             if obj.manage_haveProxy(role):
                 proxy_roles.append(role)
@@ -681,7 +692,7 @@ class ScriptPythonObj(ModObj):
 
 
 class ZCacheableObj(ModObj):
-    meta_types = ['ZCacheable',]
+    meta_types = ['ZCacheable', ]
 
     def implements(self, obj):
         return hasattr(obj, 'ZCacheable_getManagerId')
@@ -703,11 +714,12 @@ class ZCacheableObj(ModObj):
 
 class ZPsycopgDAObj(ModObj):
     meta_types = ['Z Psycopg 2 Database Connection',
-                  'Z Psycopg Database Connection',]
+                  'Z Psycopg Database Connection', ]
 
     def create(self, obj, data):
         d = dict(data)
-        # id, title, connection_string, check, zdatetime, tilevel, autocommit, encoding
+        # id, title, connection_string, check, zdatetime, tilevel, autocommit,
+        # encoding
         obj.manage_addProduct['ZPsycopgDA'].manage_addZPsycopgConnection(
             id=d['id'],
             title=d['title'],
@@ -720,11 +732,11 @@ class ZPsycopgDAObj(ModObj):
         # late additions may not yet be everywhere in the Data.fs
         try:
             autocommit = obj.autocommit
-        except:
+        except AttributeError:
             autocommit = False
         try:
             readonlymode = obj.readonlymode
-        except:
+        except AttributeError:
             readonlymode = False
 
         meta.append(('autocommit', autocommit))
@@ -750,11 +762,12 @@ class ZPsycopgDAObj(ModObj):
 
 
 class ZPyODBCDAObj(ModObj):
-    meta_types = ['Z PyODBC Database Connection',]
+    meta_types = ['Z PyODBC Database Connection', ]
 
     def create(self, obj, data):
         d = dict(data)
-        # id, title, connection_string, check, zdatetime, tilevel, autocommit, encoding
+        # id, title, connection_string, check, zdatetime, tilevel, autocommit,
+        # encoding
         obj.manage_addProduct['ZPyODBCDA'].addpyodbcConnectionBrowser(
             id=d['id'],
             title=d['title'],
@@ -783,11 +796,12 @@ class ZPyODBCDAObj(ModObj):
 
 
 class ZcxOracleDAObj(ModObj):
-    meta_types = ['Z cxOracle Database Connection',]
+    meta_types = ['Z cxOracle Database Connection', ]
 
     def create(self, obj, data):
         d = dict(data)
-        # id, title, connection_string, check, zdatetime, tilevel, autocommit, encoding
+        # id, title, connection_string, check, zdatetime, tilevel, autocommit,
+        # encoding
         obj.manage_addProduct['ZcxOracleDA'].manage_addZcxOracleConnection(
             id=d['id'],
             title=d['title'],
@@ -810,11 +824,12 @@ class ZcxOracleDAObj(ModObj):
 
 
 class ZsapdbDAObj(ModObj):
-    meta_types = ['Z sap Database Connection',]
+    meta_types = ['Z sap Database Connection', ]
 
     def create(self, obj, data):
         d = dict(data)
-        # id, title, connection_string, check, zdatetime, tilevel, autocommit, encoding
+        # id, title, connection_string, check, zdatetime, tilevel, autocommit,
+        # encoding
         obj.manage_addProduct['ZsapdbDA'].manage_addZsapdbConnection(
             id=d['id'],
             title=d['title'],
@@ -837,20 +852,20 @@ class ZsapdbDAObj(ModObj):
 
 
 class SimpleUserFolderObj(FolderObj):
-    meta_types = ['Simple User Folder',]
+    meta_types = ['Simple User Folder', ]
 
     def create(self, obj, data):
-        d = dict(data)
         obj.manage_addProduct['SimpleUserFolder'].addSimpleUserFolder()
         return
 
 
 class MailHostObj(ModObj):
-    meta_types = ['Mail Host',]
+    meta_types = ['Mail Host', ]
 
     def create(self, obj, data):
         d = dict(data)
-        # id, title, connection_string, check, zdatetime, tilevel, autocommit, encoding
+        # id, title, connection_string, check, zdatetime, tilevel, autocommit,
+        # encoding
         obj.manage_addProduct['MailHost'].manage_addMailHost(
             id=d['id'],
             title=d['title'],
