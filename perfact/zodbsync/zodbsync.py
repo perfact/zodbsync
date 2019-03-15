@@ -492,11 +492,7 @@ class ZODBSync:
 
         # Some objects should be ignored by the process because of
         # their specific IDs.
-        self.ignore_objects = [
-            re.compile('^MOD_SOURCE'),
-            re.compile('^__'),
-            re.compile('^Control_Panel$')
-        ]
+        self.ignore_objects = [ re.compile('^__'), ]
 
         # We write the binary sources into files ending with
         # appropriate extensions for convenience. This table guesses
@@ -598,6 +594,9 @@ class ZODBSync:
 
         # Build metadata. Remove source from metadata if it is there
         meta = [a for a in data if a[0] != 'source']
+        # Only keep contents if we are an ordered folder
+        if data_dict['type'] != 'Folder (Ordered)':
+            meta = [a for a in meta if a[0] != 'contents']
         fmt = mod_format(meta).encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -695,31 +694,6 @@ class ZODBSync:
             meta.sort()
         return meta
 
-    def merge_contents(self, meta, path):
-        '''Update meta data with the objects actually present in
-        the file system.'''
-        fs_contents = self.fs_contents(path)
-        meta_dict = dict(meta)
-        meta_contents = meta_dict.get('contents', [])
-        if not fs_contents and not meta_contents:
-            return meta
-        sorted_meta_contents = list(meta_contents)
-        sorted_meta_contents.sort()
-        if sorted_meta_contents == fs_contents:
-            return meta
-        # add fs_contents entries not in meta
-        for item in fs_contents:
-            if item not in meta_contents:
-                meta_contents.append(item)
-        # remove meta entries not in fs_contents
-        for item in meta_contents:
-            if item not in fs_contents:
-                meta_contents.remove(item)
-        # re-generate new meta
-        meta = list(meta_dict.items())
-        meta.sort()
-        return meta
-
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
         filenames = os.listdir(self.base_dir + '/' + path)
@@ -735,13 +709,6 @@ class ZODBSync:
                 ignore_found = True
                 break
         return ignore_found
-
-    def is_unsupported(self, data):
-        '''Looking at the object data, see if the object is unsupported.'''
-        for key, value in data:
-            if key == 'unsupported':
-                return True
-        return False
 
     def record(self, path=None, recurse=True):
         '''Record Zope objects from the given path into the local
@@ -759,7 +726,7 @@ class ZODBSync:
 
         data = mod_read(obj, default_owner=self.default_owner)
         path = self.site + ('/'.join(obj.getPhysicalPath()))
-        contents = self.fs_write(path, data)
+        contents = self.fs_write(path, data, remove_orphans=recurse)
 
         # Update statistics
         self.num_obj_current += 1
@@ -809,13 +776,12 @@ class ZODBSync:
             root_obj = self.app
 
         fs_path = self.site + '/' + path
-        fs_data = self.fs_read(fs_path)
-        srv_data = (
+        fs_data = dict(self.fs_read(fs_path))
+        srv_data = dict(
             mod_read(obj, default_owner=self.manager_user) if obj
             else None
         )
-        data_dict = dict(fs_data)
-        if 'unsupported' in data_dict:
+        if 'unsupported' in fs_data:
             self.logger.warn('Skipping unsupported object ' + path)
             return
 
@@ -832,51 +798,58 @@ class ZODBSync:
 
         if encoding is not None:
             # Translate file system data
-            fs_data = fix_encoding(fs_data, encoding)
+            fs_data = dict(fix_encoding(fs_data, encoding))
 
         if fs_data != srv_data:
-            # Unsupported type?
-            if self.is_unsupported(fs_data):
-                self.logger.warn("Type unsupported. Not uploading %s" % path)
-            else:
-                self.logger.debug("Uploading: %s:%s"
-                                  % (path, data_dict['type']))
-                try:
-                    mod_write(fs_data, parent=parent_obj,
-                            obj_id=obj_id,
-                            override=override, root=root_obj,
-                            default_owner=self.default_owner)
-                except:
-                    # If we do not want to get errors from missing
-                    # ExternalMethods, this can be used to skip them
-                    if skip_errors is False:
-                        self.logger.warn(
-                            'ERROR while uploading %s that is a %s'
-                            % (path, data_dict['type'])
-                        )
-                        raise
+            self.logger.debug("Uploading: %s:%s"
+                              % (path, fs_data['type']))
+            try:
+                mod_write(fs_data, parent=parent_obj,
+                        obj_id=obj_id,
+                        override=override, root=root_obj,
+                        default_owner=self.default_owner)
+            except:
+                # If we do not want to get errors from missing
+                # ExternalMethods, this can be used to skip them
+                if skip_errors is False:
                     self.logger.warn(
-                        'Skipping %s:%s' % (path, data_dict['type'])
+                        'ERROR while uploading %s that is a %s'
+                        % (path, fs_data['type'])
                     )
+                    raise
+                self.logger.warn(
+                    'Skipping %s:%s' % (path, fs_data['type'])
+                )
 
-        if recurse:
-            contents = self.fs_contents(fs_path)
-            if obj and hasattr(obj, 'objectItems'):
-                # Read contents from app
-                srv_contents = [a[0] for a in obj.objectItems()]
-            else:
-                srv_contents = []
-            # Find IDs in Data.fs object not present in file system
-            del_ids = [a for a in srv_contents if a not in contents]
-            if del_ids:
-                self.logger.warn('Deleting objects ' + repr(del_ids))
-                obj.manage_delObjects(ids=del_ids)
+        if not recurse:
+            return
 
-            for item in contents:
-                if self.is_ignored(item):
-                    continue
-                self.playback(path=os.path.join(path, item), override=override,
-                              encoding=encoding, skip_errors=skip_errors)
+        contents = self.fs_contents(fs_path)
+        if obj and hasattr(obj, 'objectItems'):
+            # Read contents from obj
+            srv_contents = [a[0] for a in obj.objectItems()]
+        else:
+            srv_contents = []
+        # Find IDs in Data.fs object not present in file system
+        del_ids = [a for a in srv_contents if a not in contents]
+        if del_ids:
+            self.logger.warn('Deleting objects ' + repr(del_ids))
+            obj.manage_delObjects(ids=del_ids)
+
+        for item in contents:
+            if self.is_ignored(item):
+                continue
+            self.playback(path=os.path.join(path, item), override=override,
+                    encoding=encoding, skip_errors=skip_errors)
+
+        # sort children for ordered folders
+        if fs_data['type'] == 'Folder (Ordered)':
+            contents = fs_data.get('contents', [])
+            srv_contents = [a[0] for a in obj.objectItems()]
+
+            # only use contents that are present in the object
+            contents = [a for a in contents if a in srv_contents]
+            obj.moveObjectsByDelta(contents, -len(contents))
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
