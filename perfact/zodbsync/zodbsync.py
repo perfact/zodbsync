@@ -239,6 +239,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if obj is None:
         data['id'] = obj_id
         object_types.get(meta_type)().create(parent, data)
+        del data['id']
         if hasattr(parent, 'aq_explicit'):
             obj = getattr(parent.aq_explicit, obj_id, None)
         else:
@@ -814,28 +815,14 @@ class ZODBSync:
             mod_read(obj, default_owner=self.manager_user) if obj
             else None
         )
-        # Make sure contents reflects status of file system
-        fs_data = self.merge_contents(fs_data, fs_path)
         data_dict = dict(fs_data)
         if 'unsupported' in data_dict:
             self.logger.warn('Skipping unsupported object ' + path)
             return
 
-        contents = data_dict.get('contents', [])
-        if obj and hasattr(obj, 'objectItems'):
-            # Read contents from app
-            srv_contents = [a[0] for a in obj.objectItems()]
-        else:
-            srv_contents = []
-        # Find IDs in Data.fs object not present in file system
-        del_ids = [a for a in srv_contents if a not in contents]
-        if del_ids:
-            self.logger.warn('Deleting objects ' + repr(del_ids))
-            obj.manage_delObjects(ids=del_ids)
-
         # Update statistics
         self.num_obj_current += 1
-        self.num_obj_total += len(contents)
+        # self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
             self.logger.info('%d obj uploaded of an estimated %d, '
@@ -873,7 +860,7 @@ class ZODBSync:
                         'Skipping %s:%s' % (path, data_dict['type'])
                     )
                 else:
-                    if True:  # Enable checkback
+                    if False:  # Enable checkback
                         # Read the object back to confirm
                         if root_obj is not None:
                             new_obj = root_obj
@@ -886,7 +873,7 @@ class ZODBSync:
                         # Replace "contents"
                         test_dict = dict(test_data)
                         if 'contents' in test_dict:
-                            test_dict['contents'] = contents
+                            del test_dict['contents']
                             test_data = list(test_dict.items())
                             test_data.sort()
                         if test_data != fs_data:
@@ -907,6 +894,18 @@ class ZODBSync:
                             self.logger.debug(diff)
 
         if recurse:
+            contents = self.fs_contents(fs_path)
+            if obj and hasattr(obj, 'objectItems'):
+                # Read contents from app
+                srv_contents = [a[0] for a in obj.objectItems()]
+            else:
+                srv_contents = []
+            # Find IDs in Data.fs object not present in file system
+            del_ids = [a for a in srv_contents if a not in contents]
+            if del_ids:
+                self.logger.warn('Deleting objects ' + repr(del_ids))
+                obj.manage_delObjects(ids=del_ids)
+
             for item in contents:
                 if self.is_ignored(item):
                     continue
