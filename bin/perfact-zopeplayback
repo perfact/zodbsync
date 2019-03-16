@@ -35,6 +35,7 @@ if __name__ == '__main__':
         )
     args = parser.parse_args()
     paths = args.path
+    paths.sort()
     override = args.override
     recurse = not args.no_recurse
 

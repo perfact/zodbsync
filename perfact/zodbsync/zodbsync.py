@@ -49,8 +49,6 @@ def mod_format(data=None, indent=0, as_list=False):
     <as_list> is True.
     '''
 
-    # if data is None: data = mod_read(obj)
-
     def str_repr(val):
         '''Generic string representation of a value.'''
         return str((val,))[1:-2]
@@ -198,6 +196,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if there is a meta_type mismatch.  If root is given, it should be the
     application root, which is then updated with the metadata in data, ignoring
     parent.
+    Returns the (existing or created) object.
     '''
 
     # Retrieve the object ID and meta type.
@@ -250,6 +249,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
         if folder.implements(obj):
             folder.write(obj, data)
+
+    return obj
 
 
 def fix_encoding(data, encoding):
@@ -671,29 +672,21 @@ class ZODBSync:
         return contents
 
     def fs_read(self, path):
-        '''Read data from local file system.
-        If only the last component of the path can not be found, return None.
-        If a previous component can not be found, raise a FileNotFoundError
-        (or, on python 2, an IOError).
-        '''
+        '''Read data from local file system.'''
         data_fname = '__meta__'
-
-        while path[-1] == '/':
-            path = path[:-1]
-        parts = path.rsplit('/', 1)
-        if len(parts) == 2 and parts[1] not in os.listdir(
-                self.base_dir + '/' + parts[0]
-                ):
-            return None
 
         filenames = os.listdir(self.base_dir + '/' + path)
         src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
         src_fname = src_fnames and src_fnames[0] or None
 
-        meta_str = open(os.path.join(self.base_dir, path, data_fname),
-                        'rb').read()
-        meta = literal_eval(meta_str)
+        meta_fname = os.path.join(self.base_dir, path, data_fname)
+        if os.path.isfile(meta_fname):
+            meta_str = open(meta_fname, 'rb').read()
+            meta = literal_eval(meta_str)
+        else:
+            # if a meta file is missing, we assume a dummy folder
+            meta = [('title', ''), ('type', 'Folder')]
 
         if src_fname:
             src = open(self.base_dir + '/' +
@@ -762,87 +755,119 @@ class ZODBSync:
                 self.record_obj(obj=new_obj)
 
     def playback(self, path=None, recurse=True, override=False,
-                 skip_errors=False,
-                 encoding=None):
+                 skip_errors=False, encoding=None):
         '''Play back (write) objects from the local filesystem into Zope.'''
-        obj = self.app
+        self.num_obj_current += 1
+        if not recurse:
+            # be more verbose because every path is explicitly requested
+            self.logger.info('Uploading %s' % path)
+        path = path or ''
+        parts = [part for part in path.split('/') if part]
+        if 'get' in parts:
+            self.logger.warn('Object "get" cannot be uploaded at path %s' %
+                             path)
+            return
+
+        # Step through the path components as well as the object tree.
+        folder = self.base_dir + '/' + self.site
         parent_obj = None
-        obj_id = None
-        root_obj = None
-        if path:
-            parts = [part for part in path.split('/') if part]
-        if path and len(parts):
-            # traverse into the object of interest
-            for part in parts[:-1]:  # Stop one short to get the parent.
-                obj = obj._getOb(part)  # getattr(obj, part)
+        obj = self.app
+        folder_exists = obj_exists = True
+        obj_path = '/'
+
+        for part in parts:
+            # It is OK if folder_exists or obj_exists is unset in the last step
+            # (which either means that the object has to be deleted or that it
+            # has to be created), but if one is unset before that, this is an
+            # error.
+            error = "not found when uploading %s" % path
+            assert folder_exists, "Folder %s %s" % (folder, error)
+            assert obj_exists, "Object %s %s" % (obj_path, error)
+
             parent_obj = obj
-            obj_id = parts[-1]
-            if obj_id == 'get':
-                self.logger.warn('Object "get" cannot be uploaded at path %s' %
-                                 path)
+            if part in [a[0] for a in obj.objectItems()]:
+                obj = getattr(obj, part)
+            else:
+                obj_exists = False
+                obj = None
+
+            folder += '/' + part
+            obj_path += part + '/'
+            if not os.path.isdir(folder):
+                folder_exists = False
+
+            if not folder_exists and not obj_exists:
+                # we want to allow to pass a list of changed objects (p.e.,
+                # from git diff-tree), which might mean that if /a as well as
+                # /a/b have been deleted, both will be passed as arguments to
+                # perfact-zopeplayback. They are sorted, so /a will already
+                # have been deleted, which is why the playback of /a/b will
+                # find /a neither on the file system nor in the ZODB. We can
+                # simply return in this case.
                 return
-            obj = parent_obj._getOb(obj_id, None)
-        else:
-            root_obj = self.app
+
+        if not folder_exists:
+            self.logger.info('Removing object ' + path)
+            parent_obj.manage_delObjects(ids=[part, ])
+            return
 
         fs_path = self.site + '/' + path
-        fs_data = self.fs_read(fs_path)
-        if fs_data is None:
-            # The object was deleted on the file system, but the parent still
-            # exists
-            self.logger.warn('Removing object no longer on file system: %s' % path)
-            parent_obj.manage_delObjects(ids=[obj_id, ])
-            return
-        fs_data = dict(fs_data)
-
-        srv_data = dict(
-            mod_read(obj, default_owner=self.manager_user) if obj
-            else None
-        )
+        fs_data = dict(self.fs_read(fs_path))
         if 'unsupported' in fs_data:
             self.logger.warn('Skipping unsupported object ' + path)
             return
-
-        # Update statistics
-        self.num_obj_current += 1
-        # self.num_obj_total += len(contents)
-        now = time.time()
-        if now - self.num_obj_last_report > 2:
-            self.logger.info('%d obj uploaded of an estimated %d, '
-                             'current path %s' %
-                             (self.num_obj_current, self.num_obj_total, path)
-                             )
-            self.num_obj_last_report = now
 
         if encoding is not None:
             # Translate file system data
             fs_data = dict(fix_encoding(fs_data, encoding))
 
+        srv_data = (
+            dict(mod_read(obj, default_owner=self.manager_user))
+            if obj_exists else None
+        )
+        # Only keep contents if we are an ordered folder
+        if (srv_data and srv_data['type'] != 'Folder (Ordered)'
+                and 'contents' in srv_data):
+            del srv_data['contents']
+
         if fs_data != srv_data:
-            self.logger.debug("Uploading: %s:%s"
-                              % (path, fs_data['type']))
+            self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
-                mod_write(fs_data, parent=parent_obj,
-                        obj_id=obj_id,
-                        override=override, root=root_obj,
-                        default_owner=self.default_owner)
+                obj = mod_write(
+                    fs_data,
+                    parent=parent_obj,
+                    obj_id=part,
+                    override=override,
+                    root=(obj if parent_obj is None else None),
+                    default_owner=self.default_owner
+                )
             except:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
-                if skip_errors is False:
-                    self.logger.warn(
-                        'ERROR while uploading %s that is a %s'
-                        % (path, fs_data['type'])
-                    )
+                severity = 'Skipping' if skip_errors else 'ERROR'
+                msg = '%s %s:%s' % (severity, path, fs_data['type'])
+                if skip_errors:
+                    self.logger.warn(msg)
+                    return
+                else:
+                    self.logger.error(msg)
                     raise
-                self.logger.warn(
-                    'Skipping %s:%s' % (path, fs_data['type'])
-                )
 
         if not recurse:
             return
 
         contents = self.fs_contents(fs_path)
+
+        # Update statistics
+        self.num_obj_total += len(contents)
+        now = time.time()
+        if now - self.num_obj_last_report > 2:
+            self.logger.info(
+                '%d obj checked of at least %d, current path %s'
+                % (self.num_obj_current, self.num_obj_total, path)
+            )
+            self.num_obj_last_report = now
+
         if obj and hasattr(obj, 'objectItems'):
             # Read contents from obj
             srv_contents = [a[0] for a in obj.objectItems()]
