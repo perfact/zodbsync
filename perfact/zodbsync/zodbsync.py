@@ -672,10 +672,20 @@ class ZODBSync:
 
     def fs_read(self, path):
         '''Read data from local file system.
-
-        Use <override_contents> to merge the filesystem information
-        into the data structure.'''
+        If only the last component of the path can not be found, return None.
+        If a previous component can not be found, raise a FileNotFoundError
+        (or, on python 2, an IOError).
+        '''
         data_fname = '__meta__'
+
+        while path[-1] == '/':
+            path = path[:-1]
+        parts = path.rsplit('/', 1)
+        if len(parts) == 2 and parts[1] not in os.listdir(
+                self.base_dir + '/' + parts[0]
+                ):
+            return None
+
         filenames = os.listdir(self.base_dir + '/' + path)
         src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
@@ -776,7 +786,15 @@ class ZODBSync:
             root_obj = self.app
 
         fs_path = self.site + '/' + path
-        fs_data = dict(self.fs_read(fs_path))
+        fs_data = self.fs_read(fs_path)
+        if fs_data is None:
+            # The object was deleted on the file system, but the parent still
+            # exists
+            self.logger.warn('Removing object no longer on file system: %s' % path)
+            parent_obj.manage_delObjects(ids=[obj_id, ])
+            return
+        fs_data = dict(fs_data)
+
         srv_data = dict(
             mod_read(obj, default_owner=self.manager_user) if obj
             else None
