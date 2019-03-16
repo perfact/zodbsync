@@ -4,13 +4,13 @@ import AccessControl.Permission
 
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
-    if sys.version_info >= (3, 0) and isinstance(value, bytes):
+    if sys.version_info.major > 2 and isinstance(value, bytes):
         return value.decode(enc, 'ignore')
     return value
 
 
 def str_to_bytes(value, enc='utf-8'):
-    if sys.version_info >= (3, 0) and isinstance(value, str):
+    if sys.version_info.major > 2 and isinstance(value, str):
         return value.encode(enc)
     return value
 

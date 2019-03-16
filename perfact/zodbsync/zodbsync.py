@@ -21,7 +21,7 @@ import perfact.zodbsync.logger
 # Plugins for handling different object types
 from perfact.zodbsync.object_types import object_types
 
-PY2 = (sys.version_info[0] == 2)
+PY2 = (sys.version_info.major == 2)
 
 # Python2 backward compatibility
 if PY2:
