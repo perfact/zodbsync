@@ -775,6 +775,7 @@ class ZODBSync:
         folder_exists = obj_exists = True
         obj_path = '/'
 
+        part = None
         for part in parts:
             # It is OK if folder_exists or obj_exists is unset in the last step
             # (which either means that the object has to be deleted or that it
