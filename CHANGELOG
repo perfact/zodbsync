@@ -1,0 +1,27 @@
+3.12.0
+
+  Refactor perfact-zopeplayback so it can handle almost anything coming from
+  `git diff-tree` and generally creates code that is easier to patch and deploy.
+
+  * Don't store the ID of each object in its meta data file, rely on the folder
+    name only instead.
+
+  * Don't store the contents of Folders except in Ordered Folders in order to
+    store the ordering. Use the folder contents instead when uploading.
+
+  * Adjust the ordering of ordered folders _after_ recursing into the children.
+
+  * Allow passing newly created as well as deleted paths to perfact-zopeplayback.
+
+3.11.3
+  Change reading and storing of permissions so it also works without acqusition
+  context, which is important to get a functioning watch mode
+
+3.11.2
+  Complete separation of repositories, splitting the default config file names.
+  
+3.11.1
+
+  PostgreSQL database dumps are no longer performed by zodbsync. This
+  functionality was transferred into perfact.dbbackup. The repository for the
+  code snapshots and that for the database dumps can now be separated.
