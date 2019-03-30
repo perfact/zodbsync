@@ -188,7 +188,6 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     return meta
 
-
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
               default_owner=None):
     '''
@@ -243,7 +242,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
         handler.write(obj, data)
 
     return obj
-
 
 def fix_encoding(data, encoding):
     '''Assume that strings in 'data' are encoded in 'encoding' and change
@@ -333,7 +331,6 @@ def fix_encoding(data, encoding):
     repacked.sort()
     return repacked
 
-
 def literal_eval(value):
     '''Literal evaluator (with a bit more power than PT).
 
@@ -388,7 +385,6 @@ def literal_eval(value):
             raise Exception('Unsupported type {}'.format(repr(node)))
     return _convert(value)
 
-
 def cleanup_string(name,
                    valid_chars=string.printable,
                    replacement_char='_',
@@ -421,7 +417,6 @@ def cleanup_string(name,
             merge = True
 
     return out
-
 
 def conserv_split(val, splitby='\n'):
     '''Split by a character, conserving it in the result.'''
@@ -572,25 +567,20 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
-    def fs_write(self, path, data, contents=None):
-        '''Write object data out to a file with the given path.
-        If contents are given, remove any subfolders that are not in contents
+    def fs_write(self, path, data):
+        '''
+        Write object data out to a file with the given path.
         '''
 
         # Read the basic information
-        data_dict = dict(data)
-        source = data_dict.get('source', None)
+        data = dict(data)
+        source = data.get('source', None)
 
         # Only write out sources if unicode or string
         write_source = (type(source) in (type(b''), type(u'')))
 
         # Build metadata
-        handler = object_handlers.get(data_dict['type'], None)
-        if handler is not None:
-            meta = handler.meta(data_dict)
-        else:
-            meta = data_dict
-
+        meta = {key: value for key: value in data.items() if key != 'source'}
         fmt = mod_format(meta).encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -656,18 +646,20 @@ class ZODBSync:
                 fh.write(data)
                 fh.close()
 
-        if contents is not None:
-            # Check if the contents have changed (are there directories not in
-            # "contents"?)
-            current_contents = os.listdir(self.base_dir + '/' + path)
-            for item in current_contents:
-                if self.is_ignored(item):
-                    continue
 
-                if item not in contents:
-                    self.logger.info("Removing old item %s from filesystem" %
-                                     item)
-                    shutil.rmtree(os.path.join(self.base_dir, path, item))
+    def fs_prune(self, path, contents):
+        '''
+        Remove all subfolders from path that are not in contents
+        '''
+        current_contents = os.listdir(self.base_dir + '/' + path)
+        for item in current_contents:
+            if self.is_ignored(item):
+                continue
+
+            if item not in contents:
+                self.logger.info("Removing old item %s from filesystem" %
+                                 item)
+                shutil.rmtree(os.path.join(self.base_dir, path, item))
 
     def fs_read(self, path):
         '''Read data from local file system.'''
@@ -726,7 +718,6 @@ class ZODBSync:
         '''Record a Zope object into the local filesystem'''
 
         data = mod_read(obj, default_owner=self.default_owner)
-        contents = obj_contents(obj) if recurse else None
         path = self.site + ('/'.join(obj.getPhysicalPath()))
         self.fs_write(path, data, contents=contents)
 
@@ -746,6 +737,8 @@ class ZODBSync:
                              )
             self.num_obj_last_report = now
 
+        contents = obj_contents(obj)
+        self.fs_prune(path, contents)
         for item in contents:
             # Check if one of the ignore patterns matches
             if self.is_ignored(item):
@@ -826,17 +819,8 @@ class ZODBSync:
             dict(mod_read(obj, default_owner=self.manager_user))
             if obj_exists else None
         )
-        # compare normalized data from server with that from fs
-        if srv_data:
-            meta_type = srv_data['type']
-            srv_data_normalized = object_handlers[meta_type].meta(
-                srv_data,
-                keep_source=True,
-            )
-        else:
-            srv_data_normalized = None
 
-        if fs_data != srv_data_normalized:
+        if fs_data != srv_data:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
                 obj = mod_write(

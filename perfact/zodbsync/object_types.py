@@ -82,19 +82,6 @@ class ModObj:
     def write(self, obj, data):
         return
 
-    def meta(self, data, keep_source=False):
-        ''' shorten dictionary representing the full object to the metadata.
-        '''
-        # by default, we omit source, id and contents
-        omitted = ['id', 'contents']
-        if not keep_source:
-            omitted.append('source')
-        return {
-            key: value
-            for key, value in data.items()
-            if key not in ('source', 'id', 'contents')
-        }
-
     def write_after_recurse_hook(self, obj, data):
         ''' implement if an action is to be performed on a to-be-played-back
         object after recursing into its children. '''
