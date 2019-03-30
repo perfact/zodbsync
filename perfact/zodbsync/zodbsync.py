@@ -35,8 +35,11 @@ else:
     import importlib # for config loading
 
 # Monkey patch ZRDB not to connect to databases immediately.
-from Shared.DC.ZRDB import Connection
-Connection.Connection.connect_on_load = False
+try:
+    from Shared.DC.ZRDB import Connection
+    Connection.Connection.connect_on_load = False
+except ImportError:
+    pass
 
 if not PY2:
     # for calling isinstance later
@@ -570,7 +573,7 @@ class ZODBSync:
         write_source = (type(source) in (type(b''), type(u'')))
 
         # Build metadata
-        meta = {key: value for key: value in data.items() if key != 'source'}
+        meta = {key: value for key, value in data.items() if key != 'source'}
         fmt = mod_format(meta).encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -650,7 +653,7 @@ class ZODBSync:
                                  item)
                 shutil.rmtree(os.path.join(self.base_dir, path, item))
 
-    def fs_read(self, path):
+    def fs_read(self, path, encoding=None):
         '''Read data from local file system.'''
         data_fname = '__meta__'
 
@@ -662,18 +665,22 @@ class ZODBSync:
         meta_fname = os.path.join(self.base_dir, path, data_fname)
         if os.path.isfile(meta_fname):
             meta_str = open(meta_fname, 'rb').read()
-            meta = literal_eval(meta_str)
+            meta = dict(literal_eval(meta_str))
         else:
             # if a meta file is missing, we assume a dummy folder
-            meta = [('title', ''), ('type', 'Folder')]
+            meta = {'title': '', 'type': 'Folder'}
 
         if src_fname:
             src = open(self.base_dir + '/' +
                        path + '/' + src_fname, 'rb').read()
             if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
-            meta.append(('source', src))
-            meta.sort()
+            meta['source'] = src
+
+        if encoding is not None:
+            # Translate file system data
+            fs_data = dict(fix_encoding(fs_data, encoding))
+
         return meta
 
     def fs_contents(self, path):
@@ -795,14 +802,10 @@ class ZODBSync:
             return
 
         fs_path = self.site + '/' + path
-        fs_data = dict(self.fs_read(fs_path))
+        fs_data = self.fs_read(fs_path, encoding=encoding)
         if 'unsupported' in fs_data:
             self.logger.warn('Skipping unsupported object ' + path)
             return
-
-        if encoding is not None:
-            # Translate file system data
-            fs_data = dict(fix_encoding(fs_data, encoding))
 
         srv_data = (
             dict(mod_read(obj, default_owner=self.manager_user))
