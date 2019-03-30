@@ -284,7 +284,6 @@ class ZODBSyncWatcher:
         self.sync.fs_write(
             path=self.sync.site+path,
             data=data,
-            remove_orphans=False,
         )
 
     def _update_objects(self):
