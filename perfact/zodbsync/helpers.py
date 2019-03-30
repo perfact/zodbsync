@@ -1,3 +1,5 @@
+import sys
+
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
     if sys.version_info.major > 2 and isinstance(value, bytes):
