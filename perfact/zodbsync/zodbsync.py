@@ -19,7 +19,7 @@ import AccessControl.SecurityManagement
 # Logging
 import perfact.zodbsync.logger
 # Plugins for handling different object types
-from perfact.zodbsync.object_types import object_handlers
+from perfact.zodbsync.object_types import object_handlers, mod_implemented_handlers
 
 PY2 = (sys.version_info.major == 2)
 
@@ -144,16 +144,16 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
     # - Preconditions ?
     # - Site Access Rules ?
 
-    meta = []
+    meta = {}
 
     # The Zope object type is always in the same place
 
     meta_type = obj.meta_type
-    meta.append(('type', meta_type))
+    meta['type'] = meta_type
 
     # The title should always be readable
     title = getattr(obj, 'title', None)
-    meta.append(('title', title))
+    meta['title'] = title
 
     # Generic and meta type dependent handlers
 
@@ -161,25 +161,17 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
         if onerrorstop:
             assert False, "Unsupported type: %s" % meta_type
         else:
-            additions = [('unsupported', meta_type), ]
-            meta.extend(additions)
-            meta.sort()
+            meta['unsupported'] = meta_type
             return meta
 
     for handler in mod_implemented_handlers(obj, meta_type):
-        meta.extend(handler.read(obj))
-
-    # Hash friendly, sorted list of tuples.
-    meta.sort()
+        meta.update(dict(handler.read(obj)))
 
     # if default owner is set, remove the owner attribute if it matches the
     # default owner
-    if default_owner is not None:
-        for i in range(len(meta)):
-            if meta[i][0] == 'owner':
-                if meta[i][1] == (['acl_users'], default_owner):
-                    del meta[i]
-                break
+    if (default_owner is not None and 
+            meta.get('owner', None) == (['acl_users'], default_owner)):
+        del meta['owner']
 
     return meta
 
@@ -531,15 +523,11 @@ class ZODBSync:
     def source_ext_from_meta(self, meta, obj_id):
         '''Guess a good extension from meta data.'''
 
-        meta_type, props = None, None, []
         content_type = None
 
         # Extract meta data from the key-value list passed.
-        for key, value in meta:
-            if key == 'type':
-                meta_type = value
-            if key == 'props':
-                props = value
+        meta_type = meta.get('type', None)
+        props = meta.get('props', [])
         for prop in props:
             d = dict(prop)
             if d['id'] == 'content_type':
@@ -715,10 +703,17 @@ class ZODBSync:
 
         data = mod_read(obj, default_owner=self.default_owner)
         path = self.site + ('/'.join(obj.getPhysicalPath()))
-        self.fs_write(path, data, contents=contents)
+        self.fs_write(path, data)
 
         if not recurse:
             return
+
+        if 'unsupported' in data:
+            contents = []
+        else:
+            contents = obj_contents(obj)
+
+        self.fs_prune(path, contents)
 
         # Update statistics
         self.num_obj_current += 1
@@ -733,8 +728,6 @@ class ZODBSync:
                              )
             self.num_obj_last_report = now
 
-        contents = obj_contents(obj)
-        self.fs_prune(path, contents)
         for item in contents:
             # Check if one of the ignore patterns matches
             if self.is_ignored(item):
