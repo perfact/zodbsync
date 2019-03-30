@@ -79,6 +79,11 @@ class ModObj:
     def write(self, obj, data):
         return
 
+    def write_after_recurse_hook(self, obj, data):
+        ''' implement if an action is to be performed on a to-be-played-back
+        object after recursing into its children. '''
+        return
+
     def implements(self, obj):
         return True
 
@@ -503,6 +508,16 @@ class FolderOrderedObj(FolderObj):
                 method_id=accessrule
             )
         return
+    
+    def write_after_recurse_hook(self, obj, data):
+        # sort children for ordered folders
+        contents = data.get('contents', [])
+        srv_contents = [a[0] for a in obj.objectItems()]
+
+        # only use contents that are present in the object
+        contents = [a for a in contents if a in srv_contents]
+        obj.moveObjectsByDelta(contents, -len(contents))
+
 
 
 class PageTemplateObj(ModObj):
@@ -917,4 +932,8 @@ object_types = {
     'Mail Host': MailHostObj,
     'ZForce': ZForceObj,
     'User Folder': UserFolderObj,
+}
+
+object_handlers = {
+    key: value() for key, value in object_types.items()
 }

@@ -19,7 +19,7 @@ import AccessControl.SecurityManagement
 # Logging
 import perfact.zodbsync.logger
 # Plugins for handling different object types
-from perfact.zodbsync.object_types import object_types
+from perfact.zodbsync.object_types import object_handlers
 
 PY2 = (sys.version_info.major == 2)
 
@@ -119,12 +119,21 @@ def mod_format(data=None, indent=0, as_list=False):
     else:
         return '\n'.join(output)
 
+def mod_implemented_handlers(obj, meta_type):
+    known_types = list(object_handlers.keys())
+    interfaces = ['Properties', 'AccessControl', 'ZCacheable', ]
+    interfaces.append(meta_type)
+    # return all object handlers for interfaces the object implements
+    handlers = [object_handlers[i] for i in interfaces]
+    return [h for h in handlers if h.implements(obj)]
+
+
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistent metadata dictionary for all types.'''
 
     # Known types:
-    known_types = list(object_types.keys())
+    known_types = list(object_handlers.keys())
 
     # TODO:
     # - Preconditions ?
@@ -143,10 +152,6 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # Generic and meta type dependent handlers
 
-    handlers = ['Properties', 'AccessControl', 'ZCacheable', ]
-
-    handlers.append(meta_type)
-
     if meta_type not in known_types:
         if onerrorstop:
             assert False, "Unsupported type: %s" % meta_type
@@ -156,22 +161,8 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
             meta.sort()
             return meta
 
-    for handler_id in handlers:
-        handler = object_types.get(handler_id, None)()
-        if handler is None:
-            if onerrorstop:
-                assert False, "Unsupported type: %s" % meta_type
-            else:
-                additions = [('unsupported', meta_type), ]
-                meta.extend(additions)
-                continue
-
-        # Check if the interface is implemented
-        implements = getattr(handler, 'implements', None)
-
-        if implements is None or implements(obj):
-            additions = handler.read(obj)
-            meta.extend(additions)
+    for handler in mod_implemented_handlers(obj, meta_type):
+        meta.extend(handler.read(obj))
 
     # Hash friendly, sorted list of tuples.
     meta.sort()
@@ -207,12 +198,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if default_owner is not None and 'owner' not in d:
         d['owner'] = (['acl_users'], default_owner)
 
-    # Plugin data
-
-    handlers = ['Properties', 'AccessControl', 'ZCacheable', ]
-
-    handlers.append(meta_type)
-
     # ID exists? Check if meta type matches, emit an error if not.
 
     if root is None:
@@ -236,7 +221,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     if obj is None:
         data['id'] = obj_id
-        object_types.get(meta_type)().create(parent, data)
+        object_handlers[meta_type].create(parent, data)
         del data['id']
         if hasattr(parent, 'aq_explicit'):
             obj = getattr(parent.aq_explicit, obj_id, None)
@@ -244,11 +229,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
             obj = getattr(parent, obj_id, None)
 
     # Send an update (depending on type)
-    for handler in handlers:
-        folder = object_types.get(handler)()
-
-        if folder.implements(obj):
-            folder.write(obj, data)
+    for handler in mod_implemented_handlers(obj, meta_type):
+        handler.write(obj, data)
 
     return obj
 
