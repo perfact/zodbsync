@@ -73,7 +73,7 @@ class ModObj:
     def implements(self, obj):
         return True
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         return
 
     def read(self, obj):
@@ -210,7 +210,7 @@ class AccessControlObj(ModObj):
 class UserFolderObj(ModObj):
     meta_types = ['User Folder', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addUserFolder()
         return
 
@@ -249,9 +249,8 @@ class UserFolderObj(ModObj):
 class DTMLDocumentObj(ModObj):
     meta_types = ['DTML Document', ]
 
-    def create(self, obj, data):
-        d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addDTMLDocument(id=d['id'])
+    def create(self, obj, data, obj_id):
+        obj.manage_addProduct['OFSP'].manage_addDTMLDocument(id=obj_id)
         return
 
     def read(self, obj):
@@ -269,28 +268,25 @@ class DTMLDocumentObj(ModObj):
 class DTMLMethodObj(DTMLDocumentObj):
     meta_types = ['DTML Method', ]
 
-    def create(self, obj, data):
-        d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addDTMLMethod(id=d['id'])
+    def create(self, obj, data, obj_id):
+        obj.manage_addProduct['OFSP'].manage_addDTMLMethod(id=obj_id)
         return
 
 
 class DTMLTeXObj(DTMLDocumentObj):
     meta_types = ['DTML TeX', ]
 
-    def create(self, obj, data):
-        d = dict(data)
-        obj.manage_addProduct['DTMLTeX'].manage_addDTMLTeX(id=d['id'])
+    def create(self, obj, data, obj_id):
+        obj.manage_addProduct['DTMLTeX'].manage_addDTMLTeX(id=obj_id)
         return
 
 
 class ZForceObj(ModObj):
     meta_types = ['ZForce', ]
 
-    def create(self, obj, data):
-        d = dict(data)
+    def create(self, obj, data, obj_id):
         obj.manage_addProduct['ZForce'].manage_addZForce(
-            id=d['id'],
+            id=obj_id,
             title='',
             query_id='',
             fields_id='')
@@ -311,11 +307,11 @@ class ZForceObj(ModObj):
 class ZSQLMethodObj(ModObj):
     meta_types = ['Z SQL Method', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
 
         obj.manage_addProduct['ZSQLMethods'].manage_addZSQLMethod(
-            id=d['id'], title=d['title'],
+            id=obj_id, title=d['title'],
             connection_id=d['connection_id'],
             arguments=d['args'], template=bytes_to_str(d['source']))
         return
@@ -362,10 +358,10 @@ class ZSQLMethodObj(ModObj):
 class ExternalMethodObj(ModObj):
     meta_types = ['External Method', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         obj.manage_addProduct['ExternalMethod'].manage_addExternalMethod(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             module=d['module'],
             function=d['function'])
@@ -390,9 +386,9 @@ class ExternalMethodObj(ModObj):
 class FileObj(ModObj):
     meta_types = ['File', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addFile(id=d['id'])
+        obj.manage_addProduct['OFSP'].manage_addFile(id=obj_id)
         return
 
     def read(self, obj):
@@ -419,18 +415,18 @@ class FileObj(ModObj):
 class ImageObj(FileObj):
     meta_types = ['Image', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addImage(id=d['id'], file='')
+        obj.manage_addProduct['OFSP'].manage_addImage(id=obj_id, file='')
         return
 
 
 class FolderObj(ModObj):
     meta_types = ['Folder', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addFolder(id=d['id'])
+        obj.manage_addProduct['OFSP'].manage_addFolder(id=obj_id)
         return
 
     def read(self, obj):
@@ -465,9 +461,9 @@ class FolderObj(ModObj):
 class FolderOrderedObj(FolderObj):
     meta_types = ['Folder (Ordered)', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
-        obj.manage_addProduct['OFSP'].manage_addOrderedFolder(id=d['id'])
+        obj.manage_addProduct['OFSP'].manage_addOrderedFolder(id=obj_id)
         return
 
     def read(self, obj):
@@ -527,10 +523,10 @@ class FolderOrderedObj(FolderObj):
 class PageTemplateObj(ModObj):
     meta_types = ['Page Template', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         obj.manage_addProduct['PageTemplates'].manage_addPageTemplate(
-            id=d['id'],
+            id=obj_id,
             text=''
         )
         return
@@ -621,11 +617,11 @@ class PropertiesObj(ModObj):
 class RAMCacheManagerObj(ModObj):
     meta_types = ['RAM Cache Manager', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         obj.manage_addProduct[
                 'StandardCacheManagers'
-        ].manage_addRAMCacheManager(id=d['id'])
+        ].manage_addRAMCacheManager(id=obj_id)
         return
 
     def read(self, obj):
@@ -651,21 +647,21 @@ class RAMCacheManagerObj(ModObj):
 class AcceleratedHTTPCacheManagerObj(RAMCacheManagerObj):
     meta_types = ['Accelerated HTTP Cache Manager', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         obj.manage_addProduct[
                 'StandardCacheManagers'
-                ].manage_addAcceleratedHTTPCacheManager(id=d['id'])
+                ].manage_addAcceleratedHTTPCacheManager(id=obj_id)
         return
 
 
 class ScriptPythonObj(ModObj):
     meta_types = ['Script (Python)', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         obj.manage_addProduct['PythonScripts'].manage_addPythonScript(
-                id=d['id']
+                id=obj_id
         )
         return
 
@@ -724,12 +720,12 @@ class ZPsycopgDAObj(ModObj):
     meta_types = ['Z Psycopg 2 Database Connection',
                   'Z Psycopg Database Connection', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZPsycopgDA'].manage_addZPsycopgConnection(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             connection_string=d['connection_string'],
         )
@@ -772,12 +768,12 @@ class ZPsycopgDAObj(ModObj):
 class ZPyODBCDAObj(ModObj):
     meta_types = ['Z PyODBC Database Connection', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZPyODBCDA'].addpyodbcConnectionBrowser(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             connection_string=d['connection_string'],
             auto_commit=d['autocommit'],
@@ -806,12 +802,12 @@ class ZPyODBCDAObj(ModObj):
 class ZcxOracleDAObj(ModObj):
     meta_types = ['Z cxOracle Database Connection', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZcxOracleDA'].manage_addZcxOracleConnection(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             connection_string=d['connection_string'],
         )
@@ -834,12 +830,12 @@ class ZcxOracleDAObj(ModObj):
 class ZsapdbDAObj(ModObj):
     meta_types = ['Z sap Database Connection', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZsapdbDA'].manage_addZsapdbConnection(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             connection_string=d['connection_string'],
         )
@@ -862,7 +858,7 @@ class ZsapdbDAObj(ModObj):
 class SimpleUserFolderObj(FolderObj):
     meta_types = ['Simple User Folder', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         obj.manage_addProduct['SimpleUserFolder'].addSimpleUserFolder()
         return
 
@@ -870,12 +866,12 @@ class SimpleUserFolderObj(FolderObj):
 class MailHostObj(ModObj):
     meta_types = ['Mail Host', ]
 
-    def create(self, obj, data):
+    def create(self, obj, data, obj_id):
         d = dict(data)
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['MailHost'].manage_addMailHost(
-            id=d['id'],
+            id=obj_id,
             title=d['title'],
             smtp_host=d['smtp_host'],
             smtp_port=d['smtp_port'],
