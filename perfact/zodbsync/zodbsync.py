@@ -229,9 +229,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     # ID is new? Create a minimal object (depending on type)
 
     if obj is None:
-        data['id'] = obj_id
-        object_handlers[meta_type].create(parent, data)
-        del data['id']
+        object_handlers[meta_type].create(parent, data, obj_id)
         if hasattr(parent, 'aq_explicit'):
             obj = getattr(parent.aq_explicit, obj_id, None)
         else:
