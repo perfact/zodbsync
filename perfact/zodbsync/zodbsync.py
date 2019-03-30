@@ -72,6 +72,11 @@ def mod_format(data=None, indent=0, as_list=False):
     def make_line(line):
         output.append(indent * ' ' + line)
 
+    # Convert dictionary to sorted list of tuples (diff-friendly!)
+    if isinstance(data, dict):
+        data = [(key, value) for key, value in data.items()]
+        data.sort()
+
     make_line('[')
     indent += 4
     for item in data:
@@ -127,7 +132,12 @@ def mod_implemented_handlers(obj, meta_type):
     handlers = [object_handlers[i] for i in interfaces]
     return [h for h in handlers if h.implements(obj)]
 
-
+def obj_contents(obj):
+    if not hasattr(obj, 'objectItems'):
+        return []
+    result = [a[0] for a in obj.objectItems()]
+    result.sort()
+    return result
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistent metadata dictionary for all types.'''
@@ -530,16 +540,14 @@ class ZODBSync:
         transaction.get().note(note)
         return txn_mgr
 
-    def source_ext_from_meta(self, meta):
+    def source_ext_from_meta(self, meta, obj_id):
         '''Guess a good extension from meta data.'''
 
-        obj_id, meta_type, props = None, None, []
+        meta_type, props = None, None, []
         content_type = None
 
         # Extract meta data from the key-value list passed.
         for key, value in meta:
-            if key == 'id':
-                obj_id = value
             if key == 'type':
                 meta_type = value
             if key == 'props':
@@ -564,22 +572,25 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
-    def fs_write(self, path, data, remove_orphans=True):
-        '''Write object data out to a file with the given path.'''
+    def fs_write(self, path, data, contents=None):
+        '''Write object data out to a file with the given path.
+        If contents are given, remove any subfolders that are not in contents
+        '''
 
         # Read the basic information
         data_dict = dict(data)
-        contents = data_dict.get('contents', [])
         source = data_dict.get('source', None)
 
         # Only write out sources if unicode or string
         write_source = (type(source) in (type(b''), type(u'')))
 
-        # Build metadata. Remove source from metadata if it is there
-        meta = [a for a in data if a[0] != 'source']
-        # Only keep contents if we are an ordered folder
-        if data_dict['type'] != 'Folder (Ordered)':
-            meta = [a for a in meta if a[0] != 'contents']
+        # Build metadata
+        handler = object_handlers.get(data_dict['type'], None)
+        if handler is not None:
+            meta = handler.meta(data_dict)
+        else:
+            meta = data_dict
+
         fmt = mod_format(meta).encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -597,7 +608,8 @@ class ZODBSync:
                             path + '/' + data_fname, 'rb').read()
         except IOError:
             old_data = None
-        if old_data is None or old_data != fmt:
+
+        if old_data != fmt:
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
             fh = open(self.base_dir + '/' +
                       path + '/' + data_fname, 'wb')
@@ -614,7 +626,12 @@ class ZODBSync:
             if isinstance(data, unicode):
                 data = data.encode('utf-8')
                 base = '__source-utf8__'
-            ext = self.source_ext_from_meta(meta)
+            while path.endswith('/'):
+                path = path[:-1]
+            ext = self.source_ext_from_meta(
+                meta=meta,
+                obj_id=os.path.basename(path)
+            )
             src_fname = '%s.%s' % (base, ext)
         else:
             src_fname = ''
@@ -632,13 +649,14 @@ class ZODBSync:
                                 'rb').read()
             except IOError:
                 old_data = None
-            if old_data is None or old_data != data:
+
+            if old_data != data:
                 self.logger.debug("Will write %d bytes of source" % len(data))
                 fh = open(os.path.join(self.base_dir, path, src_fname), 'wb')
                 fh.write(data)
                 fh.close()
 
-        if remove_orphans:
+        if contents is not None:
             # Check if the contents have changed (are there directories not in
             # "contents"?)
             current_contents = os.listdir(self.base_dir + '/' + path)
@@ -650,8 +668,6 @@ class ZODBSync:
                     self.logger.info("Removing old item %s from filesystem" %
                                      item)
                     shutil.rmtree(os.path.join(self.base_dir, path, item))
-
-        return contents
 
     def fs_read(self, path):
         '''Read data from local file system.'''
@@ -710,8 +726,12 @@ class ZODBSync:
         '''Record a Zope object into the local filesystem'''
 
         data = mod_read(obj, default_owner=self.default_owner)
+        contents = obj_contents(obj) if recurse else None
         path = self.site + ('/'.join(obj.getPhysicalPath()))
-        contents = self.fs_write(path, data, remove_orphans=recurse)
+        self.fs_write(path, data, contents=contents)
+
+        if not recurse:
+            return
 
         # Update statistics
         self.num_obj_current += 1
@@ -731,10 +751,8 @@ class ZODBSync:
             if self.is_ignored(item):
                 continue
 
-            # Recurse
-            if recurse:
-                new_obj = getattr(obj, item)
-                self.record_obj(obj=new_obj)
+            child = getattr(obj, item)
+            self.record_obj(obj=child)
 
     def playback(self, path=None, recurse=True, override=False,
                  skip_errors=False, encoding=None):
@@ -808,12 +826,17 @@ class ZODBSync:
             dict(mod_read(obj, default_owner=self.manager_user))
             if obj_exists else None
         )
-        # Only keep contents if we are an ordered folder
-        if (srv_data and srv_data['type'] != 'Folder (Ordered)'
-                and 'contents' in srv_data):
-            del srv_data['contents']
+        # compare normalized data from server with that from fs
+        if srv_data:
+            meta_type = srv_data['type']
+            srv_data_normalized = object_handlers[meta_type].meta(
+                srv_data,
+                keep_source=True,
+            )
+        else:
+            srv_data_normalized = None
 
-        if fs_data != srv_data:
+        if fs_data != srv_data_normalized:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
                 obj = mod_write(
@@ -840,6 +863,7 @@ class ZODBSync:
             return
 
         contents = self.fs_contents(fs_path)
+        srv_contents = obj_contents(obj)
 
         # Update statistics
         self.num_obj_total += len(contents)
@@ -851,15 +875,11 @@ class ZODBSync:
             )
             self.num_obj_last_report = now
 
-        if obj and hasattr(obj, 'objectItems'):
-            # Read contents from obj
-            srv_contents = [a[0] for a in obj.objectItems()]
-        else:
-            srv_contents = []
         # Find IDs in Data.fs object not present in file system
         del_ids = [a for a in srv_contents if a not in contents]
         if del_ids:
             self.logger.warn('Deleting objects ' + repr(del_ids))
+            self.num_obj_current += len(del_ids)
             obj.manage_delObjects(ids=del_ids)
 
         for item in contents:
@@ -868,14 +888,9 @@ class ZODBSync:
             self.playback(path=os.path.join(path, item), override=override,
                     encoding=encoding, skip_errors=skip_errors)
 
-        # sort children for ordered folders
-        if fs_data['type'] == 'Folder (Ordered)':
-            contents = fs_data.get('contents', [])
-            srv_contents = [a[0] for a in obj.objectItems()]
-
-            # only use contents that are present in the object
-            contents = [a for a in contents if a in srv_contents]
-            obj.moveObjectsByDelta(contents, -len(contents))
+        # Allow actions after recursing, like sorting children
+        for handler in mod_implemented_handlers(obj, fs_data['type']):
+            handler.write_after_recurse_hook(obj, fs_data)
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
