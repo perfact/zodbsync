@@ -1,71 +1,7 @@
 import sys
 import AccessControl.Permission
 
-
-# Helper function to generate str from bytes (Python3 only)
-def bytes_to_str(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, bytes):
-        return value.decode(enc, 'ignore')
-    return value
-
-
-def str_to_bytes(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, str):
-        return value.encode(enc)
-    return value
-
-
-# Functions copied from perfact.generic
-
-
-def read_pdata(obj):
-    '''Avoid authentication problems when reading linked pdata.'''
-    if type(obj.data) in (type(''), type(b'')):
-        source = obj.data
-    else:
-        data = obj.data
-        source = ''
-        while data is not None:
-            source += data.data
-            data = data.next
-    return source
-
-
-def simple_html_unquote(value):
-    '''Unquote quoted HTML text (minimal version)'''
-    tokens = [
-        ('&lt;', '<',),
-        ('&gt;', '>',),
-        ('&quot;', '"',),
-        ('&amp;', '&',),
-    ]
-    for before, after in tokens:
-        value = value.replace(before, after)
-    return value
-
-
-# --- Functions ported over from the Data.fs
-
-
-def prop_dict(data):
-    props = {}
-
-    # Get the properties from object data
-    p = dict(data).get('props', None)
-    if not p:
-        return props
-
-    # Convert each property into a dictionary
-    for item in p:
-        pd = dict(item)
-        # Extract only the value
-        props[pd['id']] = pd['value']
-
-    return props
-
-
-# --- Objects
-
+from perfact.zodbsync.helpers import *
 
 class ModObj:
     meta_types = []
@@ -937,3 +873,12 @@ object_types = {
 object_handlers = {
     key: value() for key, value in object_types.items()
 }
+
+def mod_implemented_handlers(obj, meta_type):
+    known_types = list(object_handlers.keys())
+    interfaces = ['Properties', 'AccessControl', 'ZCacheable', ]
+    interfaces.append(meta_type)
+    # return all object handlers for interfaces the object implements
+    handlers = [object_handlers[i] for i in interfaces]
+    return [h for h in handlers if h.implements(obj)]
+

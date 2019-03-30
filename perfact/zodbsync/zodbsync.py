@@ -124,14 +124,6 @@ def mod_format(data=None, indent=0, as_list=False):
     else:
         return '\n'.join(output)
 
-def mod_implemented_handlers(obj, meta_type):
-    known_types = list(object_handlers.keys())
-    interfaces = ['Properties', 'AccessControl', 'ZCacheable', ]
-    interfaces.append(meta_type)
-    # return all object handlers for interfaces the object implements
-    handlers = [object_handlers[i] for i in interfaces]
-    return [h for h in handlers if h.implements(obj)]
-
 def obj_contents(obj):
     if not hasattr(obj, 'objectItems'):
         return []
@@ -643,7 +635,6 @@ class ZODBSync:
                 fh = open(os.path.join(self.base_dir, path, src_fname), 'wb')
                 fh.write(data)
                 fh.close()
-
 
     def fs_prune(self, path, contents):
         '''
