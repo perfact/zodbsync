@@ -70,6 +70,9 @@ def prop_dict(data):
 class ModObj:
     meta_types = []
 
+    def implements(self, obj):
+        return True
+
     def create(self, obj, data):
         return
 
@@ -79,14 +82,23 @@ class ModObj:
     def write(self, obj, data):
         return
 
+    def meta(self, data, keep_source=False):
+        ''' shorten dictionary representing the full object to the metadata.
+        '''
+        # by default, we omit source, id and contents
+        omitted = ['id', 'contents']
+        if not keep_source:
+            omitted.append('source')
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in ('source', 'id', 'contents')
+        }
+
     def write_after_recurse_hook(self, obj, data):
         ''' implement if an action is to be performed on a to-be-played-back
         object after recursing into its children. '''
         return
-
-    def implements(self, obj):
-        return True
-
 
 class AccessControlObj(ModObj):
     meta_types = ['AccessControl', ]
@@ -299,11 +311,7 @@ class ZForceObj(ModObj):
 
     def read(self, obj):
         meta = []
-
-        # Contents
-        ids = [a[0] for a in obj.objectItems()]
-        ids.sort()
-        meta.append(('contents', ids))
+        meta.append(('contents', self.contents(obj)))
         return meta
 
     def write(self, obj, data):
@@ -441,11 +449,6 @@ class FolderObj(ModObj):
     def read(self, obj):
         meta = []
 
-        # Contents
-        ids = [a[0] for a in obj.objectItems()]
-        ids.sort()
-        meta.append(('contents', ids))
-
         # Site Access
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
@@ -483,8 +486,9 @@ class FolderOrderedObj(FolderObj):
     def read(self, obj):
         meta = []
 
-        ids = [a[0] for a in obj.objectItems()]
-        meta.append(('contents', ids))
+        # ordered folders store their contents to represent the ordering
+        contents = [a[0] for a in obj.objectItems()]
+        meta.append(('contents', contents))
 
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
@@ -509,6 +513,19 @@ class FolderOrderedObj(FolderObj):
             )
         return
     
+    def meta(self, data, keep_source=False):
+        ''' shorten dictionary representing the full object to the metadata.
+        '''
+        # Ordered Folders should keep their contents
+        omitted = ['id']
+        if not keep_source:
+            omitted.append('source')
+        return {
+            key: value
+            for key, value in data.items()
+            if key not in omitted
+        }
+
     def write_after_recurse_hook(self, obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
