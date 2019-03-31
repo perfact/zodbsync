@@ -3,10 +3,17 @@
 # perfact-zopeplayback  -  Upload a subpath into the Data.fs
 #
 
+import sys
 # for argument reading and parsing:
 import argparse
 # for Data.fs reading / writing:
 import perfact.zodbsync
+
+# advanced logging is only available if python-perfact is available
+try:
+    import perfact.loggingtools
+except ImportError:
+    pass
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Upload objects to the Data.fs')
@@ -33,14 +40,21 @@ if __name__ == '__main__':
         'path', nargs='+', type=str,
         help='Sub-Path in Data.fs to be recorded',
         )
+    if 'perfact.loggingtools' in sys.modules:
+        perfact.loggingtools.addArgs(parser, name='ZODBSync')
+
     args = parser.parse_args()
+
+    logger = None
+    if 'perfact.loggingtools' in sys.modules:
+        logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
     paths = args.path
     paths.sort()
     override = args.override
     recurse = not args.no_recurse
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(conffile=args.config)
+    sync = perfact.zodbsync.ZODBSync(conffile=args.config, logger=logger)
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:
