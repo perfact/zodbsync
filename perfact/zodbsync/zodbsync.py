@@ -16,8 +16,9 @@ import transaction
 # for "logging in"
 import AccessControl.SecurityManagement
 
-# Logging
-import perfact.zodbsync.logger
+# Logging (if perfact.loggingtools is not available, we only support logging to
+# stdout)
+import logging
 # Plugins for handling different object types
 from perfact.zodbsync.object_types import object_handlers, mod_implemented_handlers
 
@@ -425,8 +426,13 @@ class ZODBSync:
     def __init__(self,
                  conffile,
                  site='__root__',
+                 logger=None,
                  ):
-        self.logger = perfact.zodbsync.logger.get_logger('ZODBSync')
+        if logger is None:
+            logger = logging.getLogger('ZODBSync')
+            logger.setLevel(logging.INFO)
+            logger.addHandler(logging.StreamHandler())
+        self.logger = logger
 
         # Load configuration
         if PY2:

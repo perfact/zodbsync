@@ -9,13 +9,13 @@ import argparse
 # for Data.fs reading / writing:
 import perfact.zodbsync
 
+# several additional functions are only available if python-perfact is
+# installed
 try:
     # for git snapshot
-    import perfact.pfcodechg as pfcodechg
-except ImportError:
-    pass
-
-try:
+    import perfact.pfcodechg
+    # advanced logging
+    import perfact.loggingtools
     # psql dumps for backwards compatibility
     import perfact.dbbackup
 except ImportError:
@@ -41,7 +41,7 @@ Use perfact-dbrecord from python-modules instead.
                         help='Record only transactions since this '
                         + 'timestamp (YYYY-MM-DD[ HH:MI:SS[ TZ]])',
                         default=None)
-    parser.add_argument('--lasttxn', '-l', nargs='?', type=str,
+    parser.add_argument('--lasttxn', nargs='?', type=str,
                         help='Record only transactions since this '
                         + 'transaction (or the last used)',
                         const='last', default=None)
@@ -55,7 +55,14 @@ Use perfact-dbrecord from python-modules instead.
     parser.add_argument('commitmsg', nargs='?', type=str,
                         help='Commit message for standard run.',
                         default=None)
+    if 'perfact.loggingtools' in sys.modules:
+        perfact.loggingtools.addArgs(parser, name='ZODBSync')
+
     args = parser.parse_args()
+    logger = None
+    if 'perfact.loggingtools' in sys.modules:
+        logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
+
     config_path = args.config
     path = args.path
     since = args.since
@@ -73,7 +80,7 @@ Use perfact-dbrecord from python-modules instead.
         paths = [path]
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(conffile=config_path)
+    sync = perfact.zodbsync.ZODBSync(conffile=config_path, logger=logger)
     config = sync.config
 
     # Watch mode
@@ -153,7 +160,7 @@ Use perfact-dbrecord from python-modules instead.
         if generic_commit:
             commit_message = config.commit_message
         # this fails (by design) if no repository is initialized.
-        commit_done = pfcodechg.git_snapshot(
+        commit_done = perfact.pfcodechg.git_snapshot(
             config.base_dir,
             commit_message,
         )
