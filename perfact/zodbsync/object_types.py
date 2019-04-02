@@ -432,19 +432,6 @@ class FolderOrderedObj(FolderObj):
             )
         return
     
-    def meta(self, data, keep_source=False):
-        ''' shorten dictionary representing the full object to the metadata.
-        '''
-        # Ordered Folders should keep their contents
-        omitted = ['id']
-        if not keep_source:
-            omitted.append('source')
-        return {
-            key: value
-            for key, value in data.items()
-            if key not in omitted
-        }
-
     def write_after_recurse_hook(self, obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
