@@ -129,6 +129,7 @@ def mod_format(data=None, indent=0, as_list=False):
         return '\n'.join(output)
 
 def obj_contents(obj):
+    ''' Fetch list of subitems '''
     if not hasattr(obj, 'objectItems'):
         return []
     result = [a[0] for a in obj.objectItems()]
