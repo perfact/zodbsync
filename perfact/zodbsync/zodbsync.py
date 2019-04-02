@@ -338,6 +338,7 @@ class ZODBSync:
             logger = logging.getLogger('ZODBSync')
             logger.setLevel(logging.INFO)
             logger.addHandler(logging.StreamHandler())
+            logger.propagate = False
         self.logger = logger
 
         # Load configuration
