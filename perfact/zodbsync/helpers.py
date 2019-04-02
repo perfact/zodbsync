@@ -1,4 +1,6 @@
 import sys
+if sys.version_info.major >= 2:
+    unicode = str
 
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
@@ -16,7 +18,7 @@ def str_to_bytes(value, enc='utf-8'):
 
 def read_pdata(obj):
     '''Avoid authentication problems when reading linked pdata.'''
-    if type(obj.data) in (type(''), type(b'')):
+    if isinstance(obj.data, (bytes, unicode)):
         source = obj.data
     else:
         data = obj.data

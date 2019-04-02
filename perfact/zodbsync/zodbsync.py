@@ -324,7 +324,7 @@ def literal_eval(value):
     basic arithmetic operators included.
     '''
     _safe_names = {'None': None, 'True': True, 'False': False}
-    if isinstance(value, (type(''), type(b''), type(u''))):
+    if isinstance(value, (bytes, unicode)):
         value = ast.parse(value, mode='eval')
 
     bin_ops = {
@@ -564,7 +564,7 @@ class ZODBSync:
         source = data.get('source', None)
 
         # Only write out sources if unicode or string
-        write_source = (type(source) in (type(b''), type(u'')))
+        write_source = isinstance(source, (bytes, unicode))
 
         # Build metadata
         meta = {key: value for key, value in data.items() if key != 'source'}
