@@ -1,5 +1,9 @@
 import sys
-if sys.version_info.major >= 2:
+import ast
+import operator
+import string
+
+if sys.version_info.major > 2:
     unicode = str
 
 # Helper function to generate str from bytes (Python3 only)
@@ -40,6 +44,100 @@ def simple_html_unquote(value):
         value = value.replace(before, after)
     return value
 
+def literal_eval(value):
+    '''Literal evaluator (with a bit more power than PT).
+
+    This evaluator is capable of parsing large data sets, and it has
+    basic arithmetic operators included.
+    '''
+    _safe_names = {'None': None, 'True': True, 'False': False}
+    if isinstance(value, (bytes, unicode)):
+        value = ast.parse(value, mode='eval')
+
+    bin_ops = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.Mod: operator.mod,
+        }
+
+    unary_ops = {
+        ast.USub: operator.neg,
+    }
+
+    def _convert(node):
+        if isinstance(node, ast.Expression):
+            return _convert(node.body)
+        elif isinstance(node, ast.Str):
+            return node.s
+        elif isinstance(node, ast.Bytes):
+            return node.s
+        elif isinstance(node, ast.Num):
+            return node.n
+        elif isinstance(node, ast.Tuple):
+            return tuple(map(_convert, node.elts))
+        elif isinstance(node, ast.List):
+            return list(map(_convert, node.elts))
+        elif isinstance(node, ast.Dict):
+            return dict((_convert(k), _convert(v)) for k, v
+                        in zip(node.keys, node.values))
+        elif isinstance(node, ast.Name):
+            if node.id in _safe_names:
+                return _safe_names[node.id]
+        elif isinstance(node, ast.NameConstant):
+            return node.value
+        elif isinstance(node, ast.BinOp):
+            return bin_ops[type(node.op)](
+                _convert(node.left),
+                _convert(node.right)
+            )
+        elif isinstance(node, ast.UnaryOp):
+            return unary_ops[type(node.op)](_convert(node.operand))
+        else:
+            raise Exception('Unsupported type {}'.format(repr(node)))
+    return _convert(value)
+
+def cleanup_string(name,
+                   valid_chars=string.printable,
+                   replacement_char='_',
+                   merge_replacements=True,
+                   invalid_chars=''):
+    '''Sanitize a name. Only valid_chars remain in the string.  Illegal
+    characters are replaced with replacement_char. Adjacent
+    replacements characters are merged if merge_replacements is True.
+
+    '''
+    out = ''
+    merge = False
+    for i in name:
+        # Valid character? Add and continue.
+        if (i in valid_chars and i not in invalid_chars):
+            out += i
+            merge = False
+            continue
+
+        # No replacements? No action.
+        if not replacement_char:
+            continue
+        # In merge mode? No action.
+        if merge:
+            continue
+
+        # Replace.
+        out += replacement_char
+        if merge_replacements:
+            merge = True
+
+    return out
+
+def conserv_split(val, splitby='\n'):
+    '''Split by a character, conserving it in the result.'''
+    output = [a+splitby for a in val.split(splitby)]
+    output[-1] = output[-1][:-len(splitby)]
+    if output[-1] == '':
+        output.pop()
+    return output
 
 # --- Function ported over from the Data.fs
 def prop_dict(data):
@@ -57,3 +155,4 @@ def prop_dict(data):
         props[pd['id']] = pd['value']
 
     return props
+
