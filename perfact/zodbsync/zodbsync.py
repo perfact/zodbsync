@@ -600,23 +600,24 @@ class ZODBSync:
                 break
         return ignore_found
 
-    def record(self, path=None, recurse=True):
+    def record(self, path='/', recurse=True):
         '''Record Zope objects from the given path into the local
         filesystem.'''
+        if not path:
+            path = '/'
         obj = self.app
-        if path is not None:
-            # traverse into the object of interest
-            parts = list([_f for _f in path.split('/') if _f])
-            for part in parts:
+        # traverse into the object of interest
+        for part in path.split('/'):
+            if part:
                 obj = getattr(obj, part)
-        self.record_obj(obj, recurse=recurse)
+        self.record_obj(obj, path, recurse=recurse)
 
-    def record_obj(self, obj, recurse=True):
+    def record_obj(self, obj, path, recurse=True):
         '''Record a Zope object into the local filesystem'''
 
         data = mod_read(obj, default_owner=self.default_owner)
-        path = self.site + ('/'.join(obj.getPhysicalPath()))
-        self.fs_write(path, data)
+        fs_path = self.site + path
+        self.fs_write(fs_path, data)
 
         if not recurse:
             return
@@ -626,10 +627,9 @@ class ZODBSync:
         else:
             contents = obj_contents(obj)
 
-        self.fs_prune(path, contents)
+        self.fs_prune(fs_path, contents)
 
         # Update statistics
-        self.num_obj_current += 1
         self.num_obj_total += len(contents)
         now = time.time()
         if now - self.num_obj_last_report > 2:
@@ -642,12 +642,13 @@ class ZODBSync:
             self.num_obj_last_report = now
 
         for item in contents:
+            self.num_obj_current += 1
             # Check if one of the ignore patterns matches
             if self.is_ignored(item):
                 continue
 
             child = getattr(obj, item)
-            self.record_obj(obj=child)
+            self.record_obj(obj=child, path=path+'/'+item)
 
     def playback(self, path=None, recurse=True, override=False,
                  skip_errors=False, encoding=None):
