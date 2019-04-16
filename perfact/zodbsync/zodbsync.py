@@ -185,11 +185,14 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if there is a meta_type mismatch.  If root is given, it should be the
     application root, which is then updated with the metadata in data, ignoring
     parent.
-    Returns the (existing or created) object.
+    Returns a dict with the following content:
+      'obj': the (existing or created) object
+      'override': True if it was necessary to override the object
     '''
 
-    # Retrieve the object ID and meta type.
+    result = {'override': False}
 
+    # Retrieve the object meta type.
     d = dict(data)
     meta_type = d['type']
 
@@ -211,6 +214,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
         if override:
             # Remove the existing object in override mode
             parent.manage_delObjects(ids=[obj_id, ])
+            result['override'] = True
             obj = None
         else:
             assert False, "Type mismatch for object " + repr(data)
@@ -228,7 +232,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, data)
 
-    return obj
+    result['obj'] = obj
+    return result
 
 def fix_encoding(data, encoding):
     '''Assume that strings in 'data' are encoded in 'encoding' and change
@@ -653,7 +658,6 @@ class ZODBSync:
     def playback(self, path=None, recurse=True, override=False,
                  skip_errors=False, encoding=None):
         '''Play back (write) objects from the local filesystem into Zope.'''
-        self.num_obj_current += 1
         if not recurse:
             # be more verbose because every path is explicitly requested
             self.logger.info('Uploading %s' % path)
@@ -722,7 +726,7 @@ class ZODBSync:
         if fs_data != srv_data:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
-                obj = mod_write(
+                res = mod_write(
                     fs_data,
                     parent=parent_obj,
                     obj_id=part,
@@ -730,6 +734,11 @@ class ZODBSync:
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner
                 )
+                obj = res['obj']
+                # if we were forced to override, we force recursing for this
+                # subpath
+                if res['override']:
+                    recurse = True
             except:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
@@ -742,34 +751,32 @@ class ZODBSync:
                     self.logger.error(msg)
                     raise
 
-        if not recurse:
-            return
+        if recurse:
+            contents = self.fs_contents(fs_path)
+            srv_contents = obj_contents(obj)
 
-        contents = self.fs_contents(fs_path)
-        srv_contents = obj_contents(obj)
+            # Update statistics
+            self.num_obj_total += len(contents)
+            now = time.time()
+            if now - self.num_obj_last_report > 2:
+                self.logger.info(
+                    '%d obj checked of at least %d, current path %s'
+                    % (self.num_obj_current, self.num_obj_total, path)
+                )
+                self.num_obj_last_report = now
 
-        # Update statistics
-        self.num_obj_total += len(contents)
-        now = time.time()
-        if now - self.num_obj_last_report > 2:
-            self.logger.info(
-                '%d obj checked of at least %d, current path %s'
-                % (self.num_obj_current, self.num_obj_total, path)
-            )
-            self.num_obj_last_report = now
+            # Find IDs in Data.fs object not present in file system
+            del_ids = [a for a in srv_contents if a not in contents]
+            if del_ids:
+                self.logger.warn('Deleting objects ' + repr(del_ids))
+                obj.manage_delObjects(ids=del_ids)
 
-        # Find IDs in Data.fs object not present in file system
-        del_ids = [a for a in srv_contents if a not in contents]
-        if del_ids:
-            self.logger.warn('Deleting objects ' + repr(del_ids))
-            self.num_obj_current += len(del_ids)
-            obj.manage_delObjects(ids=del_ids)
-
-        for item in contents:
-            if self.is_ignored(item):
-                continue
-            self.playback(path=os.path.join(path, item), override=override,
-                    encoding=encoding, skip_errors=skip_errors)
+            for item in contents:
+                self.num_obj_current += 1
+                if self.is_ignored(item):
+                    continue
+                self.playback(path=os.path.join(path, item), override=override,
+                        encoding=encoding, skip_errors=skip_errors)
 
         # Allow actions after recursing, like sorting children
         for handler in mod_implemented_handlers(obj, fs_data['type']):
