@@ -149,17 +149,20 @@ Use perfact-dbrecord from python-modules instead.
         config.commit_message = msgbak
 
     if not no_commit and 'perfact.pfcodechg' in sys.modules:
-        if commit_message is None:
+        generic_commit = (commit_message is None)
+        if generic_commit:
             commit_message = config.commit_message
         # this fails (by design) if no repository is initialized.
         commit_done = pfcodechg.git_snapshot(
             config.base_dir,
-            commit_message)
+            commit_message,
+        )
         # only send a mail if something has changed
         if (commit_done
-                and getattr(config, 'codechange_mail', False)):
+                and getattr(config, 'codechange_mail', False)
+                and generic_commit):
             print('Commit was done! Sending mail...')
-            pfcodechg.git_mail(config.base_dir, config.codechange_mail)
+            pfcodechg.git_mail_summary(config.base_dir, config.codechange_mail)
 
     if newest_txnid:
         sync.txn_write(newest_txnid or '')

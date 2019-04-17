@@ -20,8 +20,8 @@ base_dir = '/opt/perfact/dbutils-zoperepo'
 
 # default settings for git repos
 commit_name = "Zope Developer"
-commit_email = "zope-devel@perfact.de"
+commit_email = "zope-devel@example.de"
 commit_message = "Generic commit message."
 
-# email address to send commits to
-#codechange_mail = "pfcodechange-test@perfact.de"
+# email address to send commit summaries of default commits to
+#codechange_mail = "zope-devel@example.de"
