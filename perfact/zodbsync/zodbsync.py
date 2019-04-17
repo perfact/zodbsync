@@ -515,8 +515,8 @@ class ZODBSync:
             if isinstance(data, unicode):
                 data = data.encode('utf-8')
                 base = '__source-utf8__'
-            while path.endswith('/'):
-                path = path[:-1]
+
+            path = path.rstrip('/')
             ext = self.source_ext_from_meta(
                 meta=meta,
                 obj_id=os.path.basename(path)
@@ -627,11 +627,7 @@ class ZODBSync:
         if not recurse:
             return
 
-        if 'unsupported' in data:
-            contents = []
-        else:
-            contents = obj_contents(obj)
-
+        contents = obj_contents(obj) if ('unsupported' not in data) else []
         self.fs_prune(fs_path, contents)
 
         # Update statistics
@@ -663,6 +659,10 @@ class ZODBSync:
             self.logger.info('Uploading %s' % path)
         path = path or ''
         parts = [part for part in path.split('/') if part]
+        # Due to the necessity of handling old ZODBs where it was possible to
+        # have objects with 'get' as ID (which, unfortunately, was used), we
+        # need to handle this case here. An object with 'get' as ID will be
+        # left alone and can not be played back.
         if 'get' in parts:
             self.logger.warn('Object "get" cannot be uploaded at path %s' %
                              path)
