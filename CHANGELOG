@@ -2,6 +2,9 @@
   Refactor perfact-zopeplayback so it can handle almost anything coming from
   `git diff-tree` and generally creates code that is easier to patch and deploy.
 
+  WARNING: If updating to this version, you must expect a large diff in your
+  repository on the next call to zoperecord.
+
   * Don't store the ID of each object in its meta data file, rely on the folder
     name only instead.
 
