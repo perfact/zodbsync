@@ -169,7 +169,8 @@ Use perfact-dbrecord from python-modules instead.
                 and getattr(config, 'codechange_mail', False)
                 and generic_commit):
             print('Commit was done! Sending mail...')
-            pfcodechg.git_mail_summary(config.base_dir, config.codechange_mail)
+            perfact.pfcodechg.git_mail_summary(config.base_dir,
+                    config.codechange_mail)
 
     if newest_txnid:
         sync.txn_write(newest_txnid or '')

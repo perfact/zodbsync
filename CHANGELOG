@@ -1,3 +1,6 @@
+3.12.2
+  Fix package naming error when trying to send mail with commit summary.
+
 3.12.1
   Refactor perfact-zopeplayback so it can handle almost anything coming from
   `git diff-tree` and generally creates code that is easier to patch and deploy.
