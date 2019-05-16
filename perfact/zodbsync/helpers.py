@@ -28,7 +28,7 @@ def read_pdata(obj):
         data = obj.data
         source = ''
         while data is not None:
-            source += data.data
+            source += bytes_to_str(data.data)
             data = data.next
     return source
 
@@ -155,4 +155,3 @@ def prop_dict(data):
         props[pd['id']] = pd['value']
 
     return props
-
