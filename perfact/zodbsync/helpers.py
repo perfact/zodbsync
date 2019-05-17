@@ -26,9 +26,12 @@ def read_pdata(obj):
         source = obj.data
     else:
         data = obj.data
-        source = ''
+        if isinstance(data.data, bytes):
+            source = b''
+        elif isinstance(data.data, str):
+            source = ''
         while data is not None:
-            source += bytes_to_str(data.data)
+            source += data.data
             data = data.next
     return source
 
