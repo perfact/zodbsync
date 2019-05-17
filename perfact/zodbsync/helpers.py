@@ -26,7 +26,10 @@ def read_pdata(obj):
         source = obj.data
     else:
         data = obj.data
-        source = ''
+        if isinstance(data.data, bytes):
+            source = b''
+        elif isinstance(data.data, str):
+            source = ''
         while data is not None:
             source += data.data
             data = data.next
@@ -155,4 +158,3 @@ def prop_dict(data):
         props[pd['id']] = pd['value']
 
     return props
-
