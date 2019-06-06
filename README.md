@@ -112,6 +112,21 @@ marked as `unsupported`, which are ignored if found in the ZODB. If only a
 given object itself should be updated (properties, security settings etc.),
 `--no-recurse` can be used.
 
+If using `--pick`, the given paths are not interpreted as object paths, but as
+git commits. This is useful if the repository the Data.FS is recorded to is
+tracked by git and some development has been done on a remote system that has
+to be deployed to the current system. It then becomes possible to do something
+like
+
+    git fetch origin
+    perfact-zopeplayback --pick origin/master
+
+to pull the latest commit, apply it to the current repo and upload the affected
+paths to the Data.FS. It can also be used to pull multiple commits - allowing,
+for example, to pull all commits where the commit message starts with T12345:
+
+    perfact-zopeplayback --pick $(git log origin/master --reverse --pretty=%H --grep="^T12345" )
+
 ## Compatibility
 This package aims to replace similar functionality that was previously found in
 python-perfact and perfact-dbutils-zope2. For backwards compatibility, those

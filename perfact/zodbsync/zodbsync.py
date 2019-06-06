@@ -5,6 +5,7 @@ import sys
 import os
 import shutil
 import time  # for periodic output
+import filelock
 
 # for accessing Data.fs directly:
 import Zope2
@@ -356,6 +357,7 @@ class ZODBSync:
         self.config = config
         self.site = site
         self.base_dir = config.base_dir
+        self.lock = filelock.FileLock(self.base_dir + '/.zodbsync.lock')
         self.manager_user = getattr(config, 'manager_user', 'perfact')
         self.create_manager_user = getattr(config, 'create_manager_user',
                                            False)
@@ -407,6 +409,20 @@ class ZODBSync:
             'Z SQL Method': 'sql',
             'Script (Python)': 'py',
         }
+
+    def acquire_lock(self):
+        try:
+            self.lock.acquire(timeout=1)
+        except filelock.Timeout:
+            self.logger.debug("Acquiring exclusive lock...")
+            try:
+                self.lock.acquire(timeout=10)
+            except filelock.Timeout:
+                self.logger.error("Unable to acquire lock.")
+                sys.exit(1)
+
+    def release_lock(self):
+        self.lock.release()
 
     def start_transaction(self, note=''):
         ''' Start a transaction with a given note and return the transaction
