@@ -6,7 +6,6 @@
 import sys
 # for argument reading and parsing:
 import argparse
-import sys
 import subprocess
 # for Data.fs reading / writing:
 import perfact.zodbsync
@@ -42,13 +41,21 @@ if __name__ == '__main__':
             help="Skip failed objects and continue",
             default=False)
     parser.add_argument(
-        'path', nargs='+', type=str,
-        help='Sub-Path in Data.fs to be recorded',
-        )
-    parser.add_argument(
-        '--commit', type=str,
-        help='Git commit ID which is cherry-picked and uploaded'
+        '--pick', action='store_true',
+        help='''
+        Switch to cherry-pick mode. The positional arguments are then
+        interpreted as commits, which are checked for compatibility and
+        applied, playing back all affected paths at the end.
+        ''',
     )
+    parser.add_argument(
+        'path', nargs='+', type=str,
+        help='''
+        In default mode, paths of Data.FS objects to be played back. With
+        --pick, commits to be applied. The object list is then determined
+        automatically.
+        ''',
+        )
     if 'perfact.loggingtools' in sys.modules:
         perfact.loggingtools.addArgs(parser, name='ZODBSync')
 
@@ -58,18 +65,10 @@ if __name__ == '__main__':
     if 'perfact.loggingtools' in sys.modules:
         logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
     paths = args.path
-    paths.sort()
     override = args.override
     recurse = not args.no_recurse
 
-    commit = args.commit
-
-    if (commit and paths):
-        print('Error: --commit and paths are exclusive')
-        sys.exit(1)
-    if (not commit and not paths):
-        print('Error: either a commit ID or at least one path are required')
-        sys.exit(2)
+    pickmode = args.pick
 
     # Setup sync toolkit
     sync = perfact.zodbsync.ZODBSync(conffile=args.config, logger=logger)
@@ -77,40 +76,67 @@ if __name__ == '__main__':
     def gitcmd(*args):
         return ['git', '-C', sync.base_dir] + list(args)
 
-    if commit:
-        base_dir = '/home/viktor/git/ema-devel-2018-test'
-        # obtain files affected by the commit
-        files = [
-            line for line in subprocess.check_output(
-                gitcmd('diff-tree', '--no-commit-id', '--name-only', '-r',
-                       commit), universal_newlines=True
-            ).split('\n')
-            if line
-        ]
-        paths = [
-            filename[len('__root__'):].rsplit('/',1)[0]
-            for filename in files
-        ]
-        print('Affected paths:')
-        for path in paths:
-            print('  ', path)
+    if pickmode:
+        # TODO: grab some lock
 
-        # check if these files currently differ from their state *before* the given commit
-        try:
-            subprocess.check_call(
-                gitcmd('diff', '--exit-code', commit+'~', 'HEAD~', '--', *files)
-            )
-        except subprocess.CalledProcessError:
-            print('Affected files differ between current HEAD and state before'
-                  ' commit that is to be applied')
+        # Check that there are no unstaged changes
+        dirty_workdir = len(subprocess.check_output(
+            gitcmd('status', '--porcelain'),
+        )) > 0
+        if dirty_workdir:
+            print("You have unstaged changes. Please commit or stash them")
             sys.exit(1)
-        subprocess.check_call(gitcmd('cherry-pick', commit))
+
+        commits = paths
+        paths = set()
+
+        orig_commit = subprocess.check_output(
+            gitcmd('show-ref', '--head', 'HEAD'),
+            universal_newlines=True
+        ).split()[0]
+        print('Original commit: %s' % orig_commit)
+
+        for commit in commits:
+            # obtain files affected by the commit
+            files = [
+                line for line in subprocess.check_output(
+                    gitcmd('diff-tree', '--no-commit-id', '--name-only', '-r',
+                           commit), universal_newlines=True
+                ).strip().split('\n')
+                if line
+            ]
+            print('Affected files:')
+            for filename in files:
+                print('  %s' % filename)
+
+            # check if these files currently differ from their state *before*
+            # the given commit
+            try:
+                subprocess.check_call(
+                    gitcmd('diff', '--exit-code', commit+'~', 'HEAD', '--',
+                           *files)
+                )
+            except subprocess.CalledProcessError:
+                print('Affected files differ between current HEAD and state'
+                      ' before commit that is to be applied')
+                subprocess.check_call(gitcmd('reset', '--hard', orig_commit))
+                subprocess.check_call(gitcmd('clean', '-df'))
+                sys.exit(1)
+
+            paths.update({
+                filename[len('__root__'):].rsplit('/', 1)[0]
+                for filename in files
+            })
+            subprocess.check_call(gitcmd('cherry-pick', commit))
+
+        paths = list(paths)
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:
         note += ': ' + paths[0]
     txn_mgr = sync.start_transaction(note=note)
 
+    paths.sort()
     try:
         for path in paths:
             sync.playback(path=path,
