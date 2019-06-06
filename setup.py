@@ -21,5 +21,5 @@ setup(name='perfact-zodbsync',
       ],
       license='GPLv2',
       platforms=['Linux',],
-      # install_requires=['distribute',],
+      install_requires=['filelock', ],
       )

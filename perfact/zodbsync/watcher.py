@@ -115,6 +115,7 @@ class ZODBSyncWatcher:
         # not know which move operations would take us from A to B. Instead, we
         # collect a list of all changed paths and record them recursively.
 
+        self.sync.acquire_lock()
         transaction.begin()
         self._set_last_visible_txn()
         self._init_tree(self.app)
@@ -167,6 +168,7 @@ class ZODBSyncWatcher:
             self.txnid_on_disk = self.last_visible_txn
             self.sync.txn_write(base64.b64encode(self.last_visible_txn))
         self.logger.info("Setup complete")
+        self.sync.release_lock()
 
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every
@@ -440,6 +442,7 @@ class ZODBSyncWatcher:
         while not exit.is_set():
             # make sure we see a consistent snapshot, even though we later
             # abort this transaction since we do not write anything
+            self.sync.acquire_lock()
             transaction.begin()
             start_txnid = self._increment_txnid(self.last_visible_txn)
             self._set_last_visible_txn()
@@ -453,6 +456,7 @@ class ZODBSyncWatcher:
             if self.last_visible_txn != self.txnid_on_disk:
                 self.txnid_on_disk = self.last_visible_txn
                 self.sync.txn_write(base64.b64encode(self.last_visible_txn))
+            self.sync.release_lock()
 
             # a wait that is interrupted immediately if exit.set() is called
             exit.wait(interval)

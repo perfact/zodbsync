@@ -4,9 +4,11 @@
 #
 
 import sys
-# for argument reading and parsing:
+# for argument parsing and executing git commands
 import argparse
+import os
 import subprocess
+
 # for Data.fs reading / writing:
 import perfact.zodbsync
 
@@ -73,12 +75,12 @@ if __name__ == '__main__':
     # Setup sync toolkit
     sync = perfact.zodbsync.ZODBSync(conffile=args.config, logger=logger)
 
+    sync.acquire_lock()
+
     def gitcmd(*args):
         return ['git', '-C', sync.base_dir] + list(args)
 
     if pickmode:
-        # TODO: grab some lock
-
         # Check that there are no unstaged changes
         dirty_workdir = len(subprocess.check_output(
             gitcmd('status', '--porcelain'),
@@ -97,6 +99,7 @@ if __name__ == '__main__':
         print('Original commit: %s' % orig_commit)
 
         for commit in commits:
+            print('Checking and applying %s.' % commit)
             # obtain files affected by the commit
             files = [
                 line for line in subprocess.check_output(
@@ -105,9 +108,6 @@ if __name__ == '__main__':
                 ).strip().split('\n')
                 if line
             ]
-            print('Affected files:')
-            for filename in files:
-                print('  %s' % filename)
 
             # check if these files currently differ from their state *before*
             # the given commit
@@ -117,19 +117,25 @@ if __name__ == '__main__':
                            *files)
                 )
             except subprocess.CalledProcessError:
-                print('Affected files differ between current HEAD and state'
-                      ' before commit that is to be applied')
+                print('Unable to apply %s due to the above differences.' %
+                      commit)
                 subprocess.check_call(gitcmd('reset', '--hard', orig_commit))
-                subprocess.check_call(gitcmd('clean', '-df'))
                 sys.exit(1)
 
             paths.update({
                 filename[len('__root__'):].rsplit('/', 1)[0]
                 for filename in files
             })
-            subprocess.check_call(gitcmd('cherry-pick', commit))
+            # compatibility since python2 has no subprocess.DEVNULL
+            fnull = open(os.devnull, 'w')
+            subprocess.check_call(
+                gitcmd('cherry-pick', commit),
+                stdout=fnull
+            )
 
-        paths = list(paths)
+        paths = sorted(paths)
+        recurse = False
+        override = True
 
     note = 'perfact-zopeplayback'
     if len(paths) == 1:
@@ -143,6 +149,7 @@ if __name__ == '__main__':
                           override=override,
                           recurse=recurse,
                           skip_errors=args.skip_errors)
+        sync.release_lock()
     except Exception:
         print('Error with path ' + path)
         txn_mgr.abort()

@@ -3,9 +3,10 @@
 # perfact-zoperecord  -  Make a snapshot of Data.fs
 #
 
-# for argument reading and parsing:
+# for argument parsing:
 import sys
 import argparse
+
 # for Data.fs reading / writing:
 import perfact.zodbsync
 
@@ -89,6 +90,7 @@ Use perfact-dbrecord from python-modules instead.
         watcher.run()
         sys.exit(0)
 
+    sync.acquire_lock()
     # Prepare the transaction argument
     if lasttxn == 'last':
         # We mean to read from the newest entry
@@ -174,3 +176,5 @@ Use perfact-dbrecord from python-modules instead.
 
     if newest_txnid:
         sync.txn_write(newest_txnid or '')
+
+    sync.release_lock()
