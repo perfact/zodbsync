@@ -1,3 +1,6 @@
+3.12.3b0
+  Fix python3 crash in read_pdata, source might be bytes or string.
+
 3.12.2
   Fix package naming error when trying to send mail with commit summary.
 
