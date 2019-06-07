@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import re
 import sys
@@ -55,74 +56,66 @@ def mod_format(data=None, indent=0, as_list=False):
     '''
 
     def str_repr(val):
-        '''Generic string representation of a value.'''
-        return str((val,))[1:-2]
+        '''Generic string representation of a value'''
 
-    def split_longlines(lines, maxlen=100, threshold=140):
-        '''Split a list of strings into a longer list of strings, but each
-        with lines no longer than <threshold>, split at <maxlen>.'''
-        index = 0
-        while True:
-            if len(lines[index]) > threshold:
-                remainder = lines[index][maxlen:]
-                lines[index] = lines[index][:maxlen]
-                lines.insert(index+1, remainder)
-            index += 1
-            if index == len(lines):
-                break
-        return lines
+        if isinstance(val, list):
+            return '[%s]' % ', '.join(str_repr(item) for item in val)
+        elif isinstance(val, tuple):
+            fmt = '(%s,)' if len(val) == 1 else '(%s)'
+            return fmt % ', '.join(str_repr(item) for item in val)
 
-    output = []
+        if PY2 and isinstance(val, (bytes, unicode)):
+            '''
+            One might assume that a most stringent representation would always
+            prefix the value with either b or u to denote bytes or unicode.
+            However, properties that were stored as bytes in Python2 (like
+            title) usually have become unicode in Python3. In a default PerFact
+            installation, these properties were always *meant* to be UTF-8
+            encoded text. So the best representation is to store them without
+            prefix and with as few escapes as possible (so no \xc3\xbc, but
+            simply ü).  The only characters that need to be escaped are \n, \\
+            and \' (because we enclose the expression in '').
+            To keep the diff to older versions smaller, we also check if there
+            is a ' but no " inside, switching the enclosing quotation marks.
+            '''
+            is_unicode = isinstance(val, unicode)
+            if is_unicode:
+                val = val.encode('utf-8')
+            val = val.replace('\\', '\\\\').replace('\n', '\\n')
+            quote = "'"
+            if ("'" in val) and not ('"' in val):
+                quote = '"'
+            else:
+                val = val.replace("'", "\\'")
 
-    def make_line(line):
-        output.append(indent * ' ' + line)
+            return ("u" if is_unicode else "") + quote + val + quote
+        else:
+            return str((val,))[1:-2]
 
     # Convert dictionary to sorted list of tuples (diff-friendly!)
     if isinstance(data, dict):
         data = [(key, value) for key, value in data.items()]
         data.sort()
 
-    make_line('[')
-    indent += 4
-    for item in data:
-        if isinstance(item[1], list):
-            # Non-trivial lists are shown on separate lines.
-            lines = item[1]
-            if len(lines) > 1:
-                make_line("("+str_repr(item[0])+", [")
-                indent += 4
-                for l in lines:
-                    make_line(str_repr(l) + ',')
-                make_line("]),")
-                indent -= 4
-            else:
-                make_line(str(item)+',')
-
-        elif isinstance(item[1], (bytes, unicode)):
-            # Multiline presentation of non-trivial text / blobs
-            text = item[1]
-            if isinstance(text, bytes):
-                newline = b'\n'
-            else:
-                newline = u'\n'
-            if text != '' and (text.find(newline) != -1 or len(text) > 80):
-                # Keep newlines after splitting.
-                lines = conserv_split(text, newline)
-                # Could be binary data. So, split superlong lines as well.
-                lines = split_longlines(lines)
-
-                make_line("("+str_repr(item[0])+", ")
-                indent += 4
-                for l in lines:
-                    make_line(str_repr(l) + '+')
-                make_line("''),")
-                indent -= 4
-            else:
-                make_line(str(item)+',')
+    # The data is now given by a list of tuples, each of which has two elements
+    # (diff-friendly version of a dict). The first element of the tuple is a
+    # string, while the second one might be any combination of lists, tuples
+    # and PODs (unicode, bytes, numbers, booleans ...). Usually, we keep each
+    # element in one line. An exception are lists with multiple elements, which
+    # allow an additional indentation, being split over multiple lines.
+    output = []
+    output.append('[')
+    for key, value in data:
+        key_repr = '    (%s, ' % str_repr(key)
+        if isinstance(value, list) and len(value) > 1:
+            # Non-trivial lists are split onto separate lines.
+            output.append(key_repr + '[')
+            for item in value:
+                output.append('        %s,' % str_repr(item))
+            output.append('        ]),')
         else:
-            make_line(str(item)+',')
-    indent -= 4
-    make_line(']')
+            output.append(key_repr + '%s),' % str_repr(value))
+    output.append(']')
 
     if as_list:
         return output
@@ -496,7 +489,9 @@ class ZODBSync:
 
         # Build metadata
         meta = {key: value for key, value in data.items() if key != 'source'}
-        fmt = mod_format(meta).encode('utf-8')
+        fmt = mod_format(meta)
+        if isinstance(fmt, unicode):
+            fmt = fmt.encode('utf-8')
 
         # Make directory for the object if it's not already there
         try:
