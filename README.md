@@ -112,11 +112,16 @@ marked as `unsupported`, which are ignored if found in the ZODB. If only a
 given object itself should be updated (properties, security settings etc.),
 `--no-recurse` can be used.
 
-If using `--pick`, the given paths are not interpreted as object paths, but as
-git commits. This is useful if the repository the Data.FS is recorded to is
-tracked by git and some development has been done on a remote system that has
-to be deployed to the current system. It then becomes possible to do something
-like
+There are two other modes to use with `perfact-zopeplayback`, selected by
+passing `--pick` or `--apply`. These assume the file system representation is
+stored in a git repository and provide wrappers for `git cherry-pick` and `git
+am`, respectively. They also change the interpretation of the positional `path`
+arguments.
+
+If using `--pick`, the given paths are interpreted as git commits. This is
+useful if some development has been done in a branch or on a remote system that
+has to be deployed to the current system. It then becomes possible to do
+something like
 
     git fetch origin
     perfact-zopeplayback --pick origin/master
@@ -126,6 +131,10 @@ paths to the Data.FS. It can also be used to pull multiple commits - allowing,
 for example, to pull all commits where the commit message starts with T12345:
 
     perfact-zopeplayback --pick $(git log origin/master --reverse --pretty=%H --grep="^T12345" )
+
+
+Similarly, `--apply` allows to pass patch files that are to be applied, playing
+back all objects that are changed by these patches.
 
 ## Compatibility
 This package aims to replace similar functionality that was previously found in
