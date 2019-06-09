@@ -73,20 +73,23 @@ def mod_format(data=None, indent=0, as_list=False):
             installation, these properties were always *meant* to be UTF-8
             encoded text. So the best representation is to store them without
             prefix and with as few escapes as possible (so no \xc3\xbc, but
-            simply ü).  The only characters that need to be escaped are \n, \\
-            and \' (because we enclose the expression in '').
+            simply ü).  The only characters that need to be escaped are \n, \r,
+            \\ and \' (because we enclose the expression in '').
             To keep the diff to older versions smaller, we also check if there
             is a ' but no " inside, switching the enclosing quotation marks.
             '''
             is_unicode = isinstance(val, unicode)
             if is_unicode:
                 val = val.encode('utf-8')
-            val = val.replace('\\', '\\\\').replace('\n', '\\n')
-            quote = "'"
+            # replacements
+            repl = [('\\', '\\\\'), ('\n', '\\n'), ('\r', '\\r')]
             if ("'" in val) and not ('"' in val):
                 quote = '"'
             else:
-                val = val.replace("'", "\\'")
+                quote = "'"
+                repl.append(("'", "\\'"))
+            for orig, r in repl:
+                val = val.replace(orig, r)
 
             return ("u" if is_unicode else "") + quote + val + quote
         else:
