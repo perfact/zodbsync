@@ -59,7 +59,7 @@ def str_repr(val):
             val = val.replace(orig, r)
 
         if quote == "'":
-            val = val.replace("'", "\'")
+            val = val.replace("'", "\\'")
 
         return ("u" if is_unicode else "") + quote + val + quote
     else:
