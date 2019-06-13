@@ -3,7 +3,8 @@ import ast
 import operator
 import string
 
-if sys.version_info.major > 2:
+PY2 = (sys.version_info.major <= 2)
+if not PY2:
     unicode = str
 
 # Helper function to generate str from bytes (Python3 only)
@@ -16,6 +17,53 @@ def str_to_bytes(value, enc='utf-8'):
     if sys.version_info.major > 2 and isinstance(value, str):
         return value.encode(enc)
     return value
+
+# replacement mapping
+repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
+# nicer formattings for some values
+repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
+# make sure backslash is escaped first
+repl = [('\\', '\\\\')] + sorted(repl.items())
+
+def str_repr(val):
+    '''Generic string representation of a value, used to serialize metadata'''
+
+    if isinstance(val, list):
+        return '[%s]' % ', '.join(str_repr(item) for item in val)
+    elif isinstance(val, tuple):
+        fmt = '(%s,)' if len(val) == 1 else '(%s)'
+        return fmt % ', '.join(str_repr(item) for item in val)
+
+    if PY2 and isinstance(val, (bytes, unicode)):
+        '''
+        One might assume that a most stringent representation would always
+        prefix the value with either b or u to denote bytes or unicode.
+        However, properties that were stored as bytes in Python2 (like
+        title) usually have become unicode in Python3. In a default PerFact
+        installation, these properties were always *meant* to be UTF-8
+        encoded text. So the best representation is to store them without
+        prefix and with as few escapes as possible (so no \xc3\xbc, but
+        simply ü). The only characters that need to be escaped are
+        unprintables, white space, backslash and the quoting character.
+        To keep the diff to older versions smaller, we also check if there
+        is a ' but no " inside, switching the enclosing quotation marks.
+        '''
+        is_unicode = isinstance(val, unicode)
+        if is_unicode:
+            val = val.encode('utf-8')
+        if ("'" in val) and not ('"' in val):
+            quote = '"'
+        else:
+            quote = "'"
+        for orig, r in repl:
+            val = val.replace(orig, r)
+
+        if quote == "'":
+            val = val.replace("'", "\'")
+
+        return ("u" if is_unicode else "") + quote + val + quote
+    else:
+        return str((val,))[1:-2]
 
 
 # Functions copied from perfact.generic
