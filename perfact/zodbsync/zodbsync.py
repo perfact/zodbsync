@@ -55,46 +55,6 @@ def mod_format(data=None, indent=0, as_list=False):
     <as_list> is True.
     '''
 
-    def str_repr(val):
-        '''Generic string representation of a value'''
-
-        if isinstance(val, list):
-            return '[%s]' % ', '.join(str_repr(item) for item in val)
-        elif isinstance(val, tuple):
-            fmt = '(%s,)' if len(val) == 1 else '(%s)'
-            return fmt % ', '.join(str_repr(item) for item in val)
-
-        if PY2 and isinstance(val, (bytes, unicode)):
-            '''
-            One might assume that a most stringent representation would always
-            prefix the value with either b or u to denote bytes or unicode.
-            However, properties that were stored as bytes in Python2 (like
-            title) usually have become unicode in Python3. In a default PerFact
-            installation, these properties were always *meant* to be UTF-8
-            encoded text. So the best representation is to store them without
-            prefix and with as few escapes as possible (so no \xc3\xbc, but
-            simply ü).  The only characters that need to be escaped are \n, \r,
-            \\ and \' (because we enclose the expression in '').
-            To keep the diff to older versions smaller, we also check if there
-            is a ' but no " inside, switching the enclosing quotation marks.
-            '''
-            is_unicode = isinstance(val, unicode)
-            if is_unicode:
-                val = val.encode('utf-8')
-            # replacements
-            repl = [('\\', '\\\\'), ('\n', '\\n'), ('\r', '\\r')]
-            if ("'" in val) and not ('"' in val):
-                quote = '"'
-            else:
-                quote = "'"
-                repl.append(("'", "\\'"))
-            for orig, r in repl:
-                val = val.replace(orig, r)
-
-            return ("u" if is_unicode else "") + quote + val + quote
-        else:
-            return str((val,))[1:-2]
-
     # Convert dictionary to sorted list of tuples (diff-friendly!)
     if isinstance(data, dict):
         data = [(key, value) for key, value in data.items()]
