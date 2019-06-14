@@ -58,21 +58,20 @@ def str_repr(val):
         is a ' but no " inside, switching the enclosing quotation marks.
         '''
         is_unicode = isinstance(val, unicode)
-        if is_unicode:
-            val = val.encode('utf-8')
+        for orig, r in repl:
+            val = val.replace(orig, r)
         if ("'" in val) and not ('"' in val):
             quote = '"'
         else:
             quote = "'"
-        for orig, r in repl:
-            val = val.replace(orig, r)
-
         if quote == "'":
             val = val.replace("'", "\\'")
+        if is_unicode:
+            val = val.encode('utf-8')
 
         return ("u" if is_unicode else "") + quote + val + quote
     else:
-        return str((val,))[1:-2]
+        return 'u' + repr(val)
 
 
 # Functions copied from perfact.generic
