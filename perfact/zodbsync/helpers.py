@@ -8,14 +8,22 @@ PY2 = (sys.version_info.major <= 2)
 if not PY2:
     unicode = str
 
+
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, bytes):
+    if not PY2 and isinstance(value, bytes):
         return value.decode(enc, 'ignore')
     return value
 
+
 def str_to_bytes(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, str):
+    if not PY2 and isinstance(value, str):
+        return value.encode(enc)
+    return value
+
+
+def unicode_to_str(value, enc='utf-8'):
+    if PY2 and isinstance(value, unicode):
         return value.encode(enc)
     return value
 
