@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import sys
 import ast
 import operator
@@ -7,16 +8,25 @@ PY2 = (sys.version_info.major <= 2)
 if not PY2:
     unicode = str
 
+
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, bytes):
+    if not PY2 and isinstance(value, bytes):
         return value.decode(enc, 'ignore')
     return value
 
+
 def str_to_bytes(value, enc='utf-8'):
-    if sys.version_info.major > 2 and isinstance(value, str):
+    if not PY2 and isinstance(value, str):
         return value.encode(enc)
     return value
+
+
+def unicode_to_str(value, enc='utf-8'):
+    if PY2 and isinstance(value, unicode):
+        return value.encode(enc)
+    return value
+
 
 # replacement mapping
 repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
@@ -25,8 +35,14 @@ repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 # make sure backslash is escaped first
 repl = [('\\', '\\\\')] + sorted(repl.items())
 
+
 def str_repr(val):
-    '''Generic string representation of a value, used to serialize metadata'''
+    '''Generic string representation of a value, used to serialize metadata
+
+    >>> (str_repr(u'öäüßáéí\\n\\r\\t') ==
+    ...  unicode_to_str(u"u'öäüßáéí\\\\n\\\\r\\\\t'"))
+    True
+    '''
 
     if isinstance(val, list):
         return '[%s]' % ', '.join(str_repr(item) for item in val)
@@ -49,21 +65,20 @@ def str_repr(val):
         is a ' but no " inside, switching the enclosing quotation marks.
         '''
         is_unicode = isinstance(val, unicode)
-        if is_unicode:
-            val = val.encode('utf-8')
+        for orig, r in repl:
+            val = val.replace(orig, r)
         if ("'" in val) and not ('"' in val):
             quote = '"'
         else:
             quote = "'"
-        for orig, r in repl:
-            val = val.replace(orig, r)
-
         if quote == "'":
             val = val.replace("'", "\\'")
+        if is_unicode:
+            val = val.encode('utf-8')
 
         return ("u" if is_unicode else "") + quote + val + quote
     else:
-        return str((val,))[1:-2]
+        return 'u' + repr(val)
 
 
 # Functions copied from perfact.generic
@@ -83,6 +98,7 @@ def read_pdata(obj):
             data = data.next
     return source
 
+
 def simple_html_unquote(value):
     '''Unquote quoted HTML text (minimal version)'''
     tokens = [
@@ -94,6 +110,7 @@ def simple_html_unquote(value):
     for before, after in tokens:
         value = value.replace(before, after)
     return value
+
 
 def literal_eval(value):
     '''Literal evaluator (with a bit more power than PT).
@@ -149,6 +166,7 @@ def literal_eval(value):
             raise Exception('Unsupported type {}'.format(repr(node)))
     return _convert(value)
 
+
 def cleanup_string(name,
                    valid_chars=string.printable,
                    replacement_char='_',
@@ -182,6 +200,7 @@ def cleanup_string(name,
 
     return out
 
+
 def conserv_split(val, splitby='\n'):
     '''Split by a character, conserving it in the result.'''
     output = [a+splitby for a in val.split(splitby)]
@@ -189,6 +208,7 @@ def conserv_split(val, splitby='\n'):
     if output[-1] == '':
         output.pop()
     return output
+
 
 # --- Function ported over from the Data.fs
 def prop_dict(data):
