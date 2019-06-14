@@ -35,7 +35,12 @@ repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 repl = [('\\', '\\\\')] + sorted(repl.items())
 
 def str_repr(val):
-    '''Generic string representation of a value, used to serialize metadata'''
+    '''Generic string representation of a value, used to serialize metadata
+
+    >>> (str_repr(u'öäüßáéí\\n\\r\\t') ==
+    ...  unicode_to_str(u"u'öäüßáéí\\\\n\\\\r\\\\t'"))
+    True
+    '''
 
     if isinstance(val, list):
         return '[%s]' % ', '.join(str_repr(item) for item in val)
