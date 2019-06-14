@@ -27,12 +27,14 @@ def unicode_to_str(value, enc='utf-8'):
         return value.encode(enc)
     return value
 
+
 # replacement mapping
 repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
 # nicer formattings for some values
 repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 # make sure backslash is escaped first
 repl = [('\\', '\\\\')] + sorted(repl.items())
+
 
 def str_repr(val):
     '''Generic string representation of a value, used to serialize metadata
@@ -96,6 +98,7 @@ def read_pdata(obj):
             data = data.next
     return source
 
+
 def simple_html_unquote(value):
     '''Unquote quoted HTML text (minimal version)'''
     tokens = [
@@ -107,6 +110,7 @@ def simple_html_unquote(value):
     for before, after in tokens:
         value = value.replace(before, after)
     return value
+
 
 def literal_eval(value):
     '''Literal evaluator (with a bit more power than PT).
@@ -162,6 +166,7 @@ def literal_eval(value):
             raise Exception('Unsupported type {}'.format(repr(node)))
     return _convert(value)
 
+
 def cleanup_string(name,
                    valid_chars=string.printable,
                    replacement_char='_',
@@ -195,6 +200,7 @@ def cleanup_string(name,
 
     return out
 
+
 def conserv_split(val, splitby='\n'):
     '''Split by a character, conserving it in the result.'''
     output = [a+splitby for a in val.split(splitby)]
@@ -202,6 +208,7 @@ def conserv_split(val, splitby='\n'):
     if output[-1] == '':
         output.pop()
     return output
+
 
 # --- Function ported over from the Data.fs
 def prop_dict(data):
