@@ -231,7 +231,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     # Send an update (depending on type)
     for handler in mod_implemented_handlers(obj, meta_type):
-        handler.write(obj, data)
+        handler.write(obj, d)
 
     result['obj'] = obj
     return result
