@@ -495,6 +495,8 @@ class PropertiesObj(ModObj):
         # Keep the items sorted and hash-friendly
         for item in props:
             item.sort()
+        # Sort the properties
+        props.sort()
 
         if props:
             meta.append(('props', props))
