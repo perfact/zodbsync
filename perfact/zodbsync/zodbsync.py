@@ -4,6 +4,7 @@
 import re
 import sys
 import os
+import ast
 import shutil
 import time  # for periodic output
 import filelock
@@ -22,20 +23,20 @@ import logging
 from perfact.zodbsync.object_types import object_handlers, \
         mod_implemented_handlers
 
-from perfact.zodbsync.helpers import *
+from perfact.zodbsync.helpers import str_repr, to_string, literal_eval, fix_encoding
 
 PY2 = (sys.version_info.major == 2)
 
 # Python2 backward compatibility
 if PY2:
-    import imp # for config loading
+    import imp  # for config loading
     ast.Bytes = ast.Str
 
     class DummyNameConstant:
         pass
     ast.NameConstant = DummyNameConstant
 else:
-    import importlib # for config loading
+    import importlib  # for config loading
 
 # Monkey patch ZRDB not to connect to databases immediately.
 try:
@@ -85,6 +86,7 @@ def mod_format(data=None, indent=0, as_list=False):
     else:
         return '\n'.join(output)
 
+
 def obj_contents(obj):
     ''' Fetch list of subitems '''
     if not hasattr(obj, 'objectItems'):
@@ -92,6 +94,7 @@ def obj_contents(obj):
     result = [a[0] for a in obj.objectItems()]
     result.sort()
     return result
+
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistent metadata dictionary for all types.'''
@@ -129,11 +132,12 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # if default owner is set, remove the owner attribute if it matches the
     # default owner
-    if (default_owner is not None and 
-            meta.get('owner', None) == (['acl_users'], default_owner)):
+    if (default_owner is not None
+            and meta.get('owner', None) == (['acl_users'], default_owner)):
         del meta['owner']
 
     return meta
+
 
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
               default_owner=None):
@@ -192,94 +196,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     result['obj'] = obj
     return result
-
-def fix_encoding(data, encoding):
-    '''Assume that strings in 'data' are encoded in 'encoding' and change
-    them to unicode or utf-8.
-
-    >>> example = [
-    ...  ('id', 'body'),
-    ...  ('owner', 'jan'),
-    ...  ('props', [
-    ...    [('id', 'msg_deleted'), ('type', 'string'),
-    ...     ('value', 'Datens\xe4tze gel\xf6scht!')],
-    ...    [('id', 'content_type'), ('type', 'string'),
-    ...     ('value', 'text/html')],
-    ...    [('id', 'height'), ('type', 'string'), ('value', 20)],
-    ...    [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-    ...  ('source', '<p>\\nIm Bereich Limitplanung '
-    ...             +'sind die Pl\\xe4ne und Auswertungen '
-    ...             +'zusammengefa\\xdft.\\n'),
-    ...  ('title', 'Werteplan Monats\xfcbersicht'),
-    ...  ('type', 'DTML Method'),
-    ... ]
-    >>> from pprint import pprint
-    >>> pprint(fix_encoding(example, 'iso-8859-1'))
-    [('id', 'body'),
-     ('owner', 'jan'),
-     ('props',
-      [[('id', 'msg_deleted'),
-        ('type', 'string'),
-        ('value', 'Datens\\xc3\\xa4tze gel\\xc3\\xb6scht!')],
-       [('id', 'content_type'), ('type', 'string'), ('value', 'text/html')],
-       [('id', 'height'), ('type', 'string'), ('value', 20)],
-       [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-     ('source',
-      '<p>\\nIm Bereich Limitplanung sind die Pl\\xc3\\xa4ne und Auswertungen zusammengefa\\xc3\\x9ft.\\n'),
-     ('title', 'Werteplan Monats\\xc3\\xbcbersicht'),
-     ('type', 'DTML Method')]
-
-    '''
-    unpacked = dict(data)
-    if 'props' in unpacked:
-        unpacked_props = [dict(a) for a in unpacked['props']]
-        unpacked['props'] = unpacked_props
-
-    # Skip some types
-    skip_types = ['Image', ]
-    if unpacked['type'] in skip_types:
-        return data
-
-    # Check source
-    if 'source' in unpacked and isinstance(unpacked['source'], bytes):
-        # Only these types use ustrings, all others stay binary
-        ustring_types = [
-            # 'Page Template',
-            # 'Script (Python)',
-        ]
-        conversion = unpacked['source'].decode(encoding)
-        if unpacked['type'] not in ustring_types:
-            conversion = conversion.encode('utf-8')
-        unpacked['source'] = conversion
-
-    # Check title
-    if 'title' in unpacked and isinstance(unpacked['title'], bytes):
-        ustring_types = [
-            'Page Template',
-        ]
-        conversion = unpacked['title'].decode(encoding)
-        if unpacked['type'] not in ustring_types:
-            conversion = conversion.encode('utf-8')
-        unpacked['title'] = conversion
-
-    # Check string properties
-    if 'props' in unpacked:
-        for prop in unpacked['props']:
-            if prop['type'] == 'string':
-                prop['value'] = (
-                    str(prop['value']).decode(encoding).encode('utf-8')
-                )
-
-    if 'props' in unpacked:
-        repacked_props = []
-        for item in unpacked['props']:
-            pack = list(item.items())
-            pack.sort()
-            repacked_props.append(pack)
-        unpacked['props'] = repacked_props
-    repacked = list(unpacked.items())
-    repacked.sort()
-    return repacked
 
 
 class ZODBSync:
@@ -342,7 +258,7 @@ class ZODBSync:
 
         # Some objects should be ignored by the process because of
         # their specific IDs.
-        self.ignore_objects = [ re.compile('^__'), ]
+        self.ignore_objects = [re.compile('^__'), ]
 
         # We write the binary sources into files ending with
         # appropriate extensions for convenience. This table guesses
@@ -560,7 +476,7 @@ class ZODBSync:
 
         if encoding is not None:
             # Translate file system data
-            fs_data = dict(fix_encoding(fs_data, encoding))
+            meta = dict(fix_encoding(meta, encoding))
 
         return meta
 
@@ -714,7 +630,7 @@ class ZODBSync:
                 # subpath
                 if res['override']:
                     recurse = True
-            except:
+            except Exception:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
                 severity = 'Skipping' if skip_errors else 'ERROR'
@@ -751,7 +667,7 @@ class ZODBSync:
                 if self.is_ignored(item):
                     continue
                 self.playback(path=os.path.join(path, item), override=override,
-                        encoding=encoding, skip_errors=skip_errors)
+                              encoding=encoding, skip_errors=skip_errors)
 
         # Allow actions after recursing, like sorting children
         for handler in mod_implemented_handlers(obj, fs_data['type']):

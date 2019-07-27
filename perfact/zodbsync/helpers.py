@@ -8,6 +8,7 @@ PY2 = (sys.version_info.major <= 2)
 if not PY2:
     unicode = str
 
+
 def to_string(value, enc='utf-8'):
     '''This method delivers bytes in python2 and unicode in python3.'''
     if isinstance(value, str):
@@ -18,9 +19,9 @@ def to_string(value, enc='utf-8'):
         return value.decode(enc)
     try:
         return str(value)
-    except:
-        pass
-    raise ValueError("could not convert '%s' to string!" % repr(value))
+    except Exception:
+        raise ValueError("could not convert '%s' to string!" % repr(value))
+
 
 # Helper function to generate str from bytes (Python3 only)
 def bytes_to_str(value, enc='utf-8'):
@@ -33,6 +34,7 @@ def str_to_bytes(value, enc='utf-8'):
     if not PY2 and isinstance(value, str):
         return value.encode(enc)
     return value
+
 
 # replacement mapping
 repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
@@ -67,6 +69,7 @@ str_repr_tests = [
     ['"', "'" + '"' + "'"],  # '"'
     ["'" + '"', "'\\'\"'"],  # '\'"'
 ]
+
 
 def str_repr(val):
     '''
@@ -134,6 +137,105 @@ def str_repr(val):
         return ("u" if is_unicode else "") + quote + val + quote
     else:
         return repr(val)
+
+
+def fix_encoding(data, encoding):
+    '''Assume that strings in 'data' are encoded in 'encoding' and change
+    them to unicode or utf-8.
+    Only python 2!
+
+    >>> example = [
+    ...  ('id', 'body'),
+    ...  ('owner', 'jan'),
+    ...  ('props', [
+    ...    [('id', 'msg_deleted'), ('type', 'string'),
+    ...     ('value', 'Datens\xe4tze gel\xf6scht!')],
+    ...    [('id', 'content_type'), ('type', 'string'),
+    ...     ('value', 'text/html')],
+    ...    [('id', 'height'), ('type', 'int'), ('value', 20)],
+    ...    [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
+    ...  ('source', '<p>\\nIm Bereich Limitplanung '
+    ...             +'sind die Pl\\xe4ne und Auswertungen '
+    ...             +'zusammengefa\\xdft.\\n'),
+    ...  ('title', 'Werteplan Monats\xfcbersicht'),
+    ...  ('type', 'DTML Method'),
+    ... ]
+    >>> result = [ ('id', 'body'),
+    ...            ('owner', 'jan'),
+    ...            ('props',
+    ...             [[('id', 'msg_deleted'),
+    ...               ('type', 'string'),
+    ...               ('value', 'Datens\xc3\xa4tze gel\xc3\xb6scht!')],
+    ...              [('id', 'content_type'), ('type', 'string'),
+    ...               ('value', 'text/html')],
+    ...              [('id', 'height'), ('type', 'int'), ('value', 20)],
+    ...              [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
+    ...            ('source',
+    ...             '<p>\\nIm Bereich Limitplanung sind die Pl\xc3\xa4ne '
+    ...             'und Auswertungen zusammengefa\xc3\x9ft.\\n'),
+    ...            ('title', 'Werteplan Monats\xc3\xbcbersicht'),
+    ...            ('type', 'DTML Method')]
+    >>> if PY2 and fix_encoding(example, 'iso-8859-1') != result:
+    ...     print("got:")
+    ...     print(fix_encoding(example, 'iso-8859-1'))
+    ...     print("expected:")
+    ...     print(result)
+    ... else:
+    ...     True
+    True
+
+    '''
+    assert PY2, "Not implemented for PY3 yet"
+    unpacked = dict(data)
+    if 'props' in unpacked:
+        unpacked_props = [dict(a) for a in unpacked['props']]
+        unpacked['props'] = unpacked_props
+
+    # Skip some types
+    skip_types = ['Image', ]
+    if unpacked['type'] in skip_types:
+        return data
+
+    # Check source
+    if 'source' in unpacked and isinstance(unpacked['source'], bytes):
+        # Only these types use ustrings, all others stay binary
+        ustring_types = [
+            # 'Page Template',
+            # 'Script (Python)',
+        ]
+        conversion = unpacked['source'].decode(encoding)
+        if unpacked['type'] not in ustring_types:
+            conversion = conversion.encode('utf-8')
+        unpacked['source'] = conversion
+
+    # Check title
+    if 'title' in unpacked and isinstance(unpacked['title'], bytes):
+        ustring_types = [
+            'Page Template',
+        ]
+        conversion = unpacked['title'].decode(encoding)
+        if unpacked['type'] not in ustring_types:
+            conversion = conversion.encode('utf-8')
+        unpacked['title'] = conversion
+
+    # Check string properties
+    if 'props' in unpacked:
+        for prop in unpacked['props']:
+            if prop['type'] == 'string':
+                prop['value'] = (
+                    str(prop['value']).decode(encoding).encode('utf-8')
+                )
+
+    if 'props' in unpacked:
+        repacked_props = []
+        for item in unpacked['props']:
+            pack = list(item.items())
+            pack.sort()
+            repacked_props.append(pack)
+        unpacked['props'] = repacked_props
+    repacked = list(unpacked.items())
+    repacked.sort()
+    return repacked
 
 
 # Functions copied from perfact.generic
