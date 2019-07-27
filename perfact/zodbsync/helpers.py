@@ -54,11 +54,18 @@ str_repr_tests = [
     ['args="1, 2, 3"',
      "'args=\"1, 2, 3\"'"],
 
-    [True,
-     'True'],
+    [True, 'True'],
+
+    [45, '45'],
+
+    [34.5, '34.5'],
 
     [('args', 'id=None, tn=False, streaming=True'),
      "('args', 'id=None, tn=False, streaming=True')"],
+
+    ["'", '"' + "'" + '"'],  # "'"
+    ['"', "'" + '"' + "'"],  # '"'
+    ["'" + '"', "'\\'\"'"],  # '\'"'
 ]
 
 def str_repr(val):
@@ -80,17 +87,22 @@ def str_repr(val):
     character. To keep the diff to older versions smaller, we also check if
     there is a ' but no " inside, switching the enclosing quotation marks.
 
-    Even properties that are already unicode in Python 2 do not complain if
-    being set with a bytes value, interpreting it correctly as UTF-8.
-    
-    This strategy ensures
-    a) that the contents of both bytes and unicode properties are transferred
-    correctly when recording in Python 2 and playing back in Python 2
-    b) that the contents of both bytes and unicode properties are transferred
-    correctly when recording in Python 2 and playing back in Python 3
-    c) That there is no diff if any of these played back properties is
-    re-recorded
+    Bytes properties in Python 3 do not seem to exist, but they would be
+    recorded as b'...'. If playing this back in Python 2, it would work, but
+    re-recording it would change the recording. However, this is not a scenario
+    we want to cover.
 
+    Unicode properties in Python 2, on the other hand, do exist (some titles).
+    If they were recorded as-is, they would give u'...'. If played back like
+    that to Python2 or Python3, they would give the correct result. However, if
+    they were played back to Python 3 and then re-recorded, they would create a
+    diff.
+    Instead, at least all title properties are converted to strings (which in
+    Python 2 are bytes) before being recorded (see mod_read in zodbsync.py).
+    That way they give the same recording in Python 2 and 3. Playing them back
+    on Python 3 does not pose a problem, but even on Python 2 setting a title
+    that expects to be unicode with a bytes value works and automatically
+    decodes using utf-8, as intended.
 
     >>> comp = [
     ...     (str_repr(item[0]), item[1])
