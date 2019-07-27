@@ -112,7 +112,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # The title should always be readable
     title = getattr(obj, 'title', None)
-    meta['title'] = title
+    meta['title'] = to_string(title)
 
     # Generic and meta type dependent handlers
 
