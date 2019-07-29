@@ -105,6 +105,8 @@ def str_repr(val):
     Python version to another ('testü' is a bytes array in Python2 containing
     6 bytes that are meant to represent the given 5 characters, while it is a
     unicode array in Python 3, stored in memory in some irrelevant manner).
+    The only characters being escaped are the unprintables (ASCII values 0-31),
+    the backslash and, if necessary, the quoting character.
 
     This also ensures that recording metadata in Python 2, sending it through
     2to3, playing it back in Python 3 and recording it again will a) restore
@@ -144,15 +146,14 @@ def str_repr(val):
             val.decode('utf-8')
         except UnicodeDecodeError:
             return 'b' + repr(val)
+
         for orig, r in repl:
             val = val.replace(orig, r)
+
         if ("'" in val) and not ('"' in val):
-            quote = '"'
+            return '"%s"' % val
         else:
-            quote = "'"
-        if quote == "'":
-            val = val.replace("'", "\\'")
-        return quote + val + quote
+            return "'%s'" % val.replace("'", "\\'")
     else:
         return repr(val)
 
