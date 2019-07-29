@@ -36,7 +36,7 @@ def str_to_bytes(value, enc='utf-8'):
     return value
 
 
-# replacement mapping
+# replacement mapping for str_repr
 repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
 # nicer formattings for some values
 repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
@@ -68,51 +68,68 @@ str_repr_tests = [
     ["'", '"' + "'" + '"'],  # "'"
     ['"', "'" + '"' + "'"],  # '"'
     ["'" + '"', "'\\'\"'"],  # '\'"'
+
+    # try a byte that is not valid UTF-8
+    [b'test\xaa', "b'test\\xaa'" if PY2 else u"b'test\\xaa'"],
+
+    [u'test\xaa', "u'test\\xaa'" if PY2 else u"'test\xaa'"],
 ]
 
 
 def str_repr(val):
     '''
     Generic string representation of a value, used to serialize metadata.
-    This supports
-    a) strings (bytes in python 2 or unicode in python 3)
-    b) other basic types (boolean, None, integer, float)
-    c) lists and tuples with elements of a)-c)
 
-    One might assume that a most stringent representation would always prefix
-    string values with either b or u to denote bytes or unicode. However,
-    properties that were stored as bytes in Python2 (like many titles) usually
-    have become unicode in Python3. In a default PerFact installation, these
-    properties were always *meant* to be UTF-8 encoded text. So the best
-    representation is to store them without prefix and with as few escapes as
-    possible (so no \xc3\xbc, but simply ü). The only characters that need to
-    be escaped are unprintables, white space, backslash and the quoting
-    character. To keep the diff to older versions smaller, we also check if
-    there is a ' but no " inside, switching the enclosing quotation marks.
+    This function is similar to repr(), giving a string representation of val
+    that can be stored to disk, read in again and fed into eval() in order to
+    regain the data. It supports basic data types (None, bool, int, float),
+    strings (both bytes and unicode) and lists and tuples (with contents that
+    are themselves also supported). Other data types might also be supported
+    since it falls back to using repr(), but then the elements might be handled
+    differently (so if a dict contains string values, the special string
+    handling will no longer be used).
 
-    Bytes properties in Python 3 do not seem to exist, but they would be
-    recorded as b'...'. If playing this back in Python 2, it would work, but
-    re-recording it would change the recording. However, this is not a scenario
-    we want to cover.
+    The most notable difference to repr() is the handling of strings. One of
+    the use cases of zodbsync is the transition of a ZODB from Python 2/Zope2
+    to Python 3/Zope4. Since simple string literals (like 'testü') mean
+    something different in Python 2 than in Python 3 (bytes in the first case,
+    unicode in the second), one might assume that the best representation would
+    be to always use explicit literals (b'testü' or u'testü'). However,
+    properties that were stored as bytes in Python 2 (like the titles of many
+    objects) usually have become unicode in Python3. In a default PerFact
+    installation, these properties were always *meant* to be UTF-8 encoded
+    text. So the best representation should store strings (i.e., bytes arrays
+    in Python 2 or unicode arrays in Python 3) without prefix and with as few
+    escapes as possible (so no \\xc3\\xbc, but simply ü), since this allows to
+    transfer the *meaning* rather than the *implementation details* from one
+    Python version to another ('testü' is a bytes array in Python2 containing
+    6 bytes that are meant to represent the given 5 characters, while it is a
+    unicode array in Python 3, stored in memory in some irrelevant manner).
 
-    Unicode properties in Python 2, on the other hand, do exist (some titles).
-    If they were recorded as-is, they would give u'...'. If played back like
-    that to Python2 or Python3, they would give the correct result. However, if
-    they were played back to Python 3 and then re-recorded, they would create a
-    diff.
-    Instead, at least all title properties are converted to strings (which in
-    Python 2 are bytes) before being recorded (see mod_read in zodbsync.py).
-    That way they give the same recording in Python 2 and 3. Playing them back
-    on Python 3 does not pose a problem, but even on Python 2 setting a title
-    that expects to be unicode with a bytes value works and automatically
-    decodes using utf-8, as intended.
+    This also ensures that recording metadata in Python 2, sending it through
+    2to3, playing it back in Python 3 and recording it again will a) restore
+    the correct meaning and b) create no diff for these properties in the 2to3
+    step or in the re-recording step - at least for properties that were bytes
+    in Python 2 and are unicode in Python 3.
 
-    >>> comp = [
-    ...     (str_repr(item[0]), item[1])
-    ...     for item in str_repr_tests
-    ... ]
-    >>> [item for item in comp if item[0] != item[1]]
-    []
+    Properties that were already unicode in Python2 do also exist. For these,
+    the recording would produce a literal like u'test\\xfc'. The 2to3 step
+    would remove the prefix, resulting in 'test\\xfc'. Playing the property
+    back to Python 3 would transport the correct value, but re-recording it
+    would produce 'testü'.
+
+    In order to remove both diffs, we encode all titles that are already
+    unicode in Python 2 to give bytes (see zodbsync.py:mod_read). They are
+    therefore recorded without a "u"-prefix and can be played back to both
+    Python 2 and Python 3, since setting a unicode title to a value that is
+    a bytes array automatically decodes the bytes array.
+
+    >>> for item in str_repr_tests:
+    ...     res = str_repr(item[0])
+    ...     if res != item[1]:
+    ...         print("input: %s" % item[0])
+    ...         print("output: %s" % res)
+    ...         print("expected: %s" % item[1])
     '''
 
     if isinstance(val, list):
@@ -121,8 +138,12 @@ def str_repr(val):
         fmt = '(%s,)' if len(val) == 1 else '(%s)'
         return fmt % ', '.join(str_repr(item) for item in val)
 
-    if PY2 and isinstance(val, (bytes, unicode)):
-        is_unicode = isinstance(val, unicode)
+    if PY2 and isinstance(val, bytes):
+        # fall back to repr if val is not valid UTF-8
+        try:
+            val.decode('utf-8')
+        except UnicodeDecodeError:
+            return 'b' + repr(val)
         for orig, r in repl:
             val = val.replace(orig, r)
         if ("'" in val) and not ('"' in val):
@@ -131,10 +152,7 @@ def str_repr(val):
             quote = "'"
         if quote == "'":
             val = val.replace("'", "\\'")
-        if is_unicode:
-            val = val.encode('utf-8')
-
-        return ("u" if is_unicode else "") + quote + val + quote
+        return quote + val + quote
     else:
         return repr(val)
 

@@ -20,10 +20,11 @@ import AccessControl.SecurityManagement
 # stdout)
 import logging
 # Plugins for handling different object types
-from perfact.zodbsync.object_types import object_handlers, \
-        mod_implemented_handlers
+from perfact.zodbsync.object_types import object_handlers,\
+    mod_implemented_handlers
 
-from perfact.zodbsync.helpers import str_repr, to_string, literal_eval, fix_encoding
+from perfact.zodbsync.helpers import str_repr, to_string, literal_eval,\
+    fix_encoding
 
 PY2 = (sys.version_info.major == 2)
 
