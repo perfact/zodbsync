@@ -283,10 +283,7 @@ class ZODBSyncWatcher:
             obj=obj,
             default_owner=self.sync.default_owner
         )
-        self.sync.fs_write(
-            path=self.sync.site+path,
-            data=data,
-        )
+        self.sync.fs_write(path=path, data=data)
 
     def _update_objects(self):
         '''
