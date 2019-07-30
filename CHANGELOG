@@ -1,8 +1,10 @@
-3.12.5.dev0
-  Change handling of strings in metadata for transition from Python 2 to 3.
+3.12.5
+  Sort properties alphabetically when recording, ensuring stability when
+  playing back and re-recording.
 
-  WARNING: If updating to this version, you must expect a large diff in your
-  repository on the next call to zoperecord.
+  Consequently use relative paths and os.path.join, fixing #15.
+
+  Change handling of strings in metadata for transition from Python 2 to 3.
 
   * Properties that were stored as bytes in Python 2 and are stored as Unicode
     in Python 3 are now recorded using UTF-8 literals instead of their 7-bit
@@ -14,6 +16,9 @@
     recording, allowing a smaller diff in the transition to Python 3.
 
   * Metadata recording no longer attempts to split long lines.
+
+  WARNING: If updating to this version, you must expect a large diff in your
+  repository on the next call to zoperecord.
 
 3.12.4
   Provide a wrapper to apply patches and play back the affected objects.
