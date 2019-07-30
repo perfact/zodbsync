@@ -1,8 +1,10 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 import re
 import sys
 import os
+import ast
 import shutil
 import time  # for periodic output
 import filelock
@@ -18,23 +20,24 @@ import AccessControl.SecurityManagement
 # stdout)
 import logging
 # Plugins for handling different object types
-from perfact.zodbsync.object_types import object_handlers, \
-        mod_implemented_handlers
+from perfact.zodbsync.object_types import object_handlers,\
+    mod_implemented_handlers
 
-from perfact.zodbsync.helpers import *
+from perfact.zodbsync.helpers import str_repr, to_string, literal_eval,\
+    fix_encoding
 
 PY2 = (sys.version_info.major == 2)
 
 # Python2 backward compatibility
 if PY2:
-    import imp # for config loading
+    import imp  # for config loading
     ast.Bytes = ast.Str
 
     class DummyNameConstant:
         pass
     ast.NameConstant = DummyNameConstant
 else:
-    import importlib # for config loading
+    import importlib  # for config loading
 
 # Monkey patch ZRDB not to connect to databases immediately.
 try:
@@ -54,80 +57,36 @@ def mod_format(data=None, indent=0, as_list=False):
     <as_list> is True.
     '''
 
-    def str_repr(val):
-        '''Generic string representation of a value.'''
-        return str((val,))[1:-2]
-
-    def split_longlines(lines, maxlen=100, threshold=140):
-        '''Split a list of strings into a longer list of strings, but each
-        with lines no longer than <threshold>, split at <maxlen>.'''
-        index = 0
-        while True:
-            if len(lines[index]) > threshold:
-                remainder = lines[index][maxlen:]
-                lines[index] = lines[index][:maxlen]
-                lines.insert(index+1, remainder)
-            index += 1
-            if index == len(lines):
-                break
-        return lines
-
-    output = []
-
-    def make_line(line):
-        output.append(indent * ' ' + line)
-
     # Convert dictionary to sorted list of tuples (diff-friendly!)
     if isinstance(data, dict):
         data = [(key, value) for key, value in data.items()]
         data.sort()
 
-    make_line('[')
-    indent += 4
-    for item in data:
-        if isinstance(item[1], list):
-            # Non-trivial lists are shown on separate lines.
-            lines = item[1]
-            if len(lines) > 1:
-                make_line("("+str_repr(item[0])+", [")
-                indent += 4
-                for l in lines:
-                    make_line(str_repr(l) + ',')
-                make_line("]),")
-                indent -= 4
-            else:
-                make_line(str(item)+',')
-
-        elif isinstance(item[1], (bytes, unicode)):
-            # Multiline presentation of non-trivial text / blobs
-            text = item[1]
-            if isinstance(text, bytes):
-                newline = b'\n'
-            else:
-                newline = u'\n'
-            if text != '' and (text.find(newline) != -1 or len(text) > 80):
-                # Keep newlines after splitting.
-                lines = conserv_split(text, newline)
-                # Could be binary data. So, split superlong lines as well.
-                lines = split_longlines(lines)
-
-                make_line("("+str_repr(item[0])+", ")
-                indent += 4
-                for l in lines:
-                    make_line(str_repr(l) + '+')
-                make_line("''),")
-                indent -= 4
-            else:
-                make_line(str(item)+',')
+    # The data is now given by a list of tuples, each of which has two elements
+    # (diff-friendly version of a dict). The first element of the tuple is a
+    # string, while the second one might be any combination of lists, tuples
+    # and PODs (unicode, bytes, numbers, booleans ...). Usually, we keep each
+    # element in one line. An exception are lists with multiple elements, which
+    # allow an additional indentation, being split over multiple lines.
+    output = []
+    output.append('[')
+    for key, value in data:
+        key_repr = '    (%s, ' % str_repr(key)
+        if isinstance(value, list) and len(value) > 1:
+            # Non-trivial lists are split onto separate lines.
+            output.append(key_repr + '[')
+            for item in value:
+                output.append('        %s,' % str_repr(item))
+            output.append('        ]),')
         else:
-            make_line(str(item)+',')
-    indent -= 4
-    make_line(']')
+            output.append(key_repr + '%s),' % str_repr(value))
+    output.append(']')
 
     if as_list:
         return output
     else:
         return '\n'.join(output)
+
 
 def obj_contents(obj):
     ''' Fetch list of subitems '''
@@ -136,6 +95,7 @@ def obj_contents(obj):
     result = [a[0] for a in obj.objectItems()]
     result.sort()
     return result
+
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
     '''Build a consistent metadata dictionary for all types.'''
@@ -156,7 +116,8 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # The title should always be readable
     title = getattr(obj, 'title', None)
-    meta['title'] = title
+    # see comment in helpers.py:str_repr for why we convert to string
+    meta['title'] = to_string(title)
 
     # Generic and meta type dependent handlers
 
@@ -172,11 +133,12 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     # if default owner is set, remove the owner attribute if it matches the
     # default owner
-    if (default_owner is not None and 
-            meta.get('owner', None) == (['acl_users'], default_owner)):
+    if (default_owner is not None
+            and meta.get('owner', None) == (['acl_users'], default_owner)):
         del meta['owner']
 
     return meta
+
 
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
               default_owner=None):
@@ -235,94 +197,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     result['obj'] = obj
     return result
-
-def fix_encoding(data, encoding):
-    '''Assume that strings in 'data' are encoded in 'encoding' and change
-    them to unicode or utf-8.
-
-    >>> example = [
-    ...  ('id', 'body'),
-    ...  ('owner', 'jan'),
-    ...  ('props', [
-    ...    [('id', 'msg_deleted'), ('type', 'string'),
-    ...     ('value', 'Datens\xe4tze gel\xf6scht!')],
-    ...    [('id', 'content_type'), ('type', 'string'),
-    ...     ('value', 'text/html')],
-    ...    [('id', 'height'), ('type', 'string'), ('value', 20)],
-    ...    [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-    ...  ('source', '<p>\\nIm Bereich Limitplanung '
-    ...             +'sind die Pl\\xe4ne und Auswertungen '
-    ...             +'zusammengefa\\xdft.\\n'),
-    ...  ('title', 'Werteplan Monats\xfcbersicht'),
-    ...  ('type', 'DTML Method'),
-    ... ]
-    >>> from pprint import pprint
-    >>> pprint(fix_encoding(example, 'iso-8859-1'))
-    [('id', 'body'),
-     ('owner', 'jan'),
-     ('props',
-      [[('id', 'msg_deleted'),
-        ('type', 'string'),
-        ('value', 'Datens\\xc3\\xa4tze gel\\xc3\\xb6scht!')],
-       [('id', 'content_type'), ('type', 'string'), ('value', 'text/html')],
-       [('id', 'height'), ('type', 'string'), ('value', 20)],
-       [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-     ('source',
-      '<p>\\nIm Bereich Limitplanung sind die Pl\\xc3\\xa4ne und Auswertungen zusammengefa\\xc3\\x9ft.\\n'),
-     ('title', 'Werteplan Monats\\xc3\\xbcbersicht'),
-     ('type', 'DTML Method')]
-
-    '''
-    unpacked = dict(data)
-    if 'props' in unpacked:
-        unpacked_props = [dict(a) for a in unpacked['props']]
-        unpacked['props'] = unpacked_props
-
-    # Skip some types
-    skip_types = ['Image', ]
-    if unpacked['type'] in skip_types:
-        return data
-
-    # Check source
-    if 'source' in unpacked and isinstance(unpacked['source'], bytes):
-        # Only these types use ustrings, all others stay binary
-        ustring_types = [
-            # 'Page Template',
-            # 'Script (Python)',
-        ]
-        conversion = unpacked['source'].decode(encoding)
-        if unpacked['type'] not in ustring_types:
-            conversion = conversion.encode('utf-8')
-        unpacked['source'] = conversion
-
-    # Check title
-    if 'title' in unpacked and isinstance(unpacked['title'], bytes):
-        ustring_types = [
-            'Page Template',
-        ]
-        conversion = unpacked['title'].decode(encoding)
-        if unpacked['type'] not in ustring_types:
-            conversion = conversion.encode('utf-8')
-        unpacked['title'] = conversion
-
-    # Check string properties
-    if 'props' in unpacked:
-        for prop in unpacked['props']:
-            if prop['type'] == 'string':
-                prop['value'] = (
-                    str(prop['value']).decode(encoding).encode('utf-8')
-                )
-
-    if 'props' in unpacked:
-        repacked_props = []
-        for item in unpacked['props']:
-            pack = list(item.items())
-            pack.sort()
-            repacked_props.append(pack)
-        unpacked['props'] = repacked_props
-    repacked = list(unpacked.items())
-    repacked.sort()
-    return repacked
 
 
 class ZODBSync:
@@ -385,7 +259,7 @@ class ZODBSync:
 
         # Some objects should be ignored by the process because of
         # their specific IDs.
-        self.ignore_objects = [ re.compile('^__'), ]
+        self.ignore_objects = [re.compile('^__'), ]
 
         # We write the binary sources into files ending with
         # appropriate extensions for convenience. This table guesses
@@ -496,7 +370,9 @@ class ZODBSync:
 
         # Build metadata
         meta = {key: value for key, value in data.items() if key != 'source'}
-        fmt = mod_format(meta).encode('utf-8')
+        fmt = mod_format(meta)
+        if isinstance(fmt, unicode):
+            fmt = fmt.encode('utf-8')
 
         # Make directory for the object if it's not already there
         try:
@@ -601,7 +477,7 @@ class ZODBSync:
 
         if encoding is not None:
             # Translate file system data
-            fs_data = dict(fix_encoding(fs_data, encoding))
+            meta = dict(fix_encoding(meta, encoding))
 
         return meta
 
@@ -755,7 +631,7 @@ class ZODBSync:
                 # subpath
                 if res['override']:
                     recurse = True
-            except:
+            except Exception:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
                 severity = 'Skipping' if skip_errors else 'ERROR'
@@ -792,7 +668,7 @@ class ZODBSync:
                 if self.is_ignored(item):
                     continue
                 self.playback(path=os.path.join(path, item), override=override,
-                        encoding=encoding, skip_errors=skip_errors)
+                              encoding=encoding, skip_errors=skip_errors)
 
         # Allow actions after recursing, like sorting children
         for handler in mod_implemented_handlers(obj, fs_data['type']):

@@ -1,3 +1,20 @@
+3.12.5.dev0
+  Change handling of strings in metadata for transition from Python 2 to 3.
+
+  WARNING: If updating to this version, you must expect a large diff in your
+  repository on the next call to zoperecord.
+
+  * Properties that were stored as bytes in Python 2 and are stored as Unicode
+    in Python 3 are now recorded using UTF-8 literals instead of their 7-bit
+    representation ('testü' instead of 'test\\xc3\\xbc'). This allows
+    transferring the meaning of such strings from Python 2 to 3 rather than the
+    implementation details, which changed for these properties.
+
+  * Titles that were already Unicode in Python 2 are now encoded when
+    recording, allowing a smaller diff in the transition to Python 3.
+
+  * Metadata recording no longer attempts to split long lines.
+
 3.12.4
   Provide a wrapper to apply patches and play back the affected objects.
 
