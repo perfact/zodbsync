@@ -356,11 +356,19 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
+    def fs_path(self, path):
+        '''
+        Return filesystem path corresponding to the object path, which might
+        start with a /.
+        '''
+        return os.path.join(self.base_dir, self.site, path.lstrip('/'))
+
     def fs_write(self, path, data):
         '''
         Write object data out to a file with the given path.
         '''
 
+        base_dir = self.fs_path(path)
         # Read the basic information
         data = dict(data)
         source = data.get('source', None)
@@ -376,26 +384,24 @@ class ZODBSync:
 
         # Make directory for the object if it's not already there
         try:
-            os.stat(self.base_dir + '/' + path)
+            os.stat(base_dir)
         except OSError:
             self.logger.debug("Will create new directory %s" % path)
-            os.makedirs(os.path.join(self.base_dir, path))
+            os.makedirs(base_dir)
 
         # Metadata
-        data_fname = '__meta__'
+        data_fname = os.path.join(base_dir, '__meta__')
         # Check if data has changed!
         try:
-            old_data = open(self.base_dir + '/' +
-                            path + '/' + data_fname, 'rb').read()
+            with open(data_fname, 'rb') as f:
+                old_data = f.read()
         except IOError:
             old_data = None
 
         if old_data != fmt:
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
-            fh = open(self.base_dir + '/' +
-                      path + '/' + data_fname, 'wb')
-            fh.write(fmt)
-            fh.close()
+            with open(data_fname, 'wb') as f:
+                f.write(fmt)
 
         # Write source
         if write_source:
@@ -413,35 +419,35 @@ class ZODBSync:
                 meta=meta,
                 obj_id=os.path.basename(path)
             )
-            src_fname = '%s.%s' % (base, ext)
+            src_fname = os.path.join(base_dir, '%s.%s' % (base, ext))
         else:
             src_fname = ''
 
         # Check if there are stray __source* files and remove them first.
-        source_files = [s for s in os.listdir(self.base_dir + '/' + path)
+        source_files = [s for s in os.listdir(base_dir)
                         if s.startswith('__source') and s != src_fname]
         for source_file in source_files:
-            os.remove(os.path.join(self.base_dir, path, source_file))
+            os.remove(os.path.join(base_dir, source_file))
 
         if write_source:
             # Check if content has changed!
             try:
-                old_data = open(os.path.join(self.base_dir, path, src_fname),
-                                'rb').read()
+                with open(src_fname, 'rb') as f:
+                    old_data = f.read()
             except IOError:
                 old_data = None
 
             if old_data != data:
                 self.logger.debug("Will write %d bytes of source" % len(data))
-                fh = open(os.path.join(self.base_dir, path, src_fname), 'wb')
-                fh.write(data)
-                fh.close()
+                with open(src_fname, 'wb') as f:
+                    f.write(data)
 
     def fs_prune(self, path, contents):
         '''
         Remove all subfolders from path that are not in contents
         '''
-        current_contents = os.listdir(self.base_dir + '/' + path)
+        base_dir = self.fs_path(path)
+        current_contents = os.listdir(base_dir)
         for item in current_contents:
             if self.is_ignored(item):
                 continue
@@ -449,28 +455,29 @@ class ZODBSync:
             if item not in contents:
                 self.logger.info("Removing old item %s from filesystem" %
                                  item)
-                shutil.rmtree(os.path.join(self.base_dir, path, item))
+                shutil.rmtree(os.path.join(base_dir, item))
 
     def fs_read(self, path, encoding=None):
         '''Read data from local file system.'''
-        data_fname = '__meta__'
 
-        filenames = os.listdir(self.base_dir + '/' + path)
+        base_dir = self.fs_path(path)
+        filenames = os.listdir(base_dir)
         src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
         src_fname = src_fnames and src_fnames[0] or None
 
-        meta_fname = os.path.join(self.base_dir, path, data_fname)
+        meta_fname = os.path.join(base_dir, '__meta__')
         if os.path.isfile(meta_fname):
-            meta_str = open(meta_fname, 'rb').read()
+            with open(meta_fname, 'rb') as f:
+                meta_str = f.read()
             meta = dict(literal_eval(meta_str))
         else:
             # if a meta file is missing, we assume a dummy folder
             meta = {'title': '', 'type': 'Folder'}
 
         if src_fname:
-            src = open(self.base_dir + '/' +
-                       path + '/' + src_fname, 'rb').read()
+            with open(os.path.join(base_dir, src_fname), 'rb') as f:
+                src = f.read()
             if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
             meta['source'] = src
@@ -483,7 +490,7 @@ class ZODBSync:
 
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
-        filenames = os.listdir(self.base_dir + '/' + path)
+        filenames = os.listdir(self.fs_path(path))
         contents = [a for a in filenames if not a.startswith('__')]
         contents.sort()
         return contents
@@ -513,14 +520,13 @@ class ZODBSync:
         '''Record a Zope object into the local filesystem'''
 
         data = mod_read(obj, default_owner=self.default_owner)
-        fs_path = self.site + path
-        self.fs_write(fs_path, data)
+        self.fs_write(path, data)
 
         if not recurse:
             return
 
         contents = obj_contents(obj) if ('unsupported' not in data) else []
-        self.fs_prune(fs_path, contents)
+        self.fs_prune(path, contents)
 
         # Update statistics
         self.num_obj_total += len(contents)
@@ -541,7 +547,7 @@ class ZODBSync:
                 continue
 
             child = getattr(obj, item)
-            self.record_obj(obj=child, path=path+'/'+item)
+            self.record_obj(obj=child, path=os.path.join(path, item))
 
     def playback(self, path=None, recurse=True, override=False,
                  skip_errors=False, encoding=None):
@@ -561,7 +567,7 @@ class ZODBSync:
             return
 
         # Step through the path components as well as the object tree.
-        folder = self.base_dir + '/' + self.site
+        folder = os.path.join(self.base_dir, self.site)
         parent_obj = None
         obj = self.app
         folder_exists = obj_exists = True
@@ -604,8 +610,7 @@ class ZODBSync:
             parent_obj.manage_delObjects(ids=[part, ])
             return
 
-        fs_path = self.site + '/' + path
-        fs_data = self.fs_read(fs_path, encoding=encoding)
+        fs_data = self.fs_read(path, encoding=encoding)
         if 'unsupported' in fs_data:
             self.logger.warn('Skipping unsupported object ' + path)
             return
@@ -644,7 +649,7 @@ class ZODBSync:
                     raise
 
         if recurse:
-            contents = self.fs_contents(fs_path)
+            contents = self.fs_contents(path)
             srv_contents = obj_contents(obj)
 
             # Update statistics
@@ -732,16 +737,14 @@ class ZODBSync:
 
     def txn_write(self, txnid):
         '''Write the newest transaction ID'''
-        path = '__last_txn__'
-        fh = open(self.base_dir + '/' + path, 'wb')
-        fh.write(txnid)
-        fh.close()
+        with open(os.path.join(self.base_dir, '__last_txn__'), 'wb') as f:
+            f.write(txnid)
 
     def txn_read(self):
         '''Read the newest transaction ID'''
-        path = '__last_txn__'
         try:
-            txn = open(self.base_dir + '/' + path, 'rb').read()
+            with open(os.path.join(self.base_dir, '__last_txn__'), 'rb') as f:
+                txn = f.read()
         except IOError:
             txn = None
         return txn
