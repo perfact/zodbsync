@@ -1,3 +1,7 @@
+3.13.0
+  Expose methods to read and write objects as well as obtain the modtime of an
+  object.
+
 3.12.5
   Sort properties alphabetically when recording, ensuring stability when
   playing back and re-recording.
