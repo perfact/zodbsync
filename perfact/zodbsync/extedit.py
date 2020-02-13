@@ -37,7 +37,7 @@ def controlfile(context, path, url):
     result += 'type: {type}\n\n{source}'.format(**data)
     return result
 
-def update(context, path, source, old_source):
+def update(context, path, source, orig_source):
     '''
     Update the object with the given source, but only if the current source
     matches the expected old_source.
@@ -45,7 +45,7 @@ def update(context, path, source, old_source):
     obj = find_obj(context, path)
     data = mod_read(obj)
 
-    if data['source'] != old_source:
+    if data['source'] != orig_source:
         return {'error': 'Object was changed'}
     data['source'] = source
     mod_write(obj, data)
