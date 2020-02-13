@@ -18,17 +18,21 @@ def controlfile(context, path, url):
     * the entrypoint url (which should be a script in Zope wrapping these methods)
     * an authentication header
     * the path to the object in question
+    * the meta_type of the object
+    * the source of the object
     '''
     data = (
         ('url', url),
         ('path', path),
         ('auth', context.REQUEST._auth),
     )
-    header = ''.join([
+    result = ''.join([
         '{}: {}\n'.format(key, value)
         for key, value in data
     ])
 
     obj = find_obj(context, path)
     data = mod_read(obj)
-    return header + data['source']
+
+    result += 'type: {type}\n\n{source}'.format(**data)
+    return result
