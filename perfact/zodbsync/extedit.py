@@ -3,6 +3,14 @@
 
 from perfact.zodbsync.zodbsync import mod_read, mod_write
 
+def find_obj(context, path):
+    obj = context
+    for part in path.split('/'):
+        if not part:
+            continue
+        obj = getattr(context, part)
+    return obj
+
 def controlfile(context, path, url):
     '''
     Creates a control file that can be used by an external editor to update the
@@ -16,7 +24,11 @@ def controlfile(context, path, url):
         ('path', path),
         ('auth', context.REQUEST._auth),
     )
-    return ''.join([
+    header = ''.join([
         '{}: {}\n'.format(key, value)
         for key, value in data
     ])
+
+    obj = find_obj(context, path)
+    data = mod_read(obj)
+    return header + data['source']
