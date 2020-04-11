@@ -289,6 +289,23 @@ class ZODBSync:
             'Script (Python)': 'py',
         }
 
+    @staticmethod
+    def remove_redundant_paths(paths):
+        '''
+        Sort list of paths and remove items that are redundant if remaining
+        paths are processed recursively, i.e., if /a/b/ as well as /a/ are
+        included, remove /a/b/. Works in-place
+        '''
+        paths.sort()
+        i = 0
+        last = None
+        while i < len(paths):
+            if last is not None and paths[i].startswith(last):
+                del paths[i]
+                continue
+            last = paths[i]
+            i += 1
+
     def acquire_lock(self):
         try:
             self.lock.acquire(timeout=1)

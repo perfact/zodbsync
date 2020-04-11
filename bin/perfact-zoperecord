@@ -8,7 +8,8 @@ import sys
 import argparse
 
 # for Data.fs reading / writing:
-import perfact.zodbsync
+import perfact.zodbsync.zodbsync
+import perfact.zodbsync.watcher
 
 # several additional functions are only available if python-perfact is
 # installed
@@ -81,12 +82,12 @@ Use perfact-dbrecord from python-modules instead.
         paths = [path]
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(conffile=config_path, logger=logger)
+    sync = perfact.zodbsync.zodbsync.ZODBSync(conffile=config_path, logger=logger)
     config = sync.config
 
     # Watch mode
     if args.watch:
-        watcher = perfact.zodbsync.Watcher(sync=sync, config=config)
+        watcher = perfact.zodbsync.watcher.Watcher(sync=sync, config=config)
         watcher.run()
         sys.exit(0)
 

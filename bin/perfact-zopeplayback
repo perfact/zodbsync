@@ -10,7 +10,7 @@ import os
 import subprocess
 
 # for Data.fs reading / writing:
-import perfact.zodbsync
+import perfact.zodbsync.zodbsync
 
 # advanced logging is only available if python-perfact is available
 try:
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     applymode = args.apply
 
     # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(conffile=args.config, logger=logger)
+    sync = perfact.zodbsync.zodbsync.ZODBSync(conffile=args.config, logger=logger)
 
     sync.acquire_lock()
 
