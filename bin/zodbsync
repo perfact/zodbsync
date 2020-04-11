@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import sys
+import inspect
 import argparse
 
 try:
@@ -9,10 +10,22 @@ except ImportError:
     pass
 
 
-class CmdRecord():
+class SubCommand():
+    ''' Base class for Sub-Commands. '''
+    def register(self, subs):
+        ''' Add a subparser for myself. '''
+        if self.__class__ is SubCommand:
+            # Only for subclasses
+            return
+        subparser = subs.add_parser(self.__class__.__name__.lower())
+        self.add_args(subparser)
+        subparser.set_defaults(runner=self.run)
+
+
+class Record(SubCommand):
     ''' Sub-command to record objects from the Data.FS to the file system.
     '''
-    def __init__(self, parser):
+    def add_args(self, parser):
         parser.add_argument('--lasttxn', nargs='?', type=str,
                             help='Record only transactions since this '
                             'transaction (or the last used)',
@@ -23,25 +36,25 @@ class CmdRecord():
         parser.add_argument('path', type=str, nargs='+',
                             help='Sub-Path in Data.fs to be recorded')
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
-class CmdWatch():
+class Watch(SubCommand):
     ''' Sub-command to start watcher, which periodically records changes as
     they occur.
     '''
-    def __init__(self, parser):
+    def add_args(self, parser):
         pass
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
-class CmdPlayback():
+class Playback(SubCommand):
     ''' Sub-command to play back objects from the file system to the Data.fs.
     '''
-    def __init__(self, parser):
+    def add_args(self, parser):
         parser.add_argument(
             '--override', '-o', action='store_true',
             help='Override object type changes when uploading',
@@ -60,29 +73,29 @@ class CmdPlayback():
             default=False
         )
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
-class CmdPick():
+class Pick(SubCommand):
     ''' Sub-command to cherry-pick commits, apply them and play back affected
     objects.
     '''
-    def __init__(self, parser):
+    def add_args(self, parser):
         parser.add_argument(
             'commit', type=str, nargs='+',
             help='''Commits that are checked for compatibility and applied,
             playing back all affected paths at the end.'''
         )
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
-class CmdApply():
+class Apply(SubCommand):
     '''Sub-command to apply patches and play back changed files.'''
 
-    def __init(self, parser):
+    def add_args(self, parser):
         parser.add_argument(
             'patchfile', type=str, nargs='+',
             help='''Patch files which are applied to the repository (using git
@@ -90,18 +103,18 @@ class CmdApply():
             am session is automatically rolled back.''',
         )
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
-class CmdReset():
+class Reset(SubCommand):
     ''' Sub-command to reset the current branch to the state of another branch,
     playing back any changed files.'''
 
-    def __init__(self, parser):
+    def add_args(self, parser):
         pass
 
-    def __call__(self, args):
+    def run(self, args):
         print(args)
 
 
@@ -118,13 +131,11 @@ if __name__ == '__main__':
     if 'perfact.loggingtools' in sys.modules:
         perfact.loggingtools.addArgs(parser, name='ZODBSync')
 
-    # add all available classes starting with Cmd as sub-command runners
+    # add all available SubCommand classes as sub-command runners
     subs = parser.add_subparsers()
-    for cmdid, cmd in list(locals().items()):
-        if not cmdid.startswith('Cmd'):
-            continue
-        subparser = subs.add_parser(cmdid[3:].lower())
-        subparser.set_defaults(runner=cmd(subparser))
+    for cls in list(locals().values()):
+        if inspect.isclass(cls) and issubclass(cls, SubCommand):
+            cls().register(subs)
 
     args = parser.parse_args()
 
