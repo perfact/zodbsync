@@ -2,6 +2,7 @@
 
 from ..subcommand import SubCommand
 
+
 class Pick(SubCommand):
     ''' Sub-command to cherry-pick commits, apply them and play back affected
     objects.

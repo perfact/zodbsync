@@ -3,6 +3,7 @@
 from ..subcommand import SubCommand
 from ..watcher import ZODBSyncWatcher
 
+
 class Watch(SubCommand):
     ''' Sub-command to start watcher, which periodically records changes as
     they occur.

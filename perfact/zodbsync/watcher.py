@@ -35,6 +35,7 @@ def _decrement_txnid(s):
             break
     return bytes(arr)
 
+
 def _increment_txnid(s):
     ''' add 1 to s, but for s being a string of bytes'''
     arr = bytearray(s)
@@ -285,7 +286,7 @@ class ZODBSyncWatcher:
         self.logger.debug('OIDs: ' + str(sorted(self.changed_oids)))
 
         self.adoption_list = set()
-        shutil.rmtree(self.base_dir+'/../__orphans__/',ignore_errors=True)
+        shutil.rmtree(self.base_dir+'/../__orphans__/', ignore_errors=True)
 
         while len(self.changed_oids):
             # not all oids are part of our object tree yet, so we have to
@@ -341,7 +342,7 @@ class ZODBSyncWatcher:
 
         # go through old children and check if they are still there
         for child_oid, child_id in list(node['children'].items()):
-            if (child_oid not in newchildren 
+            if (child_oid not in newchildren
                     or child_id != newchildren[child_oid]):
                 # Put up for adoption. The new parent might show up later or it
                 # might be the same but the child was renamed.  However, we
@@ -383,9 +384,10 @@ class ZODBSyncWatcher:
                     self.base_dir+child['path'],
                     self.base_dir+newpath
                 )
-                if (child['parent'] is not None 
+                if (child['parent'] is not None
                         and child['parent'] in self.object_tree):
-                    del self.object_tree[child['parent']]['children'][child_oid]
+                    children = self.object_tree[child['parent']]['children']
+                    del children[child_oid]
                 child['parent'] = oid
                 self._update_path(child_oid, node['path']+child_id+'/')
                 if child_oid in self.adoption_list:

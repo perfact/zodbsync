@@ -2,6 +2,7 @@
 
 from ..subcommand import SubCommand
 
+
 class Apply(SubCommand):
     '''Sub-command to apply patches and play back changed files.'''
 
@@ -13,4 +14,3 @@ class Apply(SubCommand):
             am). If successful, the changed objects are played back. Else, the
             am session is automatically rolled back.''',
         )
-

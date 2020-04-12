@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import sys
-import inspect
 import argparse
 
 try:
@@ -10,7 +9,6 @@ except ImportError:
     pass
 
 from .zodbsync import ZODBSync
-from .subcommand import SubCommand
 
 from .commands.record import Record
 from .commands.playback import Playback
@@ -20,6 +18,9 @@ from .commands.apply import Apply
 # Future ideas:
 # from .commands.reset import Reset
 # from .commands.rebase import Rebase
+
+commands = [Record, Playback, Watch, Pick, Apply]
+
 
 def run():
     parser = argparse.ArgumentParser(description='''
@@ -36,9 +37,10 @@ def run():
 
     # add all available SubCommand classes as sub-command runners
     subs = parser.add_subparsers()
-    for cls in list(globals().values()):
-        if inspect.isclass(cls) and issubclass(cls, SubCommand):
-            cls.register(subs)
+    for cls in commands:
+        subparser = subs.add_parser(cls.__name__.lower())
+        cls.add_args(subparser)
+        subparser.set_defaults(runner=cls)
 
     args = parser.parse_args()
 

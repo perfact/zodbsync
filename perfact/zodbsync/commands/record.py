@@ -5,7 +5,7 @@ import sys
 try:
     # for git snapshot
     import perfact.pfcodechg
-except:
+except (ModuleNotFoundError, ImportError):
     pass
 
 from ..subcommand import SubCommand
@@ -84,14 +84,15 @@ class Record(SubCommand):
                 commit_message,
             )
             # only send a mail if something has changed
-            if commit_done and getattr(config, 'codechange_mail', False):
+            codechg_mail = getattr(self.sync.config, 'codechange_mail', False)
+            if commit_done and codechg_mail:
                 self.sync.logger.info('Commit was done! Sending mail...')
                 perfact.pfcodechg.git_mail_summary(
                     self.sync.config.base_dir,
                     self.sync.config.codechange_mail,
                 )
 
-        if self.args.lasttxn and (newest_txn != lasttxn):
+        if self.args.lasttxn and (newest_txnid != lasttxn):
             self.sync.txn_write(newest_txnid or '')
 
         self.sync.release_lock()
