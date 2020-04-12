@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 from ..subcommand import SubCommand
+from ..helpers import remove_redundant_paths
 
 
 class Playback(SubCommand):
     ''' Sub-command to play back objects from the file system to the Data.fs.
     '''
-    def add_args(self, parser):
+    @staticmethod
+    def add_args(parser):
         parser.add_argument(
             '--override', '-o', action='store_true',
             help='Override object type changes when uploading',
@@ -29,27 +31,27 @@ class Playback(SubCommand):
             help='Sub-Path in Data.fs to be played back',
         )
 
-    def run(self, args, sync):
-        paths = args.path
+    def run(self):
+        paths = self.args.path
         if not paths:
             return
-        recurse = not args.no_recurse
+        recurse = not self.args.no_recurse
         if recurse:
-            sync.remove_redundant_paths(paths)
+            remove_redundant_paths(paths)
 
-        sync.acquire_lock()
+        self.sync.acquire_lock()
         note = 'perfact-zopeplayback'
         if len(paths) == 1:
             note += ': ' + paths[0]
-        txn_mgr = sync.start_transaction(note=note)
+        txn_mgr = self.sync.start_transaction(note=note)
 
         try:
             for path in paths:
-                sync.playback(
+                self.sync.playback(
                     path=path,
-                    override=args.override,
+                    override=self.args.override,
                     recurse=recurse,
-                    skip_errors=args.skip_errors,
+                    skip_errors=self.args.skip_errors,
                 )
         except Exception:
             print('Error with path ' + path)
@@ -57,4 +59,4 @@ class Playback(SubCommand):
             raise
         finally:
             txn_mgr.commit()
-        sync.release_lock()
+        self.sync.release_lock()

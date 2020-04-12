@@ -4,22 +4,24 @@ class SubCommand():
     '''
     Base class for different sub-commands to be used by zodbsync.
     '''
-    def register(self, subs):
+    @classmethod
+    def register(cls, subs):
         ''' Add a subparser for myself. '''
-        if self.__class__ is SubCommand:
+        if cls is SubCommand:
             # Only for subclasses
             return
-        subparser = subs.add_parser(self.__class__.__name__.lower())
-        self.add_args(subparser)
-        subparser.set_defaults(runner=self.run)
+        subparser = subs.add_parser(cls.__name__.lower())
+        cls.add_args(subparser)
+        subparser.set_defaults(runner=cls)
 
-    def add_args(self, parser):
+    @staticmethod
+    def add_args(parser):
         ''' Overwrite to add arguments specific to sub-command. '''
         pass
 
-    def run(self, args, sync):
+    def run(self):
         '''
         Overwrite for the action that is to be performed if this subcommand is
         chosen.
         '''
-        print(args)
+        print(self.args)

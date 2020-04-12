@@ -25,6 +25,5 @@ setup(
     platforms=['Linux',],
     install_requires=[
         'filelock',
-        'Zope2',
     ],
 )

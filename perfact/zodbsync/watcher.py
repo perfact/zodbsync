@@ -17,7 +17,36 @@ import transaction
 # for "logging in"
 import AccessControl.SecurityManagement
 
-import perfact.zodbsync.zodbsync
+from .helpers import remove_redundant_paths
+from .zodbsync import mod_read
+
+
+# Helpers for handling transaction IDs (which are byte strings of length 8)
+def _decrement_txnid(s):
+    ''' subtract 1 from s, but for s being a string of bytes'''
+    arr = bytearray(s)
+    pos = len(arr)-1
+    while pos >= 0:
+        if arr[pos] == 0:
+            arr[pos] = 255
+            pos -= 1
+        else:
+            arr[pos] -= 1
+            break
+    return bytes(arr)
+
+def _increment_txnid(s):
+    ''' add 1 to s, but for s being a string of bytes'''
+    arr = bytearray(s)
+    pos = len(arr)-1
+    while pos >= 0:
+        if arr[pos] == 255:
+            arr[pos] = 0
+            pos -= 1
+        else:
+            arr[pos] += 1
+            break
+    return bytes(arr)
 
 
 class ZODBSyncWatcher:
@@ -27,54 +56,6 @@ class ZODBSyncWatcher:
     Data.FS to get the object IDs affected by those transactions, and updates
     its tree structure as well as the file system tree structure accordingly.
     """
-
-    # Helpers for handling transaction IDs (which are byte strings of length 8)
-    @staticmethod
-    def _decrement_txnid(s):
-        ''' subtract 1 from s, but for s being a string of bytes'''
-        arr = [c for c in s]
-        pos = len(arr)-1
-        while pos >= 0:
-            c = ord(arr[pos])
-            if c == 0:
-                arr[pos] = chr(255)
-                pos -= 1
-            else:
-                arr[pos] = chr(c-1)
-                break
-        return ''.join(arr)
-
-    @staticmethod
-    def _increment_txnid(s):
-        ''' add 1 to s, but for s being a string of bytes'''
-        arr = [c for c in s]
-        pos = len(arr)-1
-        while pos >= 0:
-            c = ord(arr[pos])
-            if c == 255:
-                arr[pos] = chr(0)
-                pos -= 1
-            else:
-                arr[pos] = chr(c+1)
-                break
-        return ''.join(arr)
-
-    @staticmethod
-    def _remove_subpaths(paths):
-        '''
-        Sort list of paths and remove items that are redundant if remaining
-        paths are processed recursively, i.e., if /a/b/ as well as /a/ are
-        included, remove /a/b/. Works in-place
-        '''
-        paths.sort()
-        i = 0
-        last = None
-        while i < len(paths):
-            if last is not None and paths[i].startswith(last):
-                del paths[i]
-                continue
-            last = paths[i]
-            i += 1
 
     def __init__(self, sync, config):
         self.sync = sync
@@ -115,7 +96,7 @@ class ZODBSyncWatcher:
         # not know which move operations would take us from A to B. Instead, we
         # collect a list of all changed paths and record them recursively.
 
-        self.sync.acquire_lock()
+        self.sync.acquire_lock(timeout=300)
         transaction.begin()
         self._set_last_visible_txn()
         self._init_tree(self.app)
@@ -130,7 +111,7 @@ class ZODBSyncWatcher:
             paths = ['/']
         else:
             self.txnid_on_disk = base64.b64decode(self.txnid_on_disk)
-            txn_start = self._increment_txnid(self.txnid_on_disk)
+            txn_start = _increment_txnid(self.txnid_on_disk)
 
             # obtain all object ids affected by transactions between (the one
             # in last_txn + 1) and (the currently visible one) (incl.)
@@ -156,7 +137,7 @@ class ZODBSyncWatcher:
                 )
                 self.changed_oids.difference_update(next_oids)
 
-        self._remove_subpaths(paths)
+        remove_redundant_paths(paths)
         for path in paths:
             self.logger.info('Recording %s' % path)
             self.sync.record(path)
@@ -183,10 +164,10 @@ class ZODBSyncWatcher:
             return
         self.last_visible_txn = base64.b64decode(records[0]['id'])
         # check if there are transactions we do not see yet
-        if self.app._p_jar._txn_time:
+        if getattr(self.app._p_jar, '_txn_time', None):
             # if this is set, it is the first transaction that we can not yet
             # see, so we subtract one
-            self.last_visible_txn = self._decrement_txnid(
+            self.last_visible_txn = _decrement_txnid(
                 self.app._p_jar._txn_time
             )
 
@@ -279,7 +260,7 @@ class ZODBSyncWatcher:
         self.logger.debug('OID: ' + repr(oid))
 
         obj = self.app._p_jar[oid]
-        data = perfact.zodbsync.zodbsync.mod_read(
+        data = mod_read(
             obj=obj,
             default_owner=self.sync.default_owner
         )
@@ -337,7 +318,7 @@ class ZODBSyncWatcher:
                 del self.object_tree[parent_oid]['children'][oid]
             remove_paths.append(node['path'])
 
-        self._remove_subpaths(remove_paths)
+        remove_redundant_paths(remove_paths)
         for path in remove_paths:
             self.logger.info('Removing %s' % path)
             shutil.rmtree(self.base_dir+path)
@@ -439,9 +420,9 @@ class ZODBSyncWatcher:
         while not exit.is_set():
             # make sure we see a consistent snapshot, even though we later
             # abort this transaction since we do not write anything
-            self.sync.acquire_lock()
+            self.sync.acquire_lock(timeout=300)
             transaction.begin()
-            start_txnid = self._increment_txnid(self.last_visible_txn)
+            start_txnid = _increment_txnid(self.last_visible_txn)
             self._set_last_visible_txn()
             self._read_changed_oids(
                 txn_start=start_txnid,

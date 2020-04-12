@@ -38,12 +38,21 @@ def run():
     subs = parser.add_subparsers()
     for cls in list(globals().values()):
         if inspect.isclass(cls) and issubclass(cls, SubCommand):
-            cls().register(subs)
+            cls.register(subs)
 
     args = parser.parse_args()
 
+    logger = None
     if 'perfact.loggingtools' in sys.modules:
         logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
 
-    sync = ZODBSync(conffile=args.config)
-    args.runner(args, sync)
+    sync = ZODBSync(conffile=args.config, logger=logger)
+    # Create runner and insert environment
+    runner = args.runner()
+    runner.config = sync.config
+    runner.args = args
+    runner.sync = sync
+    runner.logger = logger
+
+    # Now run
+    runner.run()

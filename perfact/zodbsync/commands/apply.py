@@ -5,7 +5,8 @@ from ..subcommand import SubCommand
 class Apply(SubCommand):
     '''Sub-command to apply patches and play back changed files.'''
 
-    def add_args(self, parser):
+    @staticmethod
+    def add_args(parser):
         parser.add_argument(
             'patchfile', type=str, nargs='+',
             help='''Patch files which are applied to the repository (using git
