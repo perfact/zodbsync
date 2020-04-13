@@ -5,7 +5,7 @@ import sys
 try:
     # for git snapshot
     import perfact.pfcodechg
-except (ModuleNotFoundError, ImportError):
+except ImportError:
     pass
 
 from ..subcommand import SubCommand

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 from ..subcommand import SubCommand
-from ..helpers import remove_redundant_paths
 
 
 class Playback(SubCommand):
@@ -32,31 +31,11 @@ class Playback(SubCommand):
         )
 
     def run(self):
-        paths = self.args.path
-        if not paths:
-            return
-        recurse = not self.args.no_recurse
-        if recurse:
-            remove_redundant_paths(paths)
-
         self.sync.acquire_lock()
-        note = 'perfact-zopeplayback'
-        if len(paths) == 1:
-            note += ': ' + paths[0]
-        txn_mgr = self.sync.start_transaction(note=note)
-
-        try:
-            for path in paths:
-                self.sync.playback(
-                    path=path,
-                    override=self.args.override,
-                    recurse=recurse,
-                    skip_errors=self.args.skip_errors,
-                )
-        except Exception:
-            print('Error with path ' + path)
-            txn_mgr.abort()
-            raise
-        finally:
-            txn_mgr.commit()
+        self.sync.playback_paths(
+            paths=self.args.path,
+            recurse=not self.args.no_recurse,
+            override=self.args.override,
+            skip_errors=self.args.skip_errors,
+        )
         self.sync.release_lock()

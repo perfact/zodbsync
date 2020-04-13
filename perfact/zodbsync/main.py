@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import logging
 
 try:
     import perfact.loggingtools
@@ -47,6 +48,11 @@ def run():
     logger = None
     if 'perfact.loggingtools' in sys.modules:
         logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
+    else:
+        logger = logging.getLogger('ZODBSync')
+        logger.setLevel(logging.INFO)
+        logger.addHandler(logging.StreamHandler())
+        logger.propagate = False
 
     sync = ZODBSync(conffile=args.config, logger=logger)
     # Create runner and insert environment
