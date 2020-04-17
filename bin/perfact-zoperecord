@@ -23,9 +23,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.lasttxn:
-        cmd = 'zodbsync record --lasttxn'.split()
+        cmd = 'record --lasttxn'.split()
     else:
-        cmd = 'zodbsync record --commit /'.split()
+        cmd = 'record --commit /'.split()
 
     runner = perfact.zodbsync.main.create_runner(cmd)
 
