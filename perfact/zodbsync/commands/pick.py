@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import subprocess
-import sys
-import os
 
 from ..subcommand import SubCommand
 
@@ -26,36 +24,36 @@ class Pick(SubCommand):
     def gitcmd(self, *args):
         return ['git', '-C', self.sync.base_dir] + list(args)
 
+    def gitcmd_run(self, *args):
+        '''Wrapper to run a git command.'''
+        subprocess.check_call(self.gitcmd(*args))
+
+    def gitcmd_output(self, *args):
+        '''Wrapper to run a git command and return the output.'''
+        return subprocess.check_output(
+            self.gitcmd(*args), universal_newlines=True
+        )
+
     def run(self):
         self.sync.acquire_lock()
         # Check that there are no unstaged changes
-        dirty_workdir = len(subprocess.check_output(
-            self.gitcmd('status', '--porcelain'),
-        )) > 0
-        if dirty_workdir:
-            self.logger.error("You have unstaged changes. Please commit or"
-                              " stash them")
-            sys.exit(1)
+        assert len(self.gitcmd_output('status', '--porcelain')) == 0, (
+            "You have unstaged changes. Please commit or stash them."
+        )
 
-        orig_commit = subprocess.check_output(
-            self.gitcmd('show-ref', '--head', 'HEAD'),
-            universal_newlines=True
-        ).split()[0]
+        orig_commit = self.gitcmd_output(
+            'show-ref', '--head', '--hash', 'HEAD',
+        ).strip()
 
         changed_files = set()
-
-        # compatibility since python2 has no subprocess.DEVNULL
-        fnull = open(os.devnull, 'w')
 
         commits = self.args.commit
         for commit in commits:
             self.logger.info('Checking and applying %s.' % commit)
             # obtain files affected by the commit
             files = [
-                line for line in subprocess.check_output(
-                    self.gitcmd('diff-tree', '--no-commit-id', '--name-only',
-                                '-r', commit),
-                    universal_newlines=True
+                line for line in self.gitcmd_output(
+                    'diff-tree', '--no-commit-id', '--name-only', '-r', commit
                 ).strip().split('\n')
                 if line
             ]
@@ -63,28 +61,24 @@ class Pick(SubCommand):
             # check if these files currently differ from their state *before*
             # the given commit
             try:
-                subprocess.check_call(
-                    self.gitcmd('diff', '--exit-code', commit+'~', 'HEAD',
-                                '--', *files)
+                subprocess.gitcmd_run(
+                    'diff', '--exit-code', commit+'~', 'HEAD', '--', *files
                 )
             except subprocess.CalledProcessError:
                 self.logger.error(
                     'Unable to apply %s due to the above differences.'
                     % commit
                 )
-                subprocess.check_call(
-                    self.gitcmd('reset', '--hard', orig_commit)
-                )
+                self.gitcmd_run('reset', '--hard', orig_commit)
                 raise
 
             changed_files.update(files)
-            subprocess.check_call(
-                self.gitcmd('cherry-pick', commit),
-                stdout=fnull
-            )
+            # capture output and discard so we don't clutter stdout
+            # Python 2 has no subprocess.DEVNULL.
+            subprocess.gitcmd_output('cherry-pick', '-Xno-renames', commit)
 
         paths = sorted({
-            filename[len('__root__'):].rsplit('/', 1)[0]
+            filename[len(self.sync.site):].rsplit('/', 1)[0]
             for filename in changed_files
         })
 
@@ -98,5 +92,5 @@ class Pick(SubCommand):
         except Exception:
             self.logger.exception('Error when playing back objects.'
                                   ' Resetting.')
-            subprocess.check_call(self.gitcmd('reset', '--hard', orig_commit))
+            self.gitcmd_run('reset', '--hard', orig_commit)
             raise
