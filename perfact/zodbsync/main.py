@@ -15,12 +15,11 @@ from .commands.record import Record
 from .commands.playback import Playback
 from .commands.watch import Watch
 from .commands.pick import Pick
-from .commands.apply import Apply
 # Future ideas:
 # from .commands.reset import Reset
 # from .commands.rebase import Rebase
 
-commands = [Record, Playback, Watch, Pick, Apply]
+commands = [Record, Playback, Watch, Pick]
 
 
 def run():
