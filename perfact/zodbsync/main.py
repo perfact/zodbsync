@@ -22,7 +22,13 @@ from .commands.pick import Pick
 commands = [Record, Playback, Watch, Pick]
 
 
-def run():
+def create_runner(argv=None):
+    '''
+    Use provided arguments to create a runner instance for the selected
+    subcommand. If no arguments are supplied, sys.argv is used.
+    This is separated for backwards compatibility of the script
+    perfact-zoperecord.
+    '''
     parser = argparse.ArgumentParser(description='''
         Tool to sync objects between a ZODB and a git-controlled folder on the
         file system.
@@ -42,7 +48,7 @@ def run():
         cls.add_args(subparser)
         subparser.set_defaults(runner=cls)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logger = None
     if 'perfact.loggingtools' in sys.modules:
@@ -61,5 +67,7 @@ def run():
     runner.sync = sync
     runner.logger = logger
 
-    # Now run
-    runner.run()
+
+def run():
+    '''Entry point for zodbsync.'''
+    create_runner().run()

@@ -24,8 +24,7 @@ class Record(SubCommand):
         if 'perfact.pfcodechg' in sys.modules:
             parser.add_argument(
                 '--commit', action='store_true', default=False,
-                help='Commit changes and send summary mail if there are'
-                ' changes.',
+                help='Commit changes and send summary mail if there are any',
             )
         parser.add_argument(
             '--no-recurse', action='store_true', default=False,

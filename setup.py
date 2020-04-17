@@ -18,7 +18,6 @@ setup(
     },
     scripts = [
         'bin/perfact-zoperecord',
-        'bin/perfact-zopeplayback',
         'bin/zodbsync',
     ],
     license='GPLv2',
