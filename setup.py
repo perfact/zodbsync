@@ -24,5 +24,7 @@ setup(
     platforms=['Linux',],
     install_requires=[
         'filelock',
+        'ZODB3' if sys.version_info.major == 2 else 'ZODB',
+        'Zope2',
     ],
 )
