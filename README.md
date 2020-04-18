@@ -167,6 +167,8 @@ longer existing extension.
 
 ## To Do / Roadmap
 
+  * Allow `pick` to be used if there are unstaged changes, checking for
+    potential conflicts and then stashing the changes automatically.
   * Subcommands wrapping `git reset` and `git rebase` will allow development in
     branches, resetting a testing or a production system to the state of an
     approved development branch and rebasing other developments onto the new
