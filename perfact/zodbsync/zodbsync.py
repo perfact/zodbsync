@@ -20,11 +20,10 @@ import AccessControl.SecurityManagement
 # stdout)
 import logging
 # Plugins for handling different object types
-from perfact.zodbsync.object_types import object_handlers,\
-    mod_implemented_handlers
+from .object_types import object_handlers, mod_implemented_handlers
 
-from perfact.zodbsync.helpers import str_repr, to_string, literal_eval,\
-    fix_encoding
+from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
+    remove_redundant_paths
 
 PY2 = (sys.version_info.major == 2)
 
@@ -198,11 +197,13 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     result['obj'] = obj
     return result
 
+
 def obj_modtime(obj):
     '''
     Allow access to private method of an object to read out the modtime.
     '''
     return obj._p_mtime
+
 
 class ZODBSync:
     '''A ZODBSync instance is capable of mirroring a part of the ZODB
@@ -289,13 +290,13 @@ class ZODBSync:
             'Script (Python)': 'py',
         }
 
-    def acquire_lock(self):
+    def acquire_lock(self, timeout=10):
         try:
             self.lock.acquire(timeout=1)
         except filelock.Timeout:
             self.logger.debug("Acquiring exclusive lock...")
             try:
-                self.lock.acquire(timeout=10)
+                self.lock.acquire(timeout=timeout)
             except filelock.Timeout:
                 self.logger.error("Unable to acquire lock.")
                 sys.exit(1)
@@ -683,6 +684,48 @@ class ZODBSync:
         # Allow actions after recursing, like sorting children
         for handler in mod_implemented_handlers(obj, fs_data['type']):
             handler.write_after_recurse_hook(obj, fs_data)
+
+    def playback_paths(self, paths, recurse=True, override=False,
+                       skip_errors=False, encoding=None):
+        # normalize paths - cut off filenames and the site name (__root__)
+        paths = {
+            path.rsplit('/', 1)[0] if (
+                path.endswith('__meta__')
+                or path.rsplit('/', 1)[-1].startswith('__source')
+            ) else path
+            for path in paths
+        }
+        paths = sorted({
+            path[len(self.site):] if path.startswith(self.site) else path
+            for path in paths
+        })
+
+        if recurse:
+            remove_redundant_paths(paths)
+
+        if not len(paths):
+            return
+
+        note = 'perfact-zopeplayback'
+        if len(paths) == 1:
+            note += ': ' + paths[0]
+        txn_mgr = self.start_transaction(note=note)
+
+        try:
+            for path in paths:
+                self.playback(
+                    path=path,
+                    override=override,
+                    recurse=recurse,
+                    skip_errors=skip_errors,
+                    encoding=encoding,
+                )
+        except Exception:
+            self.logger.exception('Error with path: ' + path)
+            txn_mgr.abort()
+            raise
+        finally:
+            txn_mgr.commit()
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):

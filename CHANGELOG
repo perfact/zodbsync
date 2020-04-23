@@ -1,3 +1,13 @@
+3.14.0.dev0
+  * Switch to using a single excutable `zodbsync` with subcommands like
+    `record`, `playback`, `watch` and `pick`, opening the way to add further
+    functionality.
+  * Remove unused features like recording since a given timestamp or
+    transaction ID. Also remove `--apply` functionality, which was not very
+    helpful in the case of merge conflicts. If you really need to apply a
+    patchfile, use `git am` directly, reset the branch to before the resulting
+    commit and `pick` it again.
+
 3.13.0
   Expose methods to read and write objects as well as obtain the modtime of an
   object.
@@ -6,7 +16,7 @@
   Sort properties alphabetically when recording, ensuring stability when
   playing back and re-recording.
 
-  Consequently use relative paths and os.path.join, fixing #15.
+  Consistently use relative paths and os.path.join, fixing #15.
 
   Change handling of strings in metadata for transition from Python 2 to 3.
 

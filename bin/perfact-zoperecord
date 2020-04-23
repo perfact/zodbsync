@@ -1,180 +1,47 @@
 #!/usr/bin/env python
-#
-# perfact-zoperecord  -  Make a snapshot of Data.fs
-#
 
-# for argument parsing:
-import sys
 import argparse
 
-# for Data.fs reading / writing:
-import perfact.zodbsync
-
-# several additional functions are only available if python-perfact is
-# installed
+import perfact.zodbsync.main
 try:
-    # for git snapshot
-    import perfact.pfcodechg
-    # advanced logging
-    import perfact.loggingtools
-    # psql dumps for backwards compatibility
+    # psql dump for backwards compatibility
     import perfact.dbbackup
 except ImportError:
     pass
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-        description='Record the Data.fs and database',
-        epilog='''
-The arguments --schema and --table are no longer supported.
-Use perfact-dbrecord from python-modules instead.
-'''
+        description='Record the Data.fs',
+        epilog='''This script is deprecated in favor of zodbsync. Only bare
+        functionality is provided for backwards compatiblity with existing cron
+        entries.
+        '''
     )
-    default_configfile = '/etc/perfact/modsync/zodb.py'
-    parser.add_argument('--config', '-c', type=str,
-                        help='Path to config (default: %s)'
-                        % default_configfile,
-                        default=default_configfile)
-    parser.add_argument('--path', '-p', type=str,
-                        help='Sub-Path in Data.fs to be recorded',
-                        default=None)
-    parser.add_argument('--since', '-s', type=str,
-                        help='Record only transactions since this '
-                        + 'timestamp (YYYY-MM-DD[ HH:MI:SS[ TZ]])',
-                        default=None)
-    parser.add_argument('--lasttxn', nargs='?', type=str,
-                        help='Record only transactions since this '
-                        + 'transaction (or the last used)',
-                        const='last', default=None)
-    parser.add_argument('--no-commit', action='store_true', default=False,
-                        help='Disable auto-commit (passing any '
-                        + 'argument except commitmsg implies --no-commit)',)
-    parser.add_argument('--watch', action='store_true', default=False,
-                        help='Start watcher that records ZODB changes '
-                        + 'as they occur. Ignores all other parameters '
-                        + 'except --config.')
-    parser.add_argument('commitmsg', nargs='?', type=str,
-                        help='Commit message for standard run.',
-                        default=None)
-    if 'perfact.loggingtools' in sys.modules:
-        perfact.loggingtools.addArgs(parser, name='ZODBSync')
+    parser.add_argument('--lasttxn', action='store_true', default=False,
+                        help='Record only transactions since the last used.'
+                        )
 
     args = parser.parse_args()
-    logger = None
-    if 'perfact.loggingtools' in sys.modules:
-        logger = perfact.loggingtools.createLogger(args=args, name='ZODBSync')
-
-    config_path = args.config
-    path = args.path
-    since = args.since
-    lasttxn = args.lasttxn
-    commit_message = args.commitmsg
-    no_commit = args.no_commit
-    # no_commit is implied by all other arguments
-    if path or since or lasttxn:
-        no_commit = True
-
-    paths = None  # paths = None means include everything
-    # If a path is given, always include that (even if --since is
-    # given as well)
-    if path:
-        paths = [path]
-
-    # Setup sync toolkit
-    sync = perfact.zodbsync.ZODBSync(conffile=config_path, logger=logger)
-    config = sync.config
-
-    # Watch mode
-    if args.watch:
-        watcher = perfact.zodbsync.Watcher(sync=sync, config=config)
-        watcher.run()
-        sys.exit(0)
-
-    sync.acquire_lock()
-    # Prepare the transaction argument
-    if lasttxn == 'last':
-        # We mean to read from the newest entry
-        lasttxn = sync.txn_read() or None
-
-    # Prepare to store the newest transaction id
-    newest_txnid = sync.recent_changes(limit=1)['newest_txnid']
-
-    if since or lasttxn:
-        # if since or lasttxn is given, only matching files are dumped
-        if paths is None:
-            paths = []
-        if since:
-            # Use the DateTime parser to get seconds (but any other parser
-            # would do)
-            from DateTime import DateTime
-            since_secs = DateTime(since).millis()/1000.
-        else:
-            since_secs = None
-        res = sync.recent_changes(since_secs=since_secs,
-                                  txnid=lasttxn,
-                                  limit=51)
-        if res['no_records']:
-            # If undo log is empty, we skip this operation
-            pass
-        elif res['search_limit_reached'] or res['limit_reached']:
-            # Limits reached mean we need to perform a full dump to
-            # recover
-            paths = None
-        elif len(res['paths']) == 0:
-            # Nothing happened. We don't need to rewrite the
-            # transaction id
-            newest_txnid = None
-        else:
-            paths.extend(res['paths'])
-
-    if paths is None:
-        sync.record()
+    if args.lasttxn:
+        cmd = 'record --lasttxn'.split()
     else:
-        # if 'a/b' as well as 'a' is in paths, we can skip 'a/b'
-        paths.sort()
-        i = 0
-        while i < len(paths):
-            while i+1 < len(paths) and paths[i+1].startswith(paths[i]):
-                del paths[i+1]
-            i += 1
-        for path in paths:
-            try:
-                sync.record(path=path)
-            except AttributeError:
-                print('Unable to record path ' + path)
-                pass
+        cmd = 'record --commit /'.split()
 
-    # dump tables and schemas unless somehow restricted and if the
-    # corresponding variables are found in the config - this is only for
-    # backwards compatibility, this should be done by perfact-dbrecord instead.
+    runner = perfact.zodbsync.main.create_runner(cmd)
+
+    # dump tables and schemas if run without --lasttxn and if the corresponding
+    # variables are found in the config - this is only for backwards
+    # compatibility, this should be done by perfact-dbrecord instead.
+    config = runner.config
     databases = getattr(config, 'databases', None)
-    if not (path or lasttxn or since) and databases is not None:
-        sync.logger.warn('Deprecation warning: dumping PostgreSQL schema and '
-                         + 'tables, which should be done by perfact-dbrecord '
-                         + 'instead.')
+    if not args.lasttxn and databases is not None:
+        runner.logger.warn(
+            'Deprecation warning: dumping PostgreSQL schema and tables, which'
+            ' should be done by perfact-dbrecord instead.'
+        )
         msgbak = config.commit_message
         config.commit_message += ' (Database)'
         perfact.dbbackup.git_snapshot(config)
         config.commit_message = msgbak
 
-    if not no_commit and 'perfact.pfcodechg' in sys.modules:
-        generic_commit = (commit_message is None)
-        if generic_commit:
-            commit_message = config.commit_message
-        # this fails (by design) if no repository is initialized.
-        commit_done = perfact.pfcodechg.git_snapshot(
-            config.base_dir,
-            commit_message,
-        )
-        # only send a mail if something has changed
-        if (commit_done
-                and getattr(config, 'codechange_mail', False)
-                and generic_commit):
-            print('Commit was done! Sending mail...')
-            perfact.pfcodechg.git_mail_summary(config.base_dir,
-                    config.codechange_mail)
-
-    if newest_txnid:
-        sync.txn_write(newest_txnid or '')
-
-    sync.release_lock()
+    runner.run()

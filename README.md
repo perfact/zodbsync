@@ -3,9 +3,8 @@
 This package provides tools to serialize Zope objects and store them in a file
 system structure as well as to restore Zope objects from this structure.
 
-An additional feature that goes beyond the main scope of the package is the
-possibility to create automatic git snapshots of the object tree, which
-requires the package perfact.pfcodechg.
+Some features require that the file system structure is governed by `git` as
+version control system.
 
 ## Maintainers:
 Ján Jockusch <jan.jockusch@perfact.de>
@@ -39,9 +38,10 @@ the configuration when calling the scripts, copy the configuration file there
 The most important settings are:
 ### `conf_path` or `wsgi_conf_path`
 If using ZServer (only Zope 2), set `conf_path` to the `zope.conf` of your Zope
-instance, which must be configured to connect to a ZEO server (no standalone
-instance). If using a WSGI server (Zope 2 or Zope 4), set `wsgi_conf_path`
-accordingly.
+instance. If it is a standalone instance exclusively accessing its ZODB, it
+must be powered down if used by zodbsync. So usually it is advisable that it is
+configured to connect to a ZEO server. If using a WSGI server (Zope 2 or Zope
+4), set `wsgi_conf_path` accordingly.
 
 ### `base_dir`
 Inside this folder (actually, in a subfolder named `__root__`), the serialized
@@ -59,90 +59,102 @@ mode of `perfact-zoperecord`.
 
 ## Usage
 
-The two main tools at this moment are `perfact-zoperecord` and `perfact-zopeplayback`.
+The executable `zodbsync` provides several subcommands
 
-### Recording objects
+### `zodbsync record`
 
-If calling `perfact-zoperecord` with no other options, it reads the complete
-object tree and stores the objects to the file system. Each object is mapped to
-a file named `__meta__` and further subfolders (if it is an object that has
-contents, like a `Folder`) or a file whose name starts with `__source` (if it is
-an object with some sort of source, like a `Page Template`, a `Script (Python)`, a
-`File` etc.).
-Objects whose type is not yet supported are created with a minimal `__meta__` file,
-containing only the `id`, `title`, `type` and an `unsupported` marker.
+The `record` subcommand is used to record objects from the ZODB to the file
+system.
 
-At the end of the recording, the last transaction ID is stored in a file called
-`__last_txn__` and a git commit is performed.
+Each object is mapped to a folder that contains at least the file
+`__meta__` which holds the meta data of the object (properties, permissions etc.). 
+If the object contains other objects (like `Folder`s), they are represented as
+subfolders. If the object has some sort of source (like `Page Template`s, `DTML
+Method`s etc.), it is stored in an additional file. The filename suffix is
+taken from the object type and possibly content type, while the base is either
+`__source__` or `__source-utf8__`
 
-If `perfact-zoperecord` is called with the `--lasttxn` option, it reads this
-transaction ID, gets a list of all transactions after that and trys to record
-only those paths that were affected by these. The paths are extracted from the
-transaction note, which works well if editing an object in the management
-interface of Zope, but not necessarily if an object is changed from within a
-script, if it is transferred by the ZSyncer or if objects are cut and pasted
-(in the latter case, only the target of the move operation is recognized).
+Only a specific list of object types is supported by `zodbsync`. Objects whose
+type is not yet supported are created with a minimal `__meta__` file,
+containing only the `title`, `type` and an `unsupported` marker.
 
-After running, the largest transaction ID of the list that was obtained at the
-beginning is again stored in `__last_txn__`.
+If the package `perfact.pfcodechg` is available, an additional option
+`--commit` allows to create a `git` commit after the recording, sending a
+summary mail containing all changed files to an address specified in the
+configuration. This can be used as automated reminder fallback if changes are
+not commited timely.
 
-If a specific path is required to be recorded, it can also be passed using the
-`--path` argument.
-
-The argument `--watch` provides the watcher mode, a new mode of operation that
-aims to bypass the shortcomings of `--lasttxn`. In watcher mode, the recorder
-stays alive and builds an object tree of all objects in the ZODB. Each time it
-wakes up, it scans for new transactions, opens the Data.FS directly (in
-read-only mode) to obtain all affected object IDs, updates its object tree and
-uses it to obtain the physical paths of all affected objects. After finishing,
-it sleeps for 10 seconds before waking again. This should provide an almost
-live recording that does not miss any changes.
+If `zodbsync record` is called with the `--lasttxn` option, it tries to do an
+incremental recording, reading all transactions that occured since the last
+call (the transaction ID is stored in a file `__last_txn__` in the repository).
+The paths to be recorded are extracted from the transaction note, which works
+well if editing an object in the management interface of Zope, but not
+necessarily if an object is changed from within a script, if it is transferred
+by the ZSyncer or if objects are cut and pasted (in the latter case, only the
+target of the move operation is recognized).
 
 
-### Playing objects back
+### `zodbsync watch`
 
-`perfact-zopeplayback` is the other side of the coin, able to create and modify
-objects in the ZODB from a file system structure as it is created by
-`perfact-zoperecord`. 
+This subcommand starts a process that aims to bypass the shortcomings of
+`zodbsync record --lasttxn`.  The process stays alive and builds an object tree
+of all objects in the ZODB. Each time it wakes up, it scans for new
+transactions, opens the Data.FS directly (in read-only mode) to obtain all
+affected object IDs, updates its object tree and uses it to obtain the physical
+paths of all affected objects. After finishing, it sleeps for 10 seconds before
+waking again. This should provide an almost live recording that does not miss
+any changes.
 
-By default, `perfact-zoperecord` recurses into the objects below a given
-object, removing any superfluous objects and updating existing objects so they
+
+### `zodbsync playback`
+
+The opposite operation to `record` is `playback`, which is able to create and
+modify objects in the ZODB from a file system structure as it is created by
+`record`. 
+
+By default, `playback` recurses into the subtree below a given
+path, removing any superfluous objects and updating existing objects so they
 match their file system representation. An exception are objects that are
 marked as `unsupported`, which are ignored if found in the ZODB. If only a
 given object itself should be updated (properties, security settings etc.),
 `--no-recurse` can be used.
 
-There are two other modes to use with `perfact-zopeplayback`, selected by
-passing `--pick` or `--apply`. These assume the file system representation is
-stored in a git repository and provide wrappers for `git cherry-pick` and `git
-am`, respectively. They also change the interpretation of the positional `path`
-arguments.
+### `zodbsync pick`
 
-If using `--pick`, the given paths are interpreted as git commits. This is
-useful if some development has been done in a branch or on a remote system that
-has to be deployed to the current system. It then becomes possible to do
-something like
+`pick` requires the base directory to be a git repository and provides a
+wrapper for `git cherry-pick`, taking git commits to be applied as arguments.
+This is useful if some development has been done in a branch or on a remote
+system that has to be deployed to the current system. It then becomes possible
+to do something like
 
     git fetch origin
-    perfact-zopeplayback --pick origin/master
+    zodbsync pick origin/master
 
-to pull the latest commit, apply it to the current repo and upload the affected
-paths to the Data.FS. It can also be used to pull multiple commits - allowing,
-for example, to pull all commits where the commit message starts with T12345:
+to pull the latest commit, apply it to the current repository and upload the
+affected paths to the Data.FS. It can also be used to pull multiple commits -
+allowing, for example, to pull all commits where the commit message starts with
+T12345:
 
-    perfact-zopeplayback --pick $(git log origin/master --reverse --pretty=%H --grep="^T12345" )
+    zodbsync pick $(git log origin/master --reverse --format=%H --grep="^T12345" )
 
-
-Similarly, `--apply` allows to pass patch files that are to be applied, playing
-back all objects that are changed by these patches.
 
 ## Compatibility
-This package aims to replace similar functionality that was previously found in
-python-perfact and perfact-dbutils-zope2. For backwards compatibility, those
-packages were changed so the corresponding calls try to import
+This package replaces similar functionality that was previously found in
+`python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,
+those packages were changed so the corresponding calls try to import
 `perfact.zodbsync` and use the functionality there, falling back to the
 previous implementation if that fails. Corresponding deprecation warnings are
 included.
+
+Previous versions contained the scripts `perfact-zoperecord` and
+`perfact-zopeplayback` instead of `zodbsync`. For compatibility with systems
+automatically calling `perfact-zoperecord`, it is still included but only
+providing the bare functionality:
+
+  * `perfact-zoperecord` (corresponds to `zodbsync record --commit /`)
+  * `perfact-zoperecord --lasttxn` (corresponds to `zodbsync record --lasttxn`,
+    but including a call to `perfact-dbrecord` if a `databases` key is defined
+    in the configuration)
 
 ## Caveats
 
@@ -155,11 +167,13 @@ longer existing extension.
 
 ## To Do / Roadmap
 
-* At some point, it might become necessary to easily allow playback to read
-  from a different path, to avoid changes that are collected to be played back 
-  being overwritten by a running `zoperecord` in watcher mode.
-
-* These tools can serve as a basis for replacing and improving ZSyncer
-  functionality, offering diffs between development, testing and production
-  systems that include metadata and do not depend on timestamps as well as the
-  possibility to pull objects from a different system.
+  * Allow `pick` to be used if there are unstaged changes, checking for
+    potential conflicts and then stashing the changes automatically.
+  * Subcommands wrapping `git reset` and `git rebase` will allow development in
+    branches, resetting a testing or a production system to the state of an
+    approved development branch and rebasing other developments onto the new
+    master.
+  * Specifying a path to a python script that is executed after `playback`
+    inside the same transaction will allow to store database changes in a
+    connected relational (SQL) database inside ZODB using Z SQL Methods and
+    have them executed as part of the same deployment step.

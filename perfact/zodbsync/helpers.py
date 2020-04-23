@@ -36,6 +36,23 @@ def str_to_bytes(value, enc='utf-8'):
     return value
 
 
+def remove_redundant_paths(paths):
+    '''
+    Sort list of paths and remove items that are redundant if remaining
+    paths are processed recursively, i.e., if /a/b/ as well as /a/ are
+    included, remove /a/b/. Works in-place
+    '''
+    paths.sort()
+    i = 0
+    last = None
+    while i < len(paths):
+        if last is not None and paths[i].startswith(last):
+            del paths[i]
+            continue
+        last = paths[i]
+        i += 1
+
+
 # replacement mapping for str_repr
 repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
 # nicer formattings for some values
