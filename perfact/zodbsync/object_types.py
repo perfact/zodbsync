@@ -1,7 +1,7 @@
-import sys
 import AccessControl.Permission
 
-from perfact.zodbsync.helpers import *
+from . import helpers
+
 
 class ModObj:
     meta_types = []
@@ -22,6 +22,7 @@ class ModObj:
         ''' implement if an action is to be performed on a to-be-played-back
         object after recursing into its children. '''
         return
+
 
 class AccessControlObj(ModObj):
     meta_types = ['AccessControl', ]
@@ -158,7 +159,7 @@ class UserFolderObj(ModObj):
                 user._getPassword(),
                 user.roles,
                 user.getDomains(),
-                ))
+            ))
         return [('users', users)]
 
     def write(self, obj, data):
@@ -171,11 +172,11 @@ class UserFolderObj(ModObj):
             # according to AccessControl/userfolder.py, an existing user of the
             # same name is simply overwritten by _doAddUser
             obj._doAddUser(
-                    user[0],  # username
-                    '',  # password is set separately
-                    user[2],  # roles
-                    user[3],  # domains
-                    )
+                user[0],  # username
+                '',  # password is set separately
+                user[2],  # roles
+                user[3],  # domains
+            )
             # _doAddUser encrypts the given password, but the password in the
             # dump is already encrypted, so we have to set it manually
             obj.getUserById(user[0]).__ = user[1]
@@ -190,13 +191,15 @@ class DTMLDocumentObj(ModObj):
         return
 
     def read(self, obj):
-        return [('source', str_to_bytes(simple_html_unquote(str(obj))))]
+        return [('source', helpers.str_to_bytes(
+            helpers.simple_html_unquote(str(obj))
+        ))]
 
     def write(self, obj, data):
         d = dict(data)
 
         obj.manage_edit(
-            data=bytes_to_str(d['source']),
+            data=helpers.bytes_to_str(d['source']),
             title=d['title'])
         return
 
@@ -249,7 +252,7 @@ class ZSQLMethodObj(ModObj):
         obj.manage_addProduct['ZSQLMethods'].manage_addZSQLMethod(
             id=obj_id, title=d['title'],
             connection_id=d['connection_id'],
-            arguments=d['args'], template=bytes_to_str(d['source']))
+            arguments=d['args'], template=helpers.bytes_to_str(d['source']))
         return
 
     def read(self, obj):
@@ -258,7 +261,7 @@ class ZSQLMethodObj(ModObj):
         meta.append(('args', args))
         connection_id = obj.connection_id
         meta.append(('connection_id', connection_id))
-        meta.append(('source', str_to_bytes(obj.src)))
+        meta.append(('source', helpers.str_to_bytes(obj.src)))
 
         # Advanced tab
         advanced = {
@@ -268,7 +271,7 @@ class ZSQLMethodObj(ModObj):
             'cache_time': obj.cache_time_,
             'class_name': obj.class_name_,
             'class_file': obj.class_file_,
-            }
+        }
 
         adv = list(advanced.items())
         adv.sort()
@@ -283,7 +286,7 @@ class ZSQLMethodObj(ModObj):
             title=d['title'],
             connection_id=d['connection_id'],
             arguments=d['args'],
-            template=bytes_to_str(d['source']))
+            template=helpers.bytes_to_str(d['source']))
 
         # Advanced settings
         adv = dict(d['advanced'])
@@ -323,13 +326,12 @@ class FileObj(ModObj):
     meta_types = ['File', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['OFSP'].manage_addFile(id=obj_id)
         return
 
     def read(self, obj):
         # Read chunked source from File/Image objects.
-        source = read_pdata(obj)
+        source = helpers.read_pdata(obj)
 
         # XXX Precondition
 
@@ -337,7 +339,7 @@ class FileObj(ModObj):
 
     def write(self, obj, data):
         d = dict(data)
-        pd = prop_dict(data)
+        pd = helpers.prop_dict(data)
 
         # XXX Precondition?
 
@@ -352,7 +354,6 @@ class ImageObj(FileObj):
     meta_types = ['Image', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['OFSP'].manage_addImage(id=obj_id, file='')
         return
 
@@ -361,7 +362,6 @@ class FolderObj(ModObj):
     meta_types = ['Folder', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['OFSP'].manage_addFolder(id=obj_id)
         return
 
@@ -398,7 +398,6 @@ class FolderOrderedObj(FolderObj):
     meta_types = ['Folder (Ordered)', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['OFSP'].manage_addOrderedFolder(id=obj_id)
         return
 
@@ -431,7 +430,7 @@ class FolderOrderedObj(FolderObj):
                 method_id=accessrule
             )
         return
-    
+
     def write_after_recurse_hook(self, obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
@@ -442,12 +441,10 @@ class FolderOrderedObj(FolderObj):
         obj.moveObjectsByDelta(contents, -len(contents))
 
 
-
 class PageTemplateObj(ModObj):
     meta_types = ['Page Template', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['PageTemplates'].manage_addPageTemplate(
             id=obj_id,
             text=''
@@ -534,7 +531,7 @@ class PropertiesObj(ModObj):
                 print("Ignoring AttributeError on property deletion")
             else:
                 raise
-        pd = prop_dict(data)
+        pd = helpers.prop_dict(data)
         obj.manage_changeProperties(**pd)
         return
 
@@ -543,9 +540,8 @@ class RAMCacheManagerObj(ModObj):
     meta_types = ['RAM Cache Manager', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct[
-                'StandardCacheManagers'
+            'StandardCacheManagers'
         ].manage_addRAMCacheManager(id=obj_id)
         return
 
@@ -573,10 +569,9 @@ class AcceleratedHTTPCacheManagerObj(RAMCacheManagerObj):
     meta_types = ['Accelerated HTTP Cache Manager', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct[
-                'StandardCacheManagers'
-                ].manage_addAcceleratedHTTPCacheManager(id=obj_id)
+            'StandardCacheManagers'
+        ].manage_addAcceleratedHTTPCacheManager(id=obj_id)
         return
 
 
@@ -584,9 +579,8 @@ class ScriptPythonObj(ModObj):
     meta_types = ['Script (Python)', ]
 
     def create(self, obj, data, obj_id):
-        d = dict(data)
         obj.manage_addProduct['PythonScripts'].manage_addPythonScript(
-                id=obj_id
+            id=obj_id
         )
         return
 
@@ -597,7 +591,7 @@ class ScriptPythonObj(ModObj):
         bindmap.sort()
         meta.append(('bindings', bindmap))
         meta.append(('args', obj.params()))
-        meta.append(('source', str_to_bytes(obj.body())))
+        meta.append(('source', helpers.str_to_bytes(obj.body())))
 
         # Proxy roles
 
@@ -614,7 +608,7 @@ class ScriptPythonObj(ModObj):
         d = dict(data)
         obj.ZPythonScript_setTitle(title=d['title'])
         obj.ZPythonScript_edit(params=d['args'],
-                               body=bytes_to_str(d['source']))
+                               body=helpers.bytes_to_str(d['source']))
         obj.ZBindings_edit(mapping=dict(d['bindings']))
         obj.manage_proxy(roles=d['proxy_roles'])
         return
@@ -863,11 +857,10 @@ object_handlers = {
     key: value() for key, value in object_types.items()
 }
 
+
 def mod_implemented_handlers(obj, meta_type):
-    known_types = list(object_handlers.keys())
     interfaces = ['Properties', 'AccessControl', 'ZCacheable', ]
     interfaces.append(meta_type)
     # return all object handlers for interfaces the object implements
     handlers = [object_handlers[i] for i in interfaces]
     return [h for h in handlers if h.implements(obj)]
-
