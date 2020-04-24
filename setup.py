@@ -13,6 +13,7 @@ setup(
     packages=[
         'perfact',
         'perfact.zodbsync',
+        'perfact.zodbsync.commands',
     ],
     package_data={
     },
