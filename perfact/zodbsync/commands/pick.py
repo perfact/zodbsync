@@ -47,7 +47,18 @@ class Pick(SubCommand):
 
         changed_files = set()
 
-        commits = self.args.commit
+        commits = []
+        for commit in self.args.commit:
+            if '..' in commit:
+                # commit range
+                commits.extend(
+                    self.gitcmd_output(
+                        'log', '--format=%H', '--reverse', commit
+                    ).split('\n')
+                )
+            else:
+                commits.append(commit)
+
         for commit in commits:
             self.logger.info('Checking and applying %s.' % commit)
             # obtain files affected by the commit
@@ -61,7 +72,7 @@ class Pick(SubCommand):
             # check if these files currently differ from their state *before*
             # the given commit
             try:
-                subprocess.gitcmd_run(
+                self.gitcmd_run(
                     'diff', '--exit-code', commit+'~', 'HEAD', '--', *files
                 )
             except subprocess.CalledProcessError:
@@ -75,7 +86,7 @@ class Pick(SubCommand):
             changed_files.update(files)
             # capture output and discard so we don't clutter stdout
             # Python 2 has no subprocess.DEVNULL.
-            subprocess.gitcmd_output('cherry-pick', '-Xno-renames', commit)
+            self.gitcmd_output('cherry-pick', '-Xno-renames', commit)
 
         paths = sorted({
             filename[len(self.sync.site):].rsplit('/', 1)[0]
