@@ -1,3 +1,6 @@
+3.14.0.dev1
+  * Allow picking commit ranges by using COMMIT1..COMMIT2
+
 3.14.0.dev0
   * Switch to using a single excutable `zodbsync` with subcommands like
     `record`, `playback`, `watch` and `pick`, opening the way to add further
