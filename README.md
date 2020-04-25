@@ -137,6 +137,12 @@ T12345:
 
     zodbsync pick $(git log origin/master --reverse --format=%H --grep="^T12345" )
 
+Commit ranges in the form of `COMMIT1..COMMIT2` can also be picked, but be
+aware that there is no check that the commit range is actually a straight
+forward succession - internally, `git log` is used and therefore any commits
+that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
+practice, choosing commits that are not directly connected will result in some
+commit not being able to be picked due to conflicts.
 
 ## Compatibility
 This package replaces similar functionality that was previously found in

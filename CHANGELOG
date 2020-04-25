@@ -1,3 +1,6 @@
+3.14.0.dev2
+  * Include a test suite and some first tests
+
 3.14.0.dev1
   * Allow picking commit ranges by using COMMIT1..COMMIT2
 

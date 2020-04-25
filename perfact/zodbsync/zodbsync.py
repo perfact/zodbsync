@@ -315,9 +315,9 @@ class ZODBSync:
             if (self.create_manager_user):
                 user = uf._doAddUser(self.manager_user, 'admin', ['Manager'],
                                      [])
-                self.logger.warn('Created user %s with password admin '
-                                 'because this user does not exist!' %
-                                 self.manager_user)
+                self.logger.warning('Created user %s with password admin '
+                                    'because this user does not exist!' %
+                                    self.manager_user)
             else:
                 raise Exception('User %s is not available in database. '
                                 'Perhaps you need to set create_manager_user '
@@ -568,8 +568,8 @@ class ZODBSync:
         # need to handle this case here. An object with 'get' as ID will be
         # left alone and can not be played back.
         if 'get' in parts:
-            self.logger.warn('Object "get" cannot be uploaded at path %s' %
-                             path)
+            self.logger.warning('Object "get" cannot be uploaded at path %s' %
+                                path)
             return
 
         # Step through the path components as well as the object tree.
@@ -618,7 +618,7 @@ class ZODBSync:
 
         fs_data = self.fs_read(path, encoding=encoding)
         if 'unsupported' in fs_data:
-            self.logger.warn('Skipping unsupported object ' + path)
+            self.logger.warning('Skipping unsupported object ' + path)
             return
 
         srv_data = (
@@ -648,7 +648,7 @@ class ZODBSync:
                 severity = 'Skipping' if skip_errors else 'ERROR'
                 msg = '%s %s:%s' % (severity, path, fs_data['type'])
                 if skip_errors:
-                    self.logger.warn(msg)
+                    self.logger.warning(msg)
                     return
                 else:
                     self.logger.error(msg)
@@ -671,7 +671,7 @@ class ZODBSync:
             # Find IDs in Data.fs object not present in file system
             del_ids = [a for a in srv_contents if a not in contents]
             if del_ids:
-                self.logger.warn('Deleting objects ' + repr(del_ids))
+                self.logger.warning('Deleting objects ' + repr(del_ids))
                 obj.manage_delObjects(ids=del_ids)
 
             for item in contents:
