@@ -2,3 +2,5 @@
 *.swp
 perfact_zodbsync.egg-info
 venv*
+.tox
+.coverage

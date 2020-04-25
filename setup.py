@@ -2,19 +2,15 @@
 
 import sys
 
-from setuptools import setup
-setup(
+import setuptools
+setuptools.setup(
     name='perfact-zodbsync',
-    version='3.14.0.dev1',
+    version='3.14.0.dev2',
     description='Zope Recorder and Playback',
     long_description=''' ''',
     author='Ján Jockusch et.al.',
     author_email='devel@perfact.de',
-    packages=[
-        'perfact',
-        'perfact.zodbsync',
-        'perfact.zodbsync.commands',
-    ],
+    packages=setuptools.find_packages('.'),
     package_data={
     },
     scripts = [
