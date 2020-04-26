@@ -16,7 +16,7 @@ class Pick(SubCommand):
             help='Skip failed objects and continue',
         )
         parser.add_argument(
-            'commit', type=str, nargs='+',
+            'commit', type=str, nargs='*',
             help='''Commits that are checked for compatibility and applied,
             playing back all affected paths at the end.'''
         )
@@ -51,11 +51,12 @@ class Pick(SubCommand):
         for commit in self.args.commit:
             if '..' in commit:
                 # commit range
-                commits.extend(
-                    self.gitcmd_output(
+                commits.extend([
+                    c for c in self.gitcmd_output(
                         'log', '--format=%H', '--reverse', commit
                     ).split('\n')
-                )
+                    if c
+                ])
             else:
                 commits.append(commit)
 
