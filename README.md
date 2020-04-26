@@ -144,6 +144,11 @@ that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
 practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts.
 
+If there are unstaged changes at the start of the `pick` operation, these are
+first stashed away and restored at the end, but if any of the picked commits
+touches any file that was unstaged, it is considered an error and the operation
+is cancelled.
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,
@@ -173,8 +178,6 @@ longer existing extension.
 
 ## To Do / Roadmap
 
-  * Allow `pick` to be used if there are unstaged changes, checking for
-    potential conflicts and then stashing the changes automatically.
   * Subcommands wrapping `git reset` and `git rebase` will allow development in
     branches, resetting a testing or a production system to the state of an
     approved development branch and rebasing other developments onto the new

@@ -36,14 +36,30 @@ class Pick(SubCommand):
 
     def run(self):
         self.sync.acquire_lock()
-        # Check that there are no unstaged changes
-        assert len(self.gitcmd_output('status', '--porcelain')) == 0, (
-            "You have unstaged changes. Please commit or stash them."
-        )
+        # Check for unstaged changes
+        unstaged_changes = [
+            line[3:]
+            for line in self.gitcmd_output(
+                'status', '--untracked-files', '-z'
+            ).split('\0')
+            if line
+        ]
 
+        if unstaged_changes:
+            self.logger.warning(
+                "Unstaged changes found. Moving them out of the way."
+            )
+            self.gitcmd_run('stash', 'push', '--include-untracked')
+
+        # The commit we reset to if something doesn't work out
         orig_commit = self.gitcmd_output(
             'show-ref', '--head', '--hash', 'HEAD',
         ).strip()
+
+        def abort():
+            self.gitcmd_run('reset', '--hard', orig_commit)
+            if unstaged_changes:
+                self.gitcmd_run('stash', 'pop')
 
         changed_files = set()
 
@@ -70,6 +86,15 @@ class Pick(SubCommand):
                 if line
             ]
 
+            # Check that none of the files is present in the stashed away
+            # unstaged changes
+            if len([f for f in files if f in unstaged_changes]):
+                abort()
+                raise Exception(
+                    'Unable to apply %s, it touches unstaged files.'
+                    % commit
+                )
+
             # check if these files currently differ from their state *before*
             # the given commit
             try:
@@ -81,7 +106,7 @@ class Pick(SubCommand):
                     'Unable to apply %s due to the above differences.'
                     % commit
                 )
-                self.gitcmd_run('reset', '--hard', orig_commit)
+                abort()
                 raise
 
             changed_files.update(files)
@@ -101,8 +126,10 @@ class Pick(SubCommand):
                 override=True,
                 skip_errors=self.args.skip_errors,
             )
+            if unstaged_changes:
+                self.gitcmd_run('stash', 'pop')
+
         except Exception:
-            self.logger.exception('Error when playing back objects.'
-                                  ' Resetting.')
-            self.gitcmd_run('reset', '--hard', orig_commit)
+            self.logger.exception('Error playing back objects. Resetting.')
+            abort()
             raise
