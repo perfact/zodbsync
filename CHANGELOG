@@ -1,3 +1,6 @@
+3.14.0.dev3
+  * Auto-stash unstaged changes if picking commits
+
 3.14.0.dev2
   * Include a test suite and some first tests
 
