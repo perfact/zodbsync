@@ -29,7 +29,13 @@ class ZeoInstance():
 class Repository():
     def __init__(self):
         self.path = tempfile.mkdtemp()
-        subprocess.check_call(['git', '-C', self.path, 'init'])
+        commands = [
+            ['init'],
+            ['config', 'user.email', 'test@zodbsync.org'],
+            ['config', 'user.name', 'testrepo'],
+        ]
+        for cmd in commands:
+            subprocess.check_call(['git', '-C', self.path] + cmd)
 
     def cleanup(self):
         shutil.rmtree(self.path)
