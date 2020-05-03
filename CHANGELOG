@@ -1,16 +1,14 @@
-3.14.0.dev3
+3.14.0
   * Auto-stash unstaged changes if picking commits
 
-3.14.0.dev2
   * Include a test suite and some first tests
 
-3.14.0.dev1
   * Allow picking commit ranges by using COMMIT1..COMMIT2
 
-3.14.0.dev0
   * Switch to using a single excutable `zodbsync` with subcommands like
     `record`, `playback`, `watch` and `pick`, opening the way to add further
     functionality.
+
   * Remove unused features like recording since a given timestamp or
     transaction ID. Also remove `--apply` functionality, which was not very
     helpful in the case of merge conflicts. If you really need to apply a
