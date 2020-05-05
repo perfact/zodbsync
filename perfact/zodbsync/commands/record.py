@@ -31,10 +31,6 @@ class Record(SubCommand):
             help='Record only specified paths without recursing',
         )
         parser.add_argument(
-            '--commit', action='store_true', default=False,
-            help='Create generic commit after recording',
-        )
-        parser.add_argument(
             'path', type=str, nargs='*',
             help='Sub-Path in Data.fs to be recorded',
         )
