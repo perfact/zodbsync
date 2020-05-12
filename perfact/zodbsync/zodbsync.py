@@ -686,7 +686,7 @@ class ZODBSync:
             handler.write_after_recurse_hook(obj, fs_data)
 
     def playback_paths(self, paths, recurse=True, override=False,
-                       skip_errors=False, encoding=None):
+                       skip_errors=False, encoding=None, dryrun=False):
         # normalize paths - cut off filenames and the site name (__root__)
         paths = {
             path.rsplit('/', 1)[0] if (
@@ -724,7 +724,11 @@ class ZODBSync:
             self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()
             raise
-        finally:
+
+        if dryrun:
+            self.logger.info('Dry-run. Rolling back')
+            txn_mgr.abort()
+        else:
             txn_mgr.commit()
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
