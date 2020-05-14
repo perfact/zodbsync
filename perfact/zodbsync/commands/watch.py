@@ -51,107 +51,14 @@ def _increment_txnid(s):
     return bytes(arr)
 
 
-class ZODBSyncWatcher:
+class Watch(SubCommand):
     """
-    Class that connects to ZEO, builds a mirror of the tree structure of the
-    objects, periodically checks for new transactions, looks directly into the
-    Data.FS to get the object IDs affected by those transactions, and updates
-    its tree structure as well as the file system tree structure accordingly.
+    Sub-command that connects to ZEO, builds a mirror of the tree structure of
+    the objects, periodically checks for new transactions, looks directly into
+    the Data.FS to get the object IDs affected by those transactions, and
+    updates its tree structure as well as the file system tree structure
+    accordingly.
     """
-
-    def __init__(self, sync, config):
-        self.sync = sync
-        self.base_dir = os.path.join(self.sync.base_dir, self.sync.site)
-        self.app = sync.app
-        self.logger = self.sync.logger
-        if not hasattr(config, 'datafs_path'):
-            err = "--watch requires datafs_path in config"
-            self.logger.error(err)
-            raise AssertionError(err)
-        self.datafs_path = config.datafs_path
-
-        # Log in as a manager
-        uf = self.app.acl_users
-        user = uf.getUserById(self.sync.manager_user)
-        if not hasattr(user, 'aq_base'):
-            user = user.__of__(uf)
-        AccessControl.SecurityManagement.newSecurityManager(None, user)
-
-        # mapping from object id to dict describing tree structure
-        self.object_tree = {}
-        self.last_report = None
-
-        # During normal operation, we always assume that the hard disk tree
-        # structure is mirrored in _object_tree, which mirrors the ZODB after
-        # transaction A. When reading data in our Zope instance, we see the
-        # ZODB after some later transaction B. We obtain the list of changed
-        # object ids between A and B. Then we look up all objects that we know
-        # of which were changed, record their meta data and move children
-        # around, until our tree as well as the file system mirrors the state
-        # at B (and our list of changed objects is empty).
-        #
-        # However, at startup the situation is different. Our object tree is
-        # the same that we see through our Zope instance, which is the state
-        # after B. The file system, on the other hand, mirrors the state after
-        # A. Since we do not want to read the whole tree structure after A from
-        # the file system (which would also require to store the OIDs), we do
-        # not know which move operations would take us from A to B. Instead, we
-        # collect a list of all changed paths and record them recursively.
-
-        self.sync.acquire_lock(timeout=300)
-        transaction.begin()
-        self._set_last_visible_txn()
-        self._init_tree(self.app)
-
-        # the transaction ID stored on disk is the last transaction whose
-        # changes have already been recorded to disk. We increase it by one to
-        # obtain all changes after that one
-        self.txnid_on_disk = self.sync.txn_read()
-
-        if self.txnid_on_disk is None:
-            # no txnid found, record everything
-            paths = ['/']
-        else:
-            self.txnid_on_disk = base64.b64decode(self.txnid_on_disk)
-            txn_start = _increment_txnid(self.txnid_on_disk)
-
-            # obtain all object ids affected by transactions between (the one
-            # in last_txn + 1) and (the currently visible one) (incl.)
-            self._read_changed_oids(
-                txn_start=txn_start,
-                txn_stop=self.last_visible_txn
-            )
-            paths = []
-            while len(self.changed_oids):
-                next_oids = self.changed_oids.intersection(
-                    self.object_tree.keys()
-                )
-                if not len(next_oids):
-                    # The remaining oids are not reachable by any of the
-                    # currently existing nodes. This can happen during
-                    # initialization since the tree structure is created as
-                    # visible at the end of the transaction chain and then
-                    # affected objects are collected for earlier transactions,
-                    # but they might no longer exist
-                    break
-                paths.extend(
-                    [self.object_tree[oid]['path'] for oid in next_oids]
-                )
-                self.changed_oids.difference_update(next_oids)
-
-        remove_redundant_paths(paths)
-        for path in paths:
-            self.logger.info('Recording %s' % path)
-            self.sync.record(path)
-
-        transaction.abort()
-
-        # store an updated txnid on disk
-        if self.txnid_on_disk != self.last_visible_txn:
-            self.txnid_on_disk = self.last_visible_txn
-            self.sync.txn_write(base64.b64encode(self.last_visible_txn))
-        self.logger.info("Setup complete")
-        self.sync.release_lock()
 
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every
@@ -173,8 +80,16 @@ class ZODBSyncWatcher:
                 self.app._p_jar._txn_time
             )
 
+    def _store_last_visible_txn(self):
+        '''
+        Store last visible transaction ID to disk if it changed.
+        '''
+        if self.last_visible_txn != self.txnid_on_disk:
+            self.txnid_on_disk = self.last_visible_txn
+            self.sync.txn_write(base64.b64encode(self.last_visible_txn))
+
     def _init_tree(self, obj, parent_oid=None, path='/'):
-        ''' insert obj and everything below into self.object_tree. '''
+        ''' Insert obj and everything below into self.object_tree. '''
         if not hasattr(obj, '_p_oid'):
             # objects that have no oid are ignored
             return None
@@ -410,6 +325,98 @@ class ZODBSyncWatcher:
         record all changes. Handles SIGTERM and SIGINT so any running recording
         is finished before terminating.'''
 
+        self.base_dir = os.path.join(self.sync.base_dir, self.sync.site)
+        self.app = self.sync.app
+
+        try:
+            self.datafs_path = self.config.datafs_path
+        except AttributeError:
+            self.logger.exception("watch requires datafs_path in config")
+            raise
+
+        # Log in as a manager
+        uf = self.app.acl_users
+        user = uf.getUserById(self.sync.manager_user)
+        if not hasattr(user, 'aq_base'):
+            user = user.__of__(uf)
+        AccessControl.SecurityManagement.newSecurityManager(None, user)
+
+        # mapping from object id to dict describing tree structure
+        self.object_tree = {}
+        self.last_report = None
+
+        # During normal operation, we always assume that the hard disk tree
+        # structure is mirrored in object_tree, which mirrors the ZODB after
+        # transaction A. When reading data in our Zope instance, we see the
+        # ZODB after some later transaction B. We obtain the list of changed
+        # object ids between A and B. Then we look up all objects that we know
+        # of which were changed, record their meta data and move children
+        # around, until our tree as well as the file system mirrors the state
+        # at B (and our list of changed objects is empty).
+        #
+        # However, at startup the situation is different. Our object tree is
+        # the same that we see through our Zope instance, which is the state
+        # after B. The file system, on the other hand, mirrors the state after
+        # A. Since we do not want to read the whole tree structure after A from
+        # the file system (which would also require to store the OIDs), we do
+        # not know which move operations would take us from A to B. Instead, we
+        # collect a list of all changed paths and record them recursively.
+
+        self.sync.acquire_lock(timeout=300)
+        transaction.begin()
+        self._set_last_visible_txn()
+        self._init_tree(self.app)
+
+        # the transaction ID stored on disk is the last transaction whose
+        # changes have already been recorded to disk. We increase it by one to
+        # obtain all changes after that one
+        self.txnid_on_disk = self.sync.txn_read()
+
+        if self.txnid_on_disk is None:
+            # no txnid found, record everything
+            paths = ['/']
+        else:
+            self.txnid_on_disk = base64.b64decode(self.txnid_on_disk)
+            txn_start = _increment_txnid(self.txnid_on_disk)
+
+            # obtain all object ids affected by transactions between (the one
+            # in last_txn + 1) and (the currently visible one) (incl.)
+            self._read_changed_oids(
+                txn_start=txn_start,
+                txn_stop=self.last_visible_txn
+            )
+            paths = []
+            while len(self.changed_oids):
+                next_oids = self.changed_oids.intersection(
+                    self.object_tree.keys()
+                )
+                if not len(next_oids):
+                    # The remaining oids are not reachable by any of the
+                    # currently existing nodes. This can happen during
+                    # initialization since the tree structure is created as
+                    # visible at the end of the transaction chain and then
+                    # affected objects are collected for earlier transactions,
+                    # but they might no longer exist
+                    break
+                paths.extend(
+                    [self.object_tree[oid]['path'] for oid in next_oids]
+                )
+                self.changed_oids.difference_update(next_oids)
+
+        remove_redundant_paths(paths)
+        for path in paths:
+            self.logger.info('Recording %s' % path)
+            self.sync.record(path)
+
+        transaction.abort()
+
+        # store an updated txnid on disk
+        self._store_last_visible_txn()
+
+        self.sync.release_lock()
+
+        self.logger.info("Setup complete")
+
         # an event that is fired if we are to be terminated
         exit = threading.Event()
 
@@ -434,19 +441,8 @@ class ZODBSyncWatcher:
             self._update_objects()
             transaction.abort()
 
-            if self.last_visible_txn != self.txnid_on_disk:
-                self.txnid_on_disk = self.last_visible_txn
-                self.sync.txn_write(base64.b64encode(self.last_visible_txn))
+            self._store_last_visible_txn()
             self.sync.release_lock()
 
             # a wait that is interrupted immediately if exit.set() is called
             exit.wait(interval)
-
-
-class Watch(SubCommand):
-    ''' Sub-command to start watcher, which periodically records changes as
-    they occur.
-    '''
-    def run(self):
-        self.watcher = ZODBSyncWatcher(self.sync, self.config)
-        self.watcher.run()
