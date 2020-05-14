@@ -26,6 +26,10 @@ class Playback(SubCommand):
             default=False
         )
         parser.add_argument(
+            '--dry-run', action='store_true', default=False,
+            help='Roll back at the end.',
+        )
+        parser.add_argument(
             'path', type=str, nargs='*',
             help='Sub-Path in Data.fs to be played back',
         )
@@ -37,5 +41,6 @@ class Playback(SubCommand):
             recurse=not self.args.no_recurse,
             override=self.args.override,
             skip_errors=self.args.skip_errors,
+            dryrun=self.args.dry_run,
         )
         self.sync.release_lock()

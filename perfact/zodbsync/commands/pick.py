@@ -16,6 +16,10 @@ class Pick(SubCommand):
             help='Skip failed objects and continue',
         )
         parser.add_argument(
+            '--dry-run', action='store_true', default=False,
+            help='Only check for conflicts and roll back at the end.',
+        )
+        parser.add_argument(
             'commit', type=str, nargs='*',
             help='''Commits that are checked for compatibility and applied,
             playing back all affected paths at the end.'''
@@ -125,7 +129,12 @@ class Pick(SubCommand):
                 recurse=False,
                 override=True,
                 skip_errors=self.args.skip_errors,
+                dryrun=self.args.dry_run,
             )
+            if self.args.dry_run:
+                abort()
+                return
+
             if unstaged_changes:
                 self.gitcmd_run('stash', 'pop')
 
