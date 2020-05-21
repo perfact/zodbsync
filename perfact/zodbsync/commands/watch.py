@@ -111,6 +111,13 @@ class Watch(SubCommand):
             'path': path,
         }
 
+        # If it turns out there are other objects needing such a hack, this
+        # should probably be moved to object_types
+        if obj.meta_type == 'User Folder':
+            self.additional_oids[obj.data._p_oid] = oid
+            for user in obj.getUsers():
+                self.additional_oids[user._p_oid] = oid
+
         for child_id, child_obj in sorted(obj.objectItems()):
             child_oid = self._init_tree(
                 obj=child_obj,
@@ -155,7 +162,8 @@ class Watch(SubCommand):
                 # * plen: the size of the pickle data, which comes after the
                 #   header
                 dlen = dhead.recordlen()
-                self.changed_oids.add(dhead.oid)
+                oid = self.additional_oids.get(dhead.oid, dhead.oid)
+                self.changed_oids.add(oid)
                 pos = pos + dlen
 
     def _update_path(self, oid, path):
@@ -343,6 +351,20 @@ class Watch(SubCommand):
 
         # mapping from object id to dict describing tree structure
         self.object_tree = {}
+
+        # Mapping of additional object ids to OIDs of recorded objects. This is
+        # currently only used for `User Folder`s which contain a
+        # `PersistentMapping` and `User`s, which have their own OID and are not
+        # children in the sense that they can be obtained using objectIds(). If
+        # one of the additional OIDs is found to have been changed, the
+        # original OID is assumed to have been changed instead.
+        # If it turns out that it is possible to move a `User` from one `User
+        # Folder` to another, they should instead be represented as separate
+        # objects, but at least the management interface does not provide a
+        # method for this.
+        self.additional_oids = {}
+
+        # During initialization, we report progress every 2 seconds.
         self.last_report = None
 
         # During normal operation, we always assume that the hard disk tree
