@@ -5,7 +5,7 @@ import sys
 import setuptools
 setuptools.setup(
     name='perfact-zodbsync',
-    version='3.14.2.dev1',
+    version='3.14.2',
     description='Zope Recorder and Playback',
     long_description=''' ''',
     author='Ján Jockusch et.al.',
