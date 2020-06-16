@@ -3,6 +3,7 @@
 
 from perfact.zodbsync.zodbsync import mod_read, mod_write
 
+
 def find_obj(context, path):
     obj = context
     for part in path.split('/'):
@@ -11,11 +12,13 @@ def find_obj(context, path):
         obj = getattr(context, part)
     return obj
 
+
 def controlfile(context, path, url):
     '''
     Creates a control file that can be used by an external editor to update the
     contents of an object. The control file contains
-    * the entrypoint url (which should be a script in Zope wrapping these methods)
+    * the entrypoint url (which should be a script in Zope wrapping these
+      methods)
     * an authentication header
     * the path to the object in question
     * the meta_type of the object
@@ -36,6 +39,7 @@ def controlfile(context, path, url):
 
     result += 'type: {type}\n\n{source}'.format(**data)
     return result
+
 
 def update(context, path, source, orig_source):
     '''
