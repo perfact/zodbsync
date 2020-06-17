@@ -53,7 +53,7 @@ def find_obj(context, path):
     for part in path.split('/'):
         if not part:
             continue
-        obj = getattr(context, part)
+        obj = getattr(obj, part)
     return obj
 
 
