@@ -111,5 +111,6 @@ def update(context, path, source, orig_source):
     if helpers.to_string(data['source']) != orig_source:
         return {'error': 'Object was changed'}
     data['source'] = source
-    mod_write(obj, data)
+    obj_id = path.rstrip('/').rsplit('/', 1)[-1]
+    mod_write(data, parent=obj.aq_parent, obj_id=obj_id)
     return {'success': True}
