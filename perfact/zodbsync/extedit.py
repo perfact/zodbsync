@@ -88,7 +88,15 @@ def controlfile(context, path, url):
     # large diff. To be discussed.
     data['source'] = helpers.to_string(data['source'])
 
-    result += 'type: {type}\n\n{source}'.format(**data)
+    props = data.get('props', [])
+    for prop in props:
+        if ('id', 'content_type') in prop:
+            value = [pair for pair in prop if pair[0] == 'value']
+            assert len(value), "Invalid property"
+            result += 'content-type: {}}\n'.format(value[0][1])
+            break
+
+    result += 'meta-type: {type}\n\n{source}'.format(**data)
     return result
 
 
