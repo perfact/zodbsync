@@ -93,7 +93,7 @@ def controlfile(context, path, url):
         if ('id', 'content_type') in prop:
             value = [pair for pair in prop if pair[0] == 'value']
             assert len(value), "Invalid property"
-            result += 'content-type: {}}\n'.format(value[0][1])
+            result += 'content-type: {}\n'.format(value[0][1])
             break
 
     result += 'meta-type: {type}\n\n{source}'.format(**data)
