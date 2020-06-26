@@ -15,7 +15,7 @@ def launch(context, script, path, source=None, orig_source=None,
     contains the authentication header found in the current request and the
     content of the file that can be found under path.
 
-    If a source is provided, updates the object given by path, but only if the
+    If a source is provided, updates the object given by path, but only if its
     current source matches that given in orig_source.
 
     A wrapper script should be placed in the top-level of the ZODB that is only
@@ -117,7 +117,7 @@ def controlfile(context, path, url):
 
 def update(context, path, source, orig_source, encoding):
     '''
-    Update the object with the given source, but only if the current source
+    Update the object with the given source, but only if its current source
     matches the expected orig_source.
 
     If binary is set, the sources are interpreted as base64 encoded.
@@ -129,10 +129,13 @@ def update(context, path, source, orig_source, encoding):
         source = b64decode(source.encode('ascii'))
         orig_source = b64decode(orig_source.encode('ascii'))
 
-    data = read_obj(context, path, force_binary=(encoding is not None))
+    try:
+        data = read_obj(context, path, force_binary=(encoding is not None))
+    except AttributeError:
+        return {'error': path + ' not found'}
 
     if data['source'] != orig_source:
-        return {'error': 'Object was changed'}
+        return {'error': 'Object was changed in the meantime. Please reload.'}
 
     data['source'] = source
     obj_id = path.rstrip('/').rsplit('/', 1)[-1]
