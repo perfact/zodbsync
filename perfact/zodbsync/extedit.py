@@ -1,13 +1,13 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import json
+from base64 import b64encode, b64decode
 
-from . import helpers
 from .zodbsync import mod_read, mod_write
 
 
-def launch(context, script, path, source=None, orig_source=None):
+def launch(context, script, path, source=None, orig_source=None,
+           encoding=None):
     '''
     Launcher for external edit.
 
@@ -20,6 +20,10 @@ def launch(context, script, path, source=None, orig_source=None):
 
     A wrapper script should be placed in the top-level of the ZODB that is only
     accessible for Manager and delegates to this.
+
+    An encoding of None means the sources are Unicode. Other than that, only
+    'b64' is supported, which means the sources are interpreted as base64
+    encoded binary data.
     '''
 
     resp = context.REQUEST.RESPONSE
@@ -38,6 +42,7 @@ def launch(context, script, path, source=None, orig_source=None):
             path=path,
             source=source,
             orig_source=orig_source,
+            encoding=encoding,
         )
         result = json.dumps(result)
 
@@ -45,16 +50,31 @@ def launch(context, script, path, source=None, orig_source=None):
     return result
 
 
-def find_obj(context, path):
+def read_obj(context, path, force_binary=False):
     '''
-    Locate object at given path
+    Locate object at given path and return dictionary containing everything of
+    interest.
+
+    If force_binary is not set, we attempt to return a string.
     '''
     obj = context
     for part in path.split('/'):
         if not part:
             continue
         obj = getattr(obj, part)
-    return obj
+    result = mod_read(obj)
+    result['parent'] = obj.aq_parent
+
+    if force_binary and isinstance(result['source'], str):
+        result['source'] = result['source'].encode('utf-8')
+
+    if not force_binary and isinstance(result['source'], bytes):
+        try:
+            result['source'] = result['source'].decode('utf-8')
+        except UnicodeDecodeError:
+            pass
+
+    return result
 
 
 def controlfile(context, path, url):
@@ -78,15 +98,10 @@ def controlfile(context, path, url):
         for key, value in data
     ])
 
-    obj = find_obj(context, path)
-    data = mod_read(obj)
-
-    # This is a hack. It would be better if mod_read always returned string
-    # sources and the different object types transferred them if necessary
-    # (which is only the case in Python 2). But if we change that, we should
-    # also no longer store sources with a -utf8 suffix, which would create a
-    # large diff. To be discussed.
-    data['source'] = helpers.to_string(data['source'])
+    data = read_obj(context, path)
+    if isinstance(data['source'], bytes):
+        result += 'binary: 1\n'
+        data['source'] = b64encode(data['source']).decode('ascii')
 
     props = data.get('props', [])
     for prop in props:
@@ -100,17 +115,27 @@ def controlfile(context, path, url):
     return result
 
 
-def update(context, path, source, orig_source):
+def update(context, path, source, orig_source, encoding):
     '''
     Update the object with the given source, but only if the current source
-    matches the expected old_source.
-    '''
-    obj = find_obj(context, path)
-    data = mod_read(obj)
+    matches the expected orig_source.
 
-    if helpers.to_string(data['source']) != orig_source:
+    If binary is set, the sources are interpreted as base64 encoded.
+    '''
+    assert encoding in (None, 'b64'), "Invalid encoding"
+
+    if encoding == 'b64':
+        # Submitted sources are base64. Decode, but keep as bytes
+        source = b64decode(source.encode('ascii'))
+        orig_source = b64decode(orig_source.encode('ascii'))
+
+    data = read_obj(context, path, force_binary=(encoding is not None))
+
+    if data['source'] != orig_source:
         return {'error': 'Object was changed'}
+
     data['source'] = source
     obj_id = path.rstrip('/').rsplit('/', 1)[-1]
-    mod_write(data, parent=obj.aq_parent, obj_id=obj_id)
+    mod_write(data, parent=data['parent'], obj_id=obj_id)
+
     return {'success': True}
