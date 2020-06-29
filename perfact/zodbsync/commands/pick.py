@@ -56,9 +56,12 @@ class Pick(SubCommand):
             self.gitcmd_run('stash', 'push', '--include-untracked')
 
         # The commit we reset to if something doesn't work out
-        orig_commit = self.gitcmd_output(
-            'show-ref', '--head', '--hash', 'HEAD',
-        ).strip()
+        orig_commit = [
+            line for line in self.gitcmd_output(
+                'show-ref', '--head', 'HEAD',
+            ).split('\n')
+            if line.endswith(' HEAD')
+        ][0].split()[0]
 
         def abort():
             self.gitcmd_run('reset', '--hard', orig_commit)
