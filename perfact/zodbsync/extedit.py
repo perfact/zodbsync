@@ -22,7 +22,7 @@ def launch(context, script, path, source=None, orig_source=None,
     accessible for Manager and delegates to this.
 
     An encoding of None means the sources are Unicode. Other than that, only
-    'b64' is supported, which means the sources are interpreted as base64
+    'base64' is supported, which means the sources are interpreted as base64
     encoded binary data.
     '''
 
@@ -50,12 +50,15 @@ def launch(context, script, path, source=None, orig_source=None,
     return result
 
 
-def read_obj(context, path, force_binary=False):
+def read_obj(context, path, force_encoding=None):
     '''
     Locate object at given path and return dictionary containing everything of
     interest.
 
-    If force_binary is not set, we attempt to return a string.
+    The 'source' field in the result is always text. If force_encoding is set
+    to 'base64' or the source can not be interpreted as UTF-8, it is a base64
+    representation of the actual source and the field 'encoding' is also set
+    appropriately.
     '''
     obj = context
     for part in path.split('/'):
@@ -65,14 +68,22 @@ def read_obj(context, path, force_binary=False):
     result = mod_read(obj)
     result['parent'] = obj.aq_parent
 
-    if force_binary and isinstance(result['source'], str):
+    encoding = force_encoding
+    if force_encoding and isinstance(result['source'], str):
+        # We need bytes to encode with Base64
         result['source'] = result['source'].encode('utf-8')
 
-    if not force_binary and isinstance(result['source'], bytes):
+    if not force_encoding and isinstance(result['source'], bytes):
+        # Try to represent as UTF-8 for better readability.
+        # If that does not work, switch to Base64.
         try:
             result['source'] = result['source'].decode('utf-8')
         except UnicodeDecodeError:
-            pass
+            encoding = 'base64'
+
+    if encoding == 'base64':
+        result['source'] = b64encode(result['source']).decode('ascii')
+        result['encoding'] = encoding
 
     return result
 
@@ -99,9 +110,9 @@ def controlfile(context, path, url):
     ])
 
     data = read_obj(context, path)
-    if isinstance(data['source'], bytes):
-        result += 'binary: 1\n'
-        data['source'] = b64encode(data['source']).decode('ascii')
+    encoding = data.get('encoding', None)
+    if encoding:
+        result += 'encoding: {}\n'.format(encoding)
 
     props = data.get('props', [])
     for prop in props:
@@ -124,20 +135,18 @@ def update(context, path, source, orig_source, encoding):
     '''
     assert encoding in (None, 'b64'), "Invalid encoding"
 
-    if encoding == 'b64':
-        # Submitted sources are base64. Decode, but keep as bytes
-        source = b64decode(source.encode('ascii'))
-        orig_source = b64decode(orig_source.encode('ascii'))
-
     try:
-        data = read_obj(context, path, force_binary=(encoding is not None))
+        data = read_obj(context, path, force_encoding=encoding)
     except AttributeError:
         return {'error': path + ' not found'}
 
     if data['source'] != orig_source:
         return {'error': 'Object was changed in the meantime. Please reload.'}
 
-    data['source'] = source
+    if encoding == 'base64':
+        data['source'] = b64decode(source)
+    elif encoding is None:
+        data['source'] = source
     obj_id = path.rstrip('/').rsplit('/', 1)[-1]
     mod_write(data, parent=data['parent'], obj_id=obj_id)
 
