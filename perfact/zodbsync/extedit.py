@@ -131,9 +131,10 @@ def update(context, path, source, orig_source, encoding):
     Update the object with the given source, but only if its current source
     matches the expected orig_source.
 
-    If binary is set, the sources are interpreted as base64 encoded.
+    If encoding is set to base64, the sources are considered to be base64
+    encoded.
     '''
-    assert encoding in (None, 'b64'), "Invalid encoding"
+    assert encoding in (None, 'base64'), "Invalid encoding"
 
     try:
         data = read_obj(context, path, force_encoding=encoding)
