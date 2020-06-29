@@ -84,7 +84,10 @@ def mod_format(data=None, indent=0, as_list=False):
     if as_list:
         return output
     else:
-        return '\n'.join(output)
+        return ''.join([
+            '{}\n'.format(line)
+            for line in output
+        ])
 
 
 def obj_contents(obj):
