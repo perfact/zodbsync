@@ -1,3 +1,7 @@
+3.14.4
+  * Include wrapper scripts for editing sources of objects by an external
+    editor.
+
 3.14.3
   * Include deprecation replacement for `perfact-zopeplayback` in installed
     scripts so the fallback from `python-perfact` will throw a readable error.
