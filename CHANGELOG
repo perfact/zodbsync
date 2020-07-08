@@ -8,6 +8,8 @@
 
   * Include more output if an object can not be read during playback
 
+  * Add --skip-errors argument for record
+
 3.14.4
   * Include wrapper scripts for editing sources of objects by an external
     editor.
