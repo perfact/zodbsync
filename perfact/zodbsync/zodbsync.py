@@ -624,10 +624,14 @@ class ZODBSync:
             self.logger.warning('Skipping unsupported object ' + path)
             return
 
-        srv_data = (
-            dict(mod_read(obj, default_owner=self.manager_user))
-            if obj_exists else None
-        )
+        try:
+            srv_data = (
+                dict(mod_read(obj, default_owner=self.manager_user))
+                if obj_exists else None
+            )
+        except Exception:
+            self.logger.exception('Unable to read object at %s' % path)
+            raise
 
         if fs_data != srv_data:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))

@@ -6,6 +6,8 @@
     change. However, since most text editors end files with a newline, this
     makes the recording more consistent in the long run.
 
+  * Include more output if an object can not be read during playback
+
 3.14.4
   * Include wrapper scripts for editing sources of objects by an external
     editor.
