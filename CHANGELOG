@@ -6,7 +6,7 @@
     change. However, since most text editors end files with a newline, this
     makes the recording more consistent in the long run.
 
-  * Include more output if an object can not be read during playback
+  * Include more output if an object cannot be read during playback
 
   * Add --skip-errors argument for record
 
