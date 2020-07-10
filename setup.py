@@ -3,9 +3,16 @@
 import sys
 
 import setuptools
+
+reqs = ['filelock']
+if sys.version_info.major == 2:
+    reqs.extend(['ZODB3', 'Zope2'])
+else:
+    reqs.extend(['ZODB', 'Zope<5'])
+
 setuptools.setup(
     name='perfact-zodbsync',
-    version='3.14.4',
+    version='3.15.0.dev0',
     description='Zope Recorder and Playback',
     long_description=''' ''',
     author='Ján Jockusch et.al.',
@@ -20,9 +27,5 @@ setuptools.setup(
     ],
     license='GPLv2',
     platforms=['Linux',],
-    install_requires=[
-        'filelock',
-        'ZODB3' if sys.version_info.major == 2 else 'ZODB',
-        'Zope2',
-    ],
+    install_requires=reqs,
 )

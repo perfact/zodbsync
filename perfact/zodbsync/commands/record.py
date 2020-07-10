@@ -31,6 +31,11 @@ class Record(SubCommand):
             help='Record only specified paths without recursing',
         )
         parser.add_argument(
+            '--skip-errors', action='store_true',
+            help="Skip failed objects and continue",
+            default=False
+        )
+        parser.add_argument(
             'path', type=str, nargs='*',
             help='Sub-Path in Data.fs to be recorded',
         )
@@ -66,7 +71,8 @@ class Record(SubCommand):
 
         for path in paths:
             try:
-                self.sync.record(path=path, recurse=recurse)
+                self.sync.record(path=path, recurse=recurse,
+                                 skip_errors=self.args.skip_errors)
             except AttributeError:
                 self.sync.logger.exception('Unable to record path ' + path)
                 pass

@@ -84,7 +84,10 @@ def mod_format(data=None, indent=0, as_list=False):
     if as_list:
         return output
     else:
-        return '\n'.join(output)
+        return ''.join([
+            '{}\n'.format(line)
+            for line in output
+        ])
 
 
 def obj_contents(obj):
@@ -510,7 +513,7 @@ class ZODBSync:
                 break
         return ignore_found
 
-    def record(self, path='/', recurse=True):
+    def record(self, path='/', recurse=True, skip_errors=False):
         '''Record Zope objects from the given path into the local
         filesystem.'''
         if not path:
@@ -520,12 +523,22 @@ class ZODBSync:
         for part in path.split('/'):
             if part:
                 obj = getattr(obj, part)
-        self.record_obj(obj, path, recurse=recurse)
+        self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
 
-    def record_obj(self, obj, path, recurse=True):
+    def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''
+        try:
+            data = mod_read(obj, default_owner=self.default_owner)
+        except Exception:
+            severity = 'Skipping' if skip_errors else 'ERROR'
+            msg = '%s %s' % (severity, path)
+            if skip_errors:
+                self.logger.warning(msg)
+                return
+            else:
+                self.logger.error(msg)
+                raise
 
-        data = mod_read(obj, default_owner=self.default_owner)
         self.fs_write(path, data)
 
         if not recurse:
@@ -553,7 +566,8 @@ class ZODBSync:
                 continue
 
             child = getattr(obj, item)
-            self.record_obj(obj=child, path=os.path.join(path, item))
+            self.record_obj(obj=child, path=os.path.join(path, item),
+                            skip_errors=skip_errors)
 
     def playback(self, path=None, recurse=True, override=False,
                  skip_errors=False, encoding=None):
@@ -621,10 +635,14 @@ class ZODBSync:
             self.logger.warning('Skipping unsupported object ' + path)
             return
 
-        srv_data = (
-            dict(mod_read(obj, default_owner=self.manager_user))
-            if obj_exists else None
-        )
+        try:
+            srv_data = (
+                dict(mod_read(obj, default_owner=self.manager_user))
+                if obj_exists else None
+            )
+        except Exception:
+            self.logger.exception('Unable to read object at %s' % path)
+            raise
 
         if fs_data != srv_data:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
