@@ -66,7 +66,7 @@ def read_obj(context, path, force_encoding=None):
             continue
         obj = getattr(obj, part)
     result = mod_read(obj)
-    result['parent'] = obj.aq_parent
+    result['parent'] = obj.aq_inner.aq_parent
 
     encoding = force_encoding
     if force_encoding and isinstance(result['source'], str):
