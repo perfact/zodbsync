@@ -167,6 +167,11 @@ providing the bare functionality:
     but including a call to `perfact-dbrecord` if a `databases` key is defined
     in the configuration)
 
+`zodbsync` is designed to work both with Zope 2 and Zope 4. However, only
+Zope 4 is partly covered by tests at the moment (with Python 2 and Python 3)
+because I could not figure out how to close the connection to one ZODB and
+re-open it to another within the same process with Zope 2.
+
 ## Caveats
 
 Zope allows `External Method`s to be present in the ZODB even if the

@@ -1,4 +1,4 @@
-3.15.0.dev0
+3.15.0
   * Fix dry-run mode for repositories that have an upstream remote.
 
   * End meta files with a newline. Be aware that this will result in a change
