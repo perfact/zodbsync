@@ -66,7 +66,8 @@ def read_obj(context, path, force_encoding=None):
             continue
         obj = getattr(obj, part)
     result = mod_read(obj)
-    result['parent'] = obj.aq_inner.aq_parent
+    result['path'] = '/' + '/'.join(obj.getPhysicalPath())
+    result['parent'] = obj.aq_parent
 
     encoding = force_encoding
     if force_encoding and isinstance(result['source'], str):
@@ -99,30 +100,32 @@ def controlfile(context, path, url):
     * the meta_type of the object
     * the source of the object
     '''
-    data = (
-        ('url', url),
-        ('path', path),
-        ('auth', context.REQUEST._auth),
-    )
-    result = ''.join([
-        '{}: {}\n'.format(key, value)
-        for key, value in data
-    ])
 
     data = read_obj(context, path)
+
+    headers = [
+        ('url', url),
+        ('path', data['path']),
+        ('auth', context.REQUEST._auth),
+        ('meta-type', data['type']),
+    ]
     encoding = data.get('encoding', None)
     if encoding:
-        result += 'encoding: {}\n'.format(encoding)
+        headers.append(('encoding', encoding))
 
     props = data.get('props', [])
     for prop in props:
         if ('id', 'content_type') in prop:
             value = [pair for pair in prop if pair[0] == 'value']
             assert len(value), "Invalid property"
-            result += 'content-type: {}\n'.format(value[0][1])
+            headers.append(('content-type', value[0][1]))
             break
 
-    result += 'meta-type: {type}\n\n{source}'.format(**data)
+    result = ''.join([
+        '{}: {}\n'.format(*header)
+        for header in headers
+    ]) + '\n' + data['source']
+
     return result
 
 
