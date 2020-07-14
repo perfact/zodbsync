@@ -407,7 +407,7 @@ class ZODBSync:
         except IOError:
             old_data = None
 
-        if old_data != fmt:
+        if old_data.strip() != fmt.strip():
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
             with open(data_fname, 'wb') as f:
                 f.write(fmt)
