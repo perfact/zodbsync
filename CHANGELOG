@@ -1,6 +1,9 @@
-3.15.1.dev0
+3.15.1
   * Fix lookup of parent in external editor to avoid creating a new object when
     trying to edit an existing one but using it in an acquired context.
+
+  * Do not re-record the meta file of an object if the only change is the
+  * newline at the end.
 
 3.15.0
   * Fix dry-run mode for repositories that have an upstream remote.
