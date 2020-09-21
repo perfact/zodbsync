@@ -6,12 +6,13 @@ from .commands.record import Record
 from .commands.playback import Playback
 from .commands.watch import Watch
 from .commands.pick import Pick
+from .commands.upload import Upload
 
 # Future ideas:
 # from .commands.reset import Reset
 # from .commands.rebase import Rebase
 
-commands = [Record, Playback, Watch, Pick]
+commands = [Record, Playback, Watch, Pick, Upload]
 
 
 def create_runner(argv=None):

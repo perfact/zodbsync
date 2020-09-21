@@ -26,6 +26,7 @@ class TestSync():
             'zeo': env.ZeoInstance(port=ZEOPORT),
             'repo': env.Repository(),
             'zopeconfig': env.ZopeConfig(zeoport=ZEOPORT),
+            'jslib': env.JSLib(),
         }
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
@@ -134,3 +135,9 @@ class TestSync():
         runner.run()
 
         assert 'TestFolder' not in runner.sync.app.objectIds()
+
+    def test_upload(self):
+        '''
+        Upload JS library from test environment and check for it in Data.fs
+        '''
+        return

@@ -107,3 +107,15 @@ commit_message = "Generic commit message."
 
     def cleanup(self):
         os.remove(self.path)
+
+
+class JSLib():
+    '''
+    A test JS library containing some JS and CSS files
+    '''
+    def __init__(self):
+        # XXX: remember to add at least one subdirectory containing files
+        self.path = tempfile.mkdtemp()
+
+    def cleanup(self):
+        shutil.rmtree(self.path)
