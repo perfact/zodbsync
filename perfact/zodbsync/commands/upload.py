@@ -1,12 +1,38 @@
 #!/usr/bin/env python
 
 from ..subcommand import SubCommand
+import os
+
+FOLDER_TEMPLATE = '''[
+    ('title', ''),
+    ('type', 'Folder'),
+]
+'''
+
+JS_TEMPLATE = '''[
+    ('props',[[('id','content_type'),('type','string'),('value','text/js')]]),
+    ('title','content.min.css'),
+    ('type','File'),
+]'''
+
+CSS_TEMPLATE = '''[
+    ('props',[[('id','content_type'),('type','string'),('value','text/css')]]),
+    ('title','content.min.css'),
+    ('type','File'),
+]'''
+
+
+META_TEMPLATES = {
+    'folder': FOLDER_TEMPLATE,
+    'js': JS_TEMPLATE,
+    'css': CSS_TEMPLATE
+}
 
 
 class Upload(SubCommand):
     '''Upload a folder structure, e.g. a JS library, to zope Data.fs
-    XXX: Start with a cheap copy of playback command
     '''
+
     @staticmethod
     def add_args(parser):
         parser.add_argument(
@@ -40,10 +66,46 @@ class Upload(SubCommand):
         )
 
     def run(self):
-        print("yay my first own command!")
         '''
-        XXX: we will need pretty much the same but convert target folder
-        into __meta__ and __source__ files before and move to repo
+        Convert target folder into zodbsync compatible struct living in
+        args.path. Then play back this path to Data.fs
+        '''
+
+        for cur_dir_path, dirs, files in os.walk(self.args.target):
+            cur_dir = os.path.relpath(cur_dir_path, self.args.target)
+            new_folder = os.path.join(self.args.path, cur_dir)
+            os.makedirs(new_folder)
+
+            with open(
+                os.path.join(new_folder, '__meta__'), 'w'
+            ) as fmetafile:
+                fmetafile.write(META_TEMPLATES['folder'])
+
+            for filename in files:
+                file_ending = filename.split('.')[-1]
+                if file_ending not in ['css', 'js']:
+                    continue
+
+                with open(
+                    os.path.join(cur_dir_path, filename), 'r'
+                ) as sourcefile:
+                    file_content = sourcefile.read()
+
+                new_file_folder = os.path.join(
+                    new_folder, filename.replace('.', '_')
+                )
+                os.makedirs(new_file_folder)
+
+                with open(
+                    os.path.join(new_folder, '__meta__'), 'w'
+                ) as metafile:
+                    metafile.write(META_TEMPLATES[file_ending])
+
+                with open(
+                    os.path.join(new_folder, '__source__.' + file_ending), 'w'
+                ) as sourcefile:
+                    sourcefile.write(file_content)
+
         self.sync.acquire_lock()
         self.sync.playback_paths(
             paths=self.args.path,
@@ -53,4 +115,3 @@ class Upload(SubCommand):
             dryrun=self.args.dry_run,
         )
         self.sync.release_lock()
-        '''
