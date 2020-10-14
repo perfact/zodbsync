@@ -41,13 +41,6 @@ class Upload(SubCommand):
             default=False
         )
         parser.add_argument(
-            '--no-recurse', action='store_true',
-            help='''Only upload metadata, do not remove elements or recurse.
-            Note: If a path no longer present on the file system is given, it
-            is still removed.''',
-            default=False
-        )
-        parser.add_argument(
             '--skip-errors', action='store_true',
             help="Skip failed objects and continue",
             default=False
@@ -68,7 +61,7 @@ class Upload(SubCommand):
     def run(self):
         '''
         Convert target folder into zodbsync compatible struct living in
-        args.path. Then play back this path to Data.fs
+        args.path. Then playback this args.path to Data.fs
         '''
 
         for cur_dir_path, dirs, files in os.walk(self.args.target):
@@ -109,9 +102,12 @@ class Upload(SubCommand):
         self.sync.acquire_lock()
         self.sync.playback_paths(
             paths=self.args.path,
-            recurse=not self.args.no_recurse,
+            recurse=True,
             override=self.args.override,
             skip_errors=self.args.skip_errors,
             dryrun=self.args.dry_run,
         )
         self.sync.release_lock()
+
+        # XXX: can we call "git checkout ." to rollback or do we need to delete
+        # manually?
