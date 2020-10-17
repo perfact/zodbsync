@@ -115,6 +115,7 @@ class JSLib():
     '''
     def __init__(self):
         self.path = tempfile.mkdtemp()
+
         self.js_folder = os.path.join(self.path, 'js', 'plugins')
         os.makedirs(self.js_folder)
         with open(os.path.join(self.js_folder, 'something.js'), 'w') as jsfile:
@@ -124,6 +125,9 @@ class JSLib():
         os.makedirs(self.css_folder)
         with open(os.path.join(self.css_folder, 'dark.css'), 'w') as cssfile:
             cssfile.write('body { background-color: black }\n')
+
+        with open(os.path.join(self.path, 'ignoreme'), 'w') as ignorefile:
+            ignorefile.write('something to ignore')
 
     def cleanup(self):
         shutil.rmtree(self.path)

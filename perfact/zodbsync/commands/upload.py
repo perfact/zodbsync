@@ -1,9 +1,13 @@
 #!/usr/bin/env python
 
-from ..subcommand import SubCommand
+from .pick import Pick
 import os
+import sys
+
+PY2 = (sys.version_info.major == 2)
 
 FOLDER_TEMPLATE = '''[
+    ('props', []),
     ('title', ''),
     ('type', 'Folder'),
 ]
@@ -29,12 +33,20 @@ META_TEMPLATES = {
 }
 
 
-class Upload(SubCommand):
+class Upload(Pick):
     '''Upload a folder structure, e.g. a JS library, to zope Data.fs
     '''
 
     @staticmethod
     def add_args(parser):
+        parser.add_argument(
+            'target', type=str,
+            help='Path of target library folder',
+        )
+        parser.add_argument(
+            'path', type=str,
+            help='Sub-Path in Data.fs to put target folder',
+        )
         parser.add_argument(
             '--override', '-o', action='store_true',
             help='Override object type changes when uploading',
@@ -49,19 +61,14 @@ class Upload(SubCommand):
             '--dry-run', action='store_true', default=False,
             help='Roll back at the end.',
         )
-        parser.add_argument(
-            'target', type=str,
-            help='Path of target library folder',
-        )
-        parser.add_argument(
-            'path', type=str,
-            help='Sub-Path in Data.fs to put target folder',
-        )
 
     def run(self):
         '''
         Convert target folder into zodbsync compatible struct in repodir
+        and upload it
         '''
+        self.sync.acquire_lock()
+        self.check_repo()
 
         # conversion loop: iterate over target folder, create folders in
         # repodir and corresponding files
@@ -71,7 +78,10 @@ class Upload(SubCommand):
 
             # repodir folder creation
             new_folder = os.path.join(self.args.path, cur_dir)
-            os.makedirs(new_folder)
+            if PY2:
+                os.makedirs(new_folder)
+            else:
+                os.makedirs(new_folder, exist_ok=True)
 
             # do not forget meta file for folder
             with open(
@@ -101,25 +111,32 @@ class Upload(SubCommand):
 
                 # ... containing __meta__ and __source__ file
                 with open(
-                    os.path.join(new_folder, '__meta__'), 'w'
+                    os.path.join(new_file_folder, '__meta__'), 'w'
                 ) as metafile:
                     metafile.write(META_TEMPLATES[file_ending])
 
                 with open(
-                    os.path.join(new_folder, '__source__.' + file_ending), 'w'
+                    os.path.join(
+                        new_file_folder, '__source__.' + file_ending
+                    ), 'w'
                 ) as sourcefile:
                     sourcefile.write(file_content)
 
         # conversion done, start playback
-        self.sync.acquire_lock()
-        self.sync.playback_paths(
-            paths=self.args.path,
-            recurse=True,
-            override=self.args.override,
-            skip_errors=self.args.skip_errors,
-            dryrun=self.args.dry_run,
-        )
-        self.sync.release_lock()
+        try:
+            self.sync.playback_paths(
+                paths=self.args.path,
+                recurse=True,
+                override=self.args.override,
+                skip_errors=self.args.skip_errors,
+                dryrun=self.args.dry_run,
+            )
 
-        # XXX: can we call "git checkout ." to rollback or do we need to delete
-        # manually?
+            if self.args.dry_run:
+                self.abort()
+
+        except Exception:
+            self.logger.exception('Error uploading files. Resetting.')
+            self.abort()
+        finally:
+            self.sync.release_lock()

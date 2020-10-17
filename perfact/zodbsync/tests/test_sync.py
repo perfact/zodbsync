@@ -4,6 +4,7 @@ import subprocess
 import pytest
 
 import perfact.zodbsync.main
+import perfact.zodbsync.helpers as helpers
 import perfact.zodbsync.tests.environment as env
 
 
@@ -140,4 +141,46 @@ class TestSync():
         '''
         Upload JS library from test environment and check for it in Data.fs
         '''
-        return
+
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join(self.repo.path, '__root__', 'lib')
+
+        runner = self.runner('upload', target_jslib_path, target_repo_path)
+        runner.run()
+
+        assert 'lib' in runner.sync.app.objectIds()
+        assert 'js' in runner.sync.app.lib.objectIds()
+        assert 'plugins' in runner.sync.app.lib.js.objectIds()
+        assert 'something_js' in runner.sync.app.lib.js.plugins.objectIds()
+        content = 'alert(1);\n'
+        data = helpers.to_string(
+            runner.sync.app.lib.js.plugins.something_js.data
+        )
+        assert content == data
+
+        assert 'lib' in runner.sync.app.objectIds()
+        assert 'css' in runner.sync.app.lib.objectIds()
+        assert 'skins' in runner.sync.app.lib.css.objectIds()
+        assert 'dark_css' in runner.sync.app.lib.css.skins.objectIds()
+        content = 'body { background-color: black }\n'
+        data = helpers.to_string(
+            runner.sync.app.lib.css.skins.dark_css.data
+        )
+        assert content == data
+
+        # dont forget ignored files!
+        assert 'ignoreme' not in runner.sync.app.lib
+
+    def test_upload_dryrun(self):
+        '''
+        Upload files in dryrun mode, make sure folder is not found in Data.fs
+        '''
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join(self.repo.path, '__root__', 'lib')
+
+        runner = self.runner(
+            'upload', target_jslib_path, target_repo_path, '--dry-run'
+        )
+        runner.run()
+
+        assert 'lib' not in runner.sync.app.objectIds()
