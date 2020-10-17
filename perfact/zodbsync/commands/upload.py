@@ -60,35 +60,46 @@ class Upload(SubCommand):
 
     def run(self):
         '''
-        Convert target folder into zodbsync compatible struct living in
-        args.path. Then playback this args.path to Data.fs
+        Convert target folder into zodbsync compatible struct in repodir
         '''
 
+        # conversion loop: iterate over target folder, create folders in
+        # repodir and corresponding files
         for cur_dir_path, dirs, files in os.walk(self.args.target):
+            # realtive path to be created in repodir
             cur_dir = os.path.relpath(cur_dir_path, self.args.target)
+
+            # repodir folder creation
             new_folder = os.path.join(self.args.path, cur_dir)
             os.makedirs(new_folder)
 
+            # do not forget meta file for folder
             with open(
                 os.path.join(new_folder, '__meta__'), 'w'
             ) as fmetafile:
                 fmetafile.write(META_TEMPLATES['folder'])
 
+            # now check files inside of folder
             for filename in files:
                 file_ending = filename.split('.')[-1]
+
+                # only support css and js files ... for now
                 if file_ending not in ['css', 'js']:
                     continue
 
+                # get file content from target file 
                 with open(
                     os.path.join(cur_dir_path, filename), 'r'
                 ) as sourcefile:
                     file_content = sourcefile.read()
 
+                # in repo each file gets its own folder ...
                 new_file_folder = os.path.join(
                     new_folder, filename.replace('.', '_')
                 )
                 os.makedirs(new_file_folder)
 
+                # ... containing __meta__ and __source__ file
                 with open(
                     os.path.join(new_folder, '__meta__'), 'w'
                 ) as metafile:
@@ -99,6 +110,7 @@ class Upload(SubCommand):
                 ) as sourcefile:
                     sourcefile.write(file_content)
 
+        # conversion done, start playback
         self.sync.acquire_lock()
         self.sync.playback_paths(
             paths=self.args.path,

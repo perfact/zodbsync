@@ -114,8 +114,16 @@ class JSLib():
     A test JS library containing some JS and CSS files
     '''
     def __init__(self):
-        # XXX: remember to add at least one subdirectory containing files
         self.path = tempfile.mkdtemp()
+        self.js_folder = os.path.join(self.path, 'js', 'plugins')
+        os.makedirs(self.js_folder)
+        with open(os.path.join(self.js_folder, 'something.js'), 'w') as jsfile:
+            jsfile.write('alert(1);\n')
+
+        self.css_folder = os.path.join(self.path, 'css', 'skins')
+        os.makedirs(self.css_folder)
+        with open(os.path.join(self.css_folder, 'dark.css'), 'w') as cssfile:
+            cssfile.write('body { background-color: black }\n')
 
     def cleanup(self):
         shutil.rmtree(self.path)
