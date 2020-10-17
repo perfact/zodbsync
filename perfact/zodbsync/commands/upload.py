@@ -87,7 +87,7 @@ class Upload(SubCommand):
                 if file_ending not in ['css', 'js']:
                     continue
 
-                # get file content from target file 
+                # get file content from target file
                 with open(
                     os.path.join(cur_dir_path, filename), 'r'
                 ) as sourcefile:
