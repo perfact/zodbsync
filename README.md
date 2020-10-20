@@ -27,6 +27,10 @@ older system, run
 
     sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
 
+On newer PerFact Zope4 installations
+
+    sudo -H /usr/share/perfact/zope4/bin/pip install git+https://github.com/perfact/zodbsync --upgrade
+
 ## Configuration
 
 Use the `config.py` as a starting point for your configuration. At the moment,

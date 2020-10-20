@@ -125,7 +125,7 @@ class Upload(Pick):
         # conversion done, start playback
         try:
             self.sync.playback_paths(
-                paths=self.args.path,
+                paths=[self.args.path],
                 recurse=True,
                 override=self.args.override,
                 skip_errors=self.args.skip_errors,
