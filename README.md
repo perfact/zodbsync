@@ -153,6 +153,17 @@ first stashed away and restored at the end, but if any of the picked commits
 touches any file that was unstaged, it is considered an error and the operation
 is cancelled.
 
+### `zodbsync upload`
+
+`upload` expects the base directory to be a git repository and provides a tool
+to upload JS and CSS libraries into the `Data.fs`. This is achieved by converting
+these files into files and directories understood by `playback` and placing them
+in the specified directory inside of `base_dir`.
+
+Example to upload bootstrap:
+
+    zodbsync upload /tmp/bootstrap /path/to/base_dir/__root__/lib/bootstrap
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,

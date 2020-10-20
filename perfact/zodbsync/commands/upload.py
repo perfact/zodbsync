@@ -122,6 +122,7 @@ class Upload(Pick):
                 ) as sourcefile:
                     sourcefile.write(file_content)
 
+        # make sure sync is called with subpath in Data.fs
         if os.path.isabs(self.args.path):
             self.args.path = os.path.relpath(
                 self.args.path,
