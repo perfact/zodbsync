@@ -122,6 +122,12 @@ class Upload(Pick):
                 ) as sourcefile:
                     sourcefile.write(file_content)
 
+        if os.path.isabs(self.args.path):
+            self.args.path = os.path.relpath(
+                self.args.path,
+                self.config.base_dir
+            )
+
         # conversion done, start playback
         try:
             self.sync.playback_paths(
