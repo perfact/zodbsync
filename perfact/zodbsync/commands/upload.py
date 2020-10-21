@@ -1,51 +1,58 @@
 #!/usr/bin/env python
 
-from .pick import Pick
 import os
 import sys
 
+from ..subcommand import SubCommand
+from ..zodbsync import mod_format
+
+
 PY2 = (sys.version_info.major == 2)
 
-FOLDER_TEMPLATE = '''[
-    ('props', []),
-    ('title', ''),
-    ('type', 'Folder'),
-]
-'''
-
-JS_TEMPLATE = '''[
-    ('props',[[('id','content_type'),('type','string'),('value','text/js')]]),
-    ('title','content.min.css'),
-    ('type','File'),
-]'''
-
-CSS_TEMPLATE = '''[
-    ('props',[[('id','content_type'),('type','string'),('value','text/css')]]),
-    ('title','content.min.css'),
-    ('type','File'),
-]'''
-
-
 META_TEMPLATES = {
-    'folder': FOLDER_TEMPLATE,
-    'js': JS_TEMPLATE,
-    'css': CSS_TEMPLATE
+    'folder': {
+        'props': [],
+        'type': 'Folder',
+        'title': '',
+    },
+    'js': {
+        'props': [
+            [
+                ('id', 'content_type'),
+                ('type', 'string'),
+                ('value', 'application/javascript')
+            ]
+        ],
+        'type': 'File',
+        'title': '',
+    },
+    'css': {
+        'props': [
+            [
+                ('id', 'content_type'),
+                ('type', 'string'),
+                ('value', 'text/css')
+            ]
+        ],
+        'type': 'File',
+        'title': '',
+    }
 }
 
 
-class Upload(Pick):
+class Upload(SubCommand):
     '''Upload a folder structure, e.g. a JS library, to zope Data.fs
     '''
 
     @staticmethod
     def add_args(parser):
         parser.add_argument(
-            'target', type=str,
-            help='Path of target library folder',
+            'source', type=str,
+            help='Path of source library folder',
         )
         parser.add_argument(
             'path', type=str,
-            help='Sub-Path in Data.fs to put target folder',
+            help='Sub-Path in Data.fs to put source folder',
         )
         parser.add_argument(
             '--override', '-o', action='store_true',
@@ -64,30 +71,33 @@ class Upload(Pick):
 
     def run(self):
         '''
-        Convert target folder into zodbsync compatible struct in repodir
+        Convert source folder into zodbsync compatible struct in repodir
         and upload it
         '''
         self.sync.acquire_lock()
         self.check_repo()
 
-        # conversion loop: iterate over target folder, create folders in
+        # we need both filesystem and Data.fs path representation
+        data_fs_path, filesystem_path = self.check_path(self.args.path)
+
+        # conversion loop: iterate over source folder, create folders in
         # repodir and corresponding files
-        for cur_dir_path, dirs, files in os.walk(self.args.target):
-            # realtive path to be created in repodir
-            cur_dir = os.path.relpath(cur_dir_path, self.args.target)
+        for cur_dir_path, dirs, files in os.walk(self.args.source):
+            # relative path to be created in repodir
+            cur_dir = os.path.relpath(cur_dir_path, self.args.source)
 
             # repodir folder creation
-            new_folder = os.path.join(self.args.path, cur_dir)
+            new_folder = os.path.join(filesystem_path, cur_dir)
             if PY2:
                 os.makedirs(new_folder)
             else:
                 os.makedirs(new_folder, exist_ok=True)
 
             # do not forget meta file for folder
-            with open(
-                os.path.join(new_folder, '__meta__'), 'w'
-            ) as fmetafile:
-                fmetafile.write(META_TEMPLATES['folder'])
+            self.create_file(
+                file_path=os.path.join(new_folder, '__meta__'),
+                content=mod_format(META_TEMPLATES['folder'])
+            )
 
             # now check files inside of folder
             for filename in files:
@@ -97,7 +107,7 @@ class Upload(Pick):
                 if file_ending not in ['css', 'js']:
                     continue
 
-                # get file content from target file
+                # read file content from source file
                 with open(
                     os.path.join(cur_dir_path, filename), 'r'
                 ) as sourcefile:
@@ -110,29 +120,21 @@ class Upload(Pick):
                 os.makedirs(new_file_folder)
 
                 # ... containing __meta__ and __source__ file
-                with open(
-                    os.path.join(new_file_folder, '__meta__'), 'w'
-                ) as metafile:
-                    metafile.write(META_TEMPLATES[file_ending])
-
-                with open(
-                    os.path.join(
+                self.create_file(
+                    file_path=os.path.join(new_file_folder, '__meta__'),
+                    content=mod_format(META_TEMPLATES[file_ending])
+                )
+                self.create_file(
+                    file_path=os.path.join(
                         new_file_folder, '__source__.' + file_ending
-                    ), 'w'
-                ) as sourcefile:
-                    sourcefile.write(file_content)
-
-        # make sure sync is called with subpath in Data.fs
-        if os.path.isabs(self.args.path):
-            self.args.path = os.path.relpath(
-                self.args.path,
-                self.config.base_dir
-            )
+                    ),
+                    content=file_content
+                )
 
         # conversion done, start playback
         try:
             self.sync.playback_paths(
-                paths=[self.args.path],
+                paths=[data_fs_path],
                 recurse=True,
                 override=self.args.override,
                 skip_errors=self.args.skip_errors,

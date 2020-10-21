@@ -124,7 +124,7 @@ class JSLib():
         self.css_folder = os.path.join(self.path, 'css', 'skins')
         os.makedirs(self.css_folder)
         with open(os.path.join(self.css_folder, 'dark.css'), 'w') as cssfile:
-            cssfile.write('body { background-color: black }\n')
+            cssfile.write('body { background-color: black; }\n')
 
         with open(os.path.join(self.path, 'ignoreme'), 'w') as ignorefile:
             ignorefile.write('something to ignore')

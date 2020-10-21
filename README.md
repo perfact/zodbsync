@@ -162,7 +162,7 @@ in the specified directory inside of `base_dir`.
 
 Example to upload bootstrap:
 
-    zodbsync upload /tmp/bootstrap /path/to/base_dir/__root__/lib/bootstrap
+    zodbsync upload /tmp/bootstrap lib/bootstrap
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
