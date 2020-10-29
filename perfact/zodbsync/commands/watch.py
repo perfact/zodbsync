@@ -69,7 +69,7 @@ class Watch(SubCommand):
         records = self.app._p_jar.db().undoInfo(0, 1)
         if not len(records):
             # after packing, no undo records exist. Return zero
-            self.last_visible_txn = chr(0)*8
+            self.last_visible_txn = b'\x00'*8
             return
         self.last_visible_txn = base64.b64decode(records[0]['id'])
         # check if there are transactions we do not see yet
