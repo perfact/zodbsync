@@ -162,20 +162,6 @@ class TestSync():
 
         assert 'TestFolder' not in runner.sync.app.objectIds()
 
-    def test_upload_abspath(self):
-        '''
-        Upload JS library from test environment and check for it in Data.fs
-        Provide absolute path to Data.fs
-        '''
-
-        target_jslib_path = self.jslib.path
-        target_repo_path = os.path.join(self.repo.path, '__root__', 'lib')
-
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
-
-        self.upload_checks(runner)
-
     def test_upload_relpath(self):
         '''
         Upload JS library from test environment and check for it in Data.fs

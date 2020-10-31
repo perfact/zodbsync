@@ -95,6 +95,9 @@ class SubCommand():
         if path.startswith('./'):
             path = path[2:]
 
+        if path.startswith('/'):
+            path = path[1:]
+
         if os.path.isabs(path):
             filesystem_path = path
             data_fs_path = os.path.relpath(
