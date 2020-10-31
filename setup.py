@@ -8,7 +8,7 @@ reqs = ['filelock']
 if sys.version_info.major == 2:
     reqs.extend(['ZODB3', 'Zope2'])
 else:
-    reqs.extend(['ZODB', 'Zope<5'])
+    reqs.extend(['ZODB', 'Zope'])
 
 setuptools.setup(
     name='perfact-zodbsync',
