@@ -9,34 +9,22 @@ from ..zodbsync import mod_format
 
 PY2 = (sys.version_info.major == 2)
 
+
+def create_template(type, content_type=None):
+    result = {'type': type, 'title': ''}
+    if content_type is not None:
+        result['props'] = [[
+                ('id', 'content_type'),
+                ('type', 'string'),
+                ('value', content_type)
+        ]]
+    return result
+
+
 META_TEMPLATES = {
-    'folder': {
-        'props': [],
-        'type': 'Folder',
-        'title': '',
-    },
-    'js': {
-        'props': [
-            [
-                ('id', 'content_type'),
-                ('type', 'string'),
-                ('value', 'application/javascript')
-            ]
-        ],
-        'type': 'File',
-        'title': '',
-    },
-    'css': {
-        'props': [
-            [
-                ('id', 'content_type'),
-                ('type', 'string'),
-                ('value', 'text/css')
-            ]
-        ],
-        'type': 'File',
-        'title': '',
-    }
+    'folder': create_template('Folder'),
+    'js': create_template('File', 'application/javascript'),
+    'css': create_template('File', 'text/css'),
 }
 
 
