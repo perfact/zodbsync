@@ -224,6 +224,14 @@ class TestSync():
 
         self.upload_checks(runner)
 
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join('__root__', 'lib')
+
+        runner = self.runner('upload', target_jslib_path, target_repo_path)
+        runner.run()
+
+        self.upload_checks(runner)
+
         os.chdir(cur_path)
 
     def test_upload_dryrun(self):
