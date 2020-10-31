@@ -92,6 +92,9 @@ class SubCommand():
         '''Check a given path to be relative (assume its a Data.fs path) or
         an absolute path (assume its a filesystem path). Return both.
         '''
+        if path.startswith('./'):
+            path = path[2:]
+
         if os.path.isabs(path):
             filesystem_path = path
             data_fs_path = os.path.relpath(

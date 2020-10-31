@@ -199,6 +199,33 @@ class TestSync():
 
         self.upload_checks(runner)
 
+        # add another test case showing dot notation also works
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join('.', 'lib')
+
+        runner = self.runner('upload', target_jslib_path, target_repo_path)
+        runner.run()
+
+        self.upload_checks(runner)
+
+    def test_upload_relpath_fromrepo(self):
+        '''
+        change working directory to repository before upload to simulate
+        calling upload from repo leveraging bash path completion
+        '''
+        cur_path = os.getcwd()
+        os.chdir(self.repo.path)
+
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join('.', '__root__', 'lib')
+
+        runner = self.runner('upload', target_jslib_path, target_repo_path)
+        runner.run()
+
+        self.upload_checks(runner)
+
+        os.chdir(cur_path)
+
     def test_upload_dryrun(self):
         '''
         Upload files in dryrun mode, make sure folder is not found in Data.fs
