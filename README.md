@@ -27,9 +27,10 @@ older system, run
 
     sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
 
-On newer PerFact Zope4 installations
+On newer PerFact Zope4 installations, install `test` branch via, e.g. for
+development/testing purposes
 
-    sudo -H /usr/share/perfact/zope4/bin/pip install git+https://github.com/perfact/zodbsync --upgrade
+    sudo -H /usr/share/perfact/zope4/bin/pip install git+https://github.com/perfact/zodbsync@test --upgrade
 
 ## Configuration
 
@@ -49,7 +50,7 @@ configured to connect to a ZEO server. If using a WSGI server (Zope 2 or Zope
 
 ### `base_dir`
 Inside this folder (actually, in a subfolder named `__root__`), the serialized
-objects are placed. 
+objects are placed.
 
 ### `manager_user`
 The name of a user that must be defined in the top-level UserFolder (`acl_users`)
@@ -71,7 +72,7 @@ The `record` subcommand is used to record objects from the ZODB to the file
 system.
 
 Each object is mapped to a folder that contains at least the file
-`__meta__` which holds the meta data of the object (properties, permissions etc.). 
+`__meta__` which holds the meta data of the object (properties, permissions etc.).
 If the object contains other objects (like `Folder`s), they are represented as
 subfolders. If the object has some sort of source (like `Page Template`s, `DTML
 Method`s etc.), it is stored in an additional file. The filename suffix is
@@ -114,7 +115,7 @@ any changes.
 
 The opposite operation to `record` is `playback`, which is able to create and
 modify objects in the ZODB from a file system structure as it is created by
-`record`. 
+`record`.
 
 By default, `playback` recurses into the subtree below a given
 path, removing any superfluous objects and updating existing objects so they
