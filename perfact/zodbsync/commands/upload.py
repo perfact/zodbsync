@@ -135,5 +135,6 @@ class Upload(SubCommand):
         except Exception:
             self.logger.exception('Error uploading files. Resetting.')
             self.abort()
+            raise
         finally:
             self.sync.release_lock()
