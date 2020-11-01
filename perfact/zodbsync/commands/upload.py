@@ -66,7 +66,9 @@ class Upload(SubCommand):
         self.check_repo()
 
         # we need both filesystem and Data.fs path representation
-        data_fs_path, filesystem_path = self.check_path(self.args.path)
+        data_fs_path, filesystem_path = self.datafs_filesystem_path(
+            self.args.path
+        )
 
         # conversion loop: iterate over source folder, create folders in
         # repodir and corresponding files

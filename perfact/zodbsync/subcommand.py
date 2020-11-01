@@ -88,35 +88,28 @@ class SubCommand():
             self.gitcmd(*args), universal_newlines=True
         )
 
-    def check_path(self, path):
-        '''Check a given path to be relative (assume its a Data.fs path) or
-        an absolute path (assume its a filesystem path). Return both.
+    def datafs_filesystem_path(self, path):
+        '''Create absolute filesystem path from Data.fs path
         '''
+
         if path.startswith('./'):
             path = path[2:]
 
         if path.startswith('/'):
             path = path[1:]
 
-        if os.path.isabs(path):
-            filesystem_path = path
-            data_fs_path = os.path.relpath(
-                path,
-                self.config.base_dir
+        data_fs_path = path
+        if path.startswith('__root__'):
+            filesystem_path = os.path.join(
+                self.config.base_dir,
+                path
             )
         else:
-            data_fs_path = path
-            if path.startswith('__root__'):
-                filesystem_path = os.path.join(
-                    self.config.base_dir,
-                    path
-                )
-            else:
-                filesystem_path = os.path.join(
-                    self.config.base_dir,
-                    '__root__',
-                    path
-                )
+            filesystem_path = os.path.join(
+                self.config.base_dir,
+                '__root__',
+                path
+            )
 
         return data_fs_path, filesystem_path
 

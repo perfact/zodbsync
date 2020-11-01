@@ -225,7 +225,7 @@ class TestSync():
         Upload files in dryrun mode, make sure folder is not found in Data.fs
         '''
         target_jslib_path = self.jslib.path
-        target_repo_path = os.path.join(self.repo.path, '__root__', 'lib')
+        target_repo_path = os.path.join('__root__', 'lib')
 
         runner = self.runner(
             'upload', target_jslib_path, target_repo_path, '--dry-run'
