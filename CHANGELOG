@@ -1,4 +1,4 @@
-3.15.2.dev0
+4.0.0
   * Relax dependency to allow installation under Zope 5
 
   * Fix bytes/str bug with watcher under Python 3 after packing the Data.FS.
