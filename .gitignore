@@ -4,3 +4,6 @@ perfact_zodbsync.egg-info
 venv*
 .tox
 .coverage
+__pycache__
+build
+dist

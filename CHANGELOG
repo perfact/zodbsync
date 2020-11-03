@@ -1,4 +1,5 @@
 4.0.1.dev0
+  * Add upload subcommand to push JS/CSS files into the Data.fs
 
 4.0.0
   * Relax dependency to allow installation under Zope 5

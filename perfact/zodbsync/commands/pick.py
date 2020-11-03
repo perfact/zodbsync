@@ -25,48 +25,10 @@ class Pick(SubCommand):
             playing back all affected paths at the end.'''
         )
 
-    def gitcmd(self, *args):
-        return ['git', '-C', self.sync.base_dir] + list(args)
-
-    def gitcmd_run(self, *args):
-        '''Wrapper to run a git command.'''
-        subprocess.check_call(self.gitcmd(*args))
-
-    def gitcmd_output(self, *args):
-        '''Wrapper to run a git command and return the output.'''
-        return subprocess.check_output(
-            self.gitcmd(*args), universal_newlines=True
-        )
-
     def run(self):
         self.sync.acquire_lock()
         # Check for unstaged changes
-        unstaged_changes = [
-            line[3:]
-            for line in self.gitcmd_output(
-                'status', '--untracked-files', '-z'
-            ).split('\0')
-            if line
-        ]
-
-        if unstaged_changes:
-            self.logger.warning(
-                "Unstaged changes found. Moving them out of the way."
-            )
-            self.gitcmd_run('stash', 'push', '--include-untracked')
-
-        # The commit we reset to if something doesn't work out
-        orig_commit = [
-            line for line in self.gitcmd_output(
-                'show-ref', '--head', 'HEAD',
-            ).split('\n')
-            if line.endswith(' HEAD')
-        ][0].split()[0]
-
-        def abort():
-            self.gitcmd_run('reset', '--hard', orig_commit)
-            if unstaged_changes:
-                self.gitcmd_run('stash', 'pop')
+        self.check_repo()
 
         changed_files = set()
 
@@ -95,8 +57,8 @@ class Pick(SubCommand):
 
             # Check that none of the files is present in the stashed away
             # unstaged changes
-            if len([f for f in files if f in unstaged_changes]):
-                abort()
+            if len([f for f in files if f in self.unstaged_changes]):
+                self.abort()
                 raise Exception(
                     'Unable to apply %s, it touches unstaged files.'
                     % commit
@@ -113,7 +75,7 @@ class Pick(SubCommand):
                     'Unable to apply %s due to the above differences.'
                     % commit
                 )
-                abort()
+                self.abort()
                 raise
 
             changed_files.update(files)
@@ -135,13 +97,13 @@ class Pick(SubCommand):
                 dryrun=self.args.dry_run,
             )
             if self.args.dry_run:
-                abort()
+                self.abort()
                 return
 
-            if unstaged_changes:
+            if self.unstaged_changes:
                 self.gitcmd_run('stash', 'pop')
 
         except Exception:
             self.logger.exception('Error playing back objects. Resetting.')
-            abort()
+            self.abort()
             raise
