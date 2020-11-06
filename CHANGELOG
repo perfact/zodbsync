@@ -1,4 +1,4 @@
-4.0.1.dev0
+4.0.1
   * Add upload subcommand to push JS/CSS files into the Data.fs
 
 4.0.0
