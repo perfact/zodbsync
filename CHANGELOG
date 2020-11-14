@@ -1,4 +1,7 @@
 4.0.2.dev0
+  * Clean up Python 2 compatibility code
+  
+  * Add subcommand with-lock and option --no-lock
 
 4.0.1
   * Add upload subcommand to push JS/CSS files into the Data.fs

@@ -191,7 +191,7 @@ class DTMLDocumentObj(ModObj):
         return
 
     def read(self, obj):
-        return [('source', helpers.str_to_bytes(
+        return [('source', helpers.to_bytes(
             helpers.simple_html_unquote(str(obj))
         ))]
 
@@ -199,7 +199,7 @@ class DTMLDocumentObj(ModObj):
         d = dict(data)
 
         obj.manage_edit(
-            data=helpers.bytes_to_str(d['source']),
+            data=helpers.to_string(d['source']),
             title=d['title'])
         return
 
@@ -252,7 +252,7 @@ class ZSQLMethodObj(ModObj):
         obj.manage_addProduct['ZSQLMethods'].manage_addZSQLMethod(
             id=obj_id, title=d['title'],
             connection_id=d['connection_id'],
-            arguments=d['args'], template=helpers.bytes_to_str(d['source']))
+            arguments=d['args'], template=helpers.to_string(d['source']))
         return
 
     def read(self, obj):
@@ -261,7 +261,7 @@ class ZSQLMethodObj(ModObj):
         meta.append(('args', args))
         connection_id = obj.connection_id
         meta.append(('connection_id', connection_id))
-        meta.append(('source', helpers.str_to_bytes(obj.src)))
+        meta.append(('source', helpers.to_bytes(obj.src)))
 
         # Advanced tab
         advanced = {
@@ -286,7 +286,7 @@ class ZSQLMethodObj(ModObj):
             title=d['title'],
             connection_id=d['connection_id'],
             arguments=d['args'],
-            template=helpers.bytes_to_str(d['source']))
+            template=helpers.to_string(d['source']))
 
         # Advanced settings
         adv = dict(d['advanced'])
@@ -591,7 +591,7 @@ class ScriptPythonObj(ModObj):
         bindmap.sort()
         meta.append(('bindings', bindmap))
         meta.append(('args', obj.params()))
-        meta.append(('source', helpers.str_to_bytes(obj.body())))
+        meta.append(('source', helpers.to_bytes(obj.body())))
 
         # Proxy roles
 
@@ -608,7 +608,7 @@ class ScriptPythonObj(ModObj):
         d = dict(data)
         obj.ZPythonScript_setTitle(title=d['title'])
         obj.ZPythonScript_edit(params=d['args'],
-                               body=helpers.bytes_to_str(d['source']))
+                               body=helpers.to_string(d['source']))
         obj.ZBindings_edit(mapping=dict(d['bindings']))
         obj.manage_proxy(roles=d['proxy_roles'])
         return

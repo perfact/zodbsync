@@ -165,6 +165,16 @@ Example to upload bootstrap:
 
     zodbsync upload /tmp/bootstrap lib/bootstrap
 
+### `zodbsync with-lock`
+
+If some combination of `git` and `zodbsync` operations is not yet covered by a
+wrapper subcommand, it is possible to use `zodbsync with-lock` to execute a
+series of commands while still making sure that no other similar operation
+interferes. Any `zodbsync` command used as part of this must then use the
+option `--no-lock`. For example:
+
+    zodbsync with-lock "git rebase origin/main && zodbsync --no-lock playback /"
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,

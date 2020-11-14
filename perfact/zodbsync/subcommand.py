@@ -31,7 +31,8 @@ class SubCommand():
         # add all available SubCommand classes as sub-command runners
         subs = parser.add_subparsers()
         for cls in subcommands:
-            subparser = subs.add_parser(cls.__name__.lower())
+            name = getattr(cls, 'subcommand', cls.__name__.lower())
+            subparser = subs.add_parser(name)
             cls.add_args(subparser)
             subparser.set_defaults(runner=cls)
 
@@ -47,6 +48,10 @@ class SubCommand():
             '--config', '-c', type=str,
             help='Path to config (default: %s)' % default_configfile,
             default=default_configfile
+        )
+        parser.add_argument(
+            '--no-lock', action='store_true',
+            help='Do not acquire lock. Only use inside a with-lock wrapper.',
         )
         if 'perfact.loggingtools' in sys.modules:
             perfact.loggingtools.addArgs(parser, name='ZODBSync')
@@ -72,7 +77,11 @@ class SubCommand():
             logger.propagate = False
 
         self.logger = logger
-        self.sync = ZODBSync(conffile=args.config, logger=logger)
+        self.sync = ZODBSync(
+            conffile=args.config,
+            logger=logger,
+            create_app=getattr(self, "create_app", True),
+        )
         self.config = self.sync.config
 
     def gitcmd(self, *args):
@@ -101,12 +110,12 @@ class SubCommand():
         data_fs_path = path
         if path.startswith('__root__'):
             filesystem_path = os.path.join(
-                self.config.base_dir,
+                self.config["base_dir"],
                 path
             )
         else:
             filesystem_path = os.path.join(
-                self.config.base_dir,
+                self.config["base_dir"],
                 '__root__',
                 path
             )
