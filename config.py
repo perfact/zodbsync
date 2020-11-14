@@ -1,10 +1,10 @@
 # Path of the Zope instance configuration to use to
 # instantiate Zope2.app()
-conf_path = '/var/lib/zope2.13/instance/ema/etc/zope.conf'
+wsgi_conf_path = '/var/lib/zope4/ema/etc/zope.conf'
 
 # Path to Data.fs which is needed for lookup of object IDs from transaction IDs
 # with perfact-zoperecord --watch
-datafs_path = '/var/lib/zope2.13/zeo/emazeo/var/Data.fs'
+datafs_path = '/var/lib/zope4/zeo/var/Data.fs'
 
 # user that is used to create commits and as default owner of objects
 manager_user = 'perfact'

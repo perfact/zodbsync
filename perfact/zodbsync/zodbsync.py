@@ -4,7 +4,7 @@
 import re
 import sys
 import os
-import ast
+import six
 import shutil
 import time  # for periodic output
 import filelock
@@ -23,20 +23,7 @@ import logging
 from .object_types import object_handlers, mod_implemented_handlers
 
 from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
-    remove_redundant_paths
-
-PY2 = (sys.version_info.major == 2)
-
-# Python2 backward compatibility
-if PY2:
-    import imp  # for config loading
-    ast.Bytes = ast.Str
-
-    class DummyNameConstant:
-        pass
-    ast.NameConstant = DummyNameConstant
-else:
-    import importlib  # for config loading
+    remove_redundant_paths, load_config
 
 # Monkey patch ZRDB not to connect to databases immediately.
 try:
@@ -44,10 +31,6 @@ try:
     Connection.Connection.connect_on_load = False
 except ImportError:
     pass
-
-if not PY2:
-    # for calling isinstance later
-    unicode = str
 
 
 def mod_format(data=None, indent=0, as_list=False):
@@ -222,6 +205,8 @@ class ZODBSync:
                  conffile,
                  site='__root__',
                  logger=None,
+                 use_lock=True,
+                 create_app=True,
                  ):
         if logger is None:
             logger = logging.getLogger('ZODBSync')
@@ -230,36 +215,16 @@ class ZODBSync:
             logger.propagate = False
         self.logger = logger
 
-        # Load configuration
-        if PY2:
-            config = imp.load_source('config', conffile)
-        else:
-            config = importlib.machinery.SourceFileLoader(
-                'config', conffile).load_module()
+        self.config = config = load_config(conffile)
 
-        self.config = config
         self.site = site
-        self.base_dir = config.base_dir
-        self.lock = filelock.FileLock(self.base_dir + '/.zodbsync.lock')
-        self.manager_user = getattr(config, 'manager_user', 'perfact')
-        self.create_manager_user = getattr(config, 'create_manager_user',
-                                           False)
-        self.default_owner = getattr(config, 'default_owner', 'perfact')
-
-        # Setup Zope
-        if getattr(config, 'conf_path', None):
-            # Zope2 uses the system argument list, which confuses things.
-            # We clear that list here. If arguments to Zope2 are required,
-            # these can be added here.
-            sys.argv = sys.argv[:1]
-            Zope2.configure(config.conf_path)
-        else:
-            # WSGI mode
-            from Zope2.Startup.run import configure_wsgi
-            configure_wsgi(config.wsgi_conf_path)
-            from Zope2.App.startup import startup
-            startup()
-        self.app = Zope2.app()
+        self.base_dir = config['base_dir']
+        self.use_lock = use_lock
+        if self.use_lock:
+            self.lock = filelock.FileLock(self.base_dir + '/.zodbsync.lock')
+        self.manager_user = config.get('manager_user', 'perfact')
+        self.create_manager_user = config.get('create_manager_user', False)
+        self.default_owner = config.get('default_owner', 'perfact')
 
         # Statistics
         self.num_obj_total = 1
@@ -293,7 +258,36 @@ class ZODBSync:
             'Script (Python)': 'py',
         }
 
+        if not create_app:
+            return
+
+        assert ('conf_path' in config) != ('wsgi_conf_path' in config), (
+            "Config must contain conf_path or wsgi_conf_path, but not both"
+        )
+
+        conf_path = config.get("wsgi_conf_path", None)
+        if conf_path:
+            from Zope2.Startup.run import configure_wsgi
+            configure_wsgi(conf_path)
+            from Zope2.App.startup import startup
+            startup()
+        else:
+            # Compatibility to Zope2
+            conf_path = config["conf_path"]
+
+            # Zope2 uses the system argument list, which confuses things.
+            # We clear that list here. If arguments to Zope2 are required,
+            # these can be added here.
+            orig_args = sys.argv
+            sys.argv = sys.argv[:1]
+            Zope2.configure(conf_path)
+            sys.argv = orig_args
+
+        self.app = Zope2.app()
+
     def acquire_lock(self, timeout=10):
+        if not self.use_lock:
+            return
         try:
             self.lock.acquire(timeout=1)
         except filelock.Timeout:
@@ -305,7 +299,8 @@ class ZODBSync:
                 sys.exit(1)
 
     def release_lock(self):
-        self.lock.release()
+        if self.use_lock:
+            self.lock.release()
 
     def start_transaction(self, note=''):
         ''' Start a transaction with a given note and return the transaction
@@ -383,12 +378,12 @@ class ZODBSync:
         source = data.get('source', None)
 
         # Only write out sources if unicode or string
-        write_source = isinstance(source, (bytes, unicode))
+        write_source = isinstance(source, (bytes, six.text_type))
 
         # Build metadata
         meta = {key: value for key, value in data.items() if key != 'source'}
         fmt = mod_format(meta)
-        if isinstance(fmt, unicode):
+        if isinstance(fmt, six.text_type):
             fmt = fmt.encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -419,7 +414,7 @@ class ZODBSync:
             # Write bytes or utf-8 encoded text.
             data = source
             base = '__source__'
-            if isinstance(data, unicode):
+            if isinstance(data, six.text_type):
                 data = data.encode('utf-8')
                 base = '__source-utf8__'
 

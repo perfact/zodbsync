@@ -337,7 +337,7 @@ class Watch(SubCommand):
         self.app = self.sync.app
 
         try:
-            self.datafs_path = self.config.datafs_path
+            self.datafs_path = self.config["datafs_path"]
         except AttributeError:
             self.logger.exception("watch requires datafs_path in config")
             raise

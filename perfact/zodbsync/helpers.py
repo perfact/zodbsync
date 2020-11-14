@@ -1,21 +1,27 @@
 # -*- coding: utf-8 -*-
-import sys
 import ast
 import operator
 import string
+import six
 
-PY2 = (sys.version_info.major <= 2)
-if not PY2:
-    unicode = str
+if six.PY2:
+    import imp
+    ast.Bytes = ast.Str
+
+    class DummyNameConstant:
+        pass
+    ast.NameConstant = DummyNameConstant
+else:
+    import importlib
 
 
 def to_string(value, enc='utf-8'):
     '''This method delivers bytes in python2 and unicode in python3.'''
     if isinstance(value, str):
         return value
-    elif isinstance(value, unicode):
+    if isinstance(value, six.text_type):
         return value.encode(enc)
-    elif isinstance(value, bytes):
+    if isinstance(value, six.binary_type):
         return value.decode(enc)
     try:
         return str(value)
@@ -23,17 +29,34 @@ def to_string(value, enc='utf-8'):
         raise ValueError("could not convert '%s' to string!" % repr(value))
 
 
-# Helper function to generate str from bytes (Python3 only)
-def bytes_to_str(value, enc='utf-8'):
-    if not PY2 and isinstance(value, bytes):
+def to_ustring(value, enc='utf-8'):
+    '''Convert any string (bytes or unicode) into unicode.
+    '''
+    if isinstance(value, six.text_type):
+        return value
+    if isinstance(value, six.binary_type):
         return value.decode(enc, 'ignore')
-    return value
+
+    try:
+        return to_ustring(str(value))
+    except Exception:
+        pass
+    raise ValueError("could not convert '%s' to ustring!" % str((value,)))
 
 
-def str_to_bytes(value, enc='utf-8'):
-    if not PY2 and isinstance(value, str):
+def to_bytes(value, enc='utf-8'):
+    '''This method delivers bytes (encoded strings).'''
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, six.binary_type):
+        return value
+    if isinstance(value, six.text_type):
         return value.encode(enc)
-    return value
+    try:
+        return to_bytes(str(value))
+    except Exception:
+        pass
+    raise ValueError("could not convert '%s' to bytes!" % str((value,)))
 
 
 def remove_redundant_paths(paths):
@@ -87,9 +110,9 @@ str_repr_tests = [
     ["'" + '"', "'\\'\"'"],  # '\'"'
 
     # try a byte that is not valid UTF-8
-    [b'test\xaa', "b'test\\xaa'" if PY2 else u"b'test\\xaa'"],
+    [b'test\xaa', "b'test\\xaa'" if six.PY2 else u"b'test\\xaa'"],
 
-    [u'test\xaa', "u'test\\xaa'" if PY2 else u"'test\xaa'"],
+    [u'test\xaa', "u'test\\xaa'" if six.PY2 else u"'test\xaa'"],
 ]
 
 
@@ -157,7 +180,7 @@ def str_repr(val):
         fmt = '(%s,)' if len(val) == 1 else '(%s)'
         return fmt % ', '.join(str_repr(item) for item in val)
 
-    if PY2 and isinstance(val, bytes):
+    if six.PY2 and isinstance(val, bytes):
         # fall back to repr if val is not valid UTF-8
         try:
             val.decode('utf-8')
@@ -211,7 +234,7 @@ def fix_encoding(data, encoding):
     ...             'und Auswertungen zusammengefa\xc3\x9ft.\\n'),
     ...            ('title', 'Werteplan Monats\xc3\xbcbersicht'),
     ...            ('type', 'DTML Method')]
-    >>> if PY2 and fix_encoding(example, 'iso-8859-1') != result:
+    >>> if six.PY2 and fix_encoding(example, 'iso-8859-1') != result:
     ...     print("got:")
     ...     print(fix_encoding(example, 'iso-8859-1'))
     ...     print("expected:")
@@ -221,7 +244,7 @@ def fix_encoding(data, encoding):
     True
 
     '''
-    assert PY2, "Not implemented for PY3 yet"
+    assert six.PY2, "Not implemented for PY3 yet"
     unpacked = dict(data)
     if 'props' in unpacked:
         unpacked_props = [dict(a) for a in unpacked['props']]
@@ -278,7 +301,7 @@ def fix_encoding(data, encoding):
 
 def read_pdata(obj):
     '''Avoid authentication problems when reading linked pdata.'''
-    if isinstance(obj.data, (bytes, unicode)):
+    if isinstance(obj.data, (six.binary_type, six.text_type)):
         source = obj.data
     else:
         data = obj.data
@@ -312,7 +335,7 @@ def literal_eval(value):
     basic arithmetic operators included.
     '''
     _safe_names = {'None': None, 'True': True, 'False': False}
-    if isinstance(value, (bytes, unicode)):
+    if isinstance(value, (six.binary_type, six.text_type)):
         value = ast.parse(value, mode='eval')
 
     bin_ops = {
@@ -419,3 +442,22 @@ def prop_dict(data):
         props[pd['id']] = pd['value']
 
     return props
+
+
+def load_config(filename, name='config'):
+    '''Load the module at "filename" as module "name". Return the contents
+    as a dictionary. Skips contents starting with '_'.
+    '''
+    if six.PY2:
+        mod = imp.load_source(name, filename)
+    else:
+        loader = importlib.machinery.SourceFileLoader(name, filename)
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+
+    return {
+        name: getattr(mod, name)
+        for name in dir(mod)
+        if not name.startswith('_')
+    }
