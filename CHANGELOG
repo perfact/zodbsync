@@ -1,4 +1,8 @@
 4.0.2.dev0
+  * Unregister signals before waiting for lock so we may be interrupted
+
+  * Fix config path in README
+
   * Clean up Python 2 compatibility code
   
   * Add subcommand with-lock and option --no-lock
