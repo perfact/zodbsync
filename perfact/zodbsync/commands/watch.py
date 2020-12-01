@@ -328,6 +328,22 @@ class Watch(SubCommand):
                 }
             node['children'][child_oid] = child_id
 
+    def quit(self, signo, _frame):
+        """
+        Signal handler
+        """
+        self.logger.info('Caught signal, exiting...')
+        self.unregister_signals()
+        exit.set()
+
+    def register_signals(self):
+        for sig in ('TERM', 'HUP', 'INT'):
+            signal.signal(getattr(signal, 'SIG'+sig), self.quit)
+
+    def unregister_signals(self):
+        for sig in ('TERM', 'HUP', 'INT'):
+            signal.signal(getattr(signal, 'SIG'+sig), signal.SIG_DFL)
+
     def run(self, interval=10):
         '''Periodically read new transactions, update the object tree and
         record all changes. Handles SIGTERM and SIGINT so any running recording
@@ -442,17 +458,13 @@ class Watch(SubCommand):
         # an event that is fired if we are to be terminated
         exit = threading.Event()
 
-        # event handler for signals
-        def quit(signo, _frame):
-            self.logger.info('Caught signal, exiting...')
-            exit.set()
-        for sig in ('TERM', 'HUP', 'INT'):
-            signal.signal(getattr(signal, 'SIG'+sig), quit)
-
         while not exit.is_set():
+            self.unregister_signals()
+            self.sync.acquire_lock(timeout=300)
+            self.register_signals()
+
             # make sure we see a consistent snapshot, even though we later
             # abort this transaction since we do not write anything
-            self.sync.acquire_lock(timeout=300)
             transaction.begin()
             start_txnid = _increment_txnid(self.last_visible_txn)
             self._set_last_visible_txn()
