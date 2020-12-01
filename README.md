@@ -36,7 +36,7 @@ development/testing purposes
 
 Use the `config.py` as a starting point for your configuration. At the moment,
 it is not automatically installed. The canonical path for the configuration is
-`/etc/perfact/modsync/config.py`, so if you do not want to supply the path to
+`/etc/perfact/modsync/zodb.py`, so if you do not want to supply the path to
 the configuration when calling the scripts, copy the configuration file there
 (this will change in a future version).
 
