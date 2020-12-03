@@ -452,7 +452,7 @@ class PageTemplateObj(ModObj):
         return
 
     def read(self, obj):
-        return [('source', obj.read()), ]
+        return [('source', obj._text), ]
 
     def write(self, obj, data):
         d = dict(data)
