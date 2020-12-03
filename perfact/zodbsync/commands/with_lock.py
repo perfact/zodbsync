@@ -4,6 +4,7 @@ import subprocess
 
 from ..subcommand import SubCommand
 
+
 class WithLock(SubCommand):
     """
     SubCommand to execute a shell command by first grabbing the lock.

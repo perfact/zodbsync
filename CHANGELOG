@@ -1,4 +1,6 @@
-4.0.2.dev0
+4.0.2
+  * Read Page Template source code without triggering macro expansion
+
   * Unregister signals before waiting for lock so we may be interrupted
 
   * Fix config path in README
