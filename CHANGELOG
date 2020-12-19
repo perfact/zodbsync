@@ -1,4 +1,7 @@
 4.0.3.dev0
+  * Delete roles and local roles on playback if they are not set in the file
+    (#22)
+
   * Fix recognition of redundant paths when playing back (#50)
 
   * Record proxy roles independent of acquired roles (#49)
