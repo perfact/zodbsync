@@ -27,6 +27,29 @@ class ModObj:
 class AccessControlObj(ModObj):
     meta_types = ['AccessControl', ]
 
+    @staticmethod
+    def roles(obj):
+        """Read currently set userdefined roles"""
+        return tuple(sorted(obj.userdefined_roles()))
+
+    @staticmethod
+    def local_roles(obj):
+        """Read currently set local roles"""
+        # Ignore local owner role if it is trivial
+        return list(sorted([
+            role for role in obj.get_local_roles()
+            if role[1] != ('Owner',)]
+        ))
+
+    @staticmethod
+    def local_roles_to_dict(roles):
+        """Transform list of tuples (uid, role) to dict {uid: [roles]}"""
+        users = {item[0] for item in roles}
+        return {
+            user: [item[1] for item in roles if item[0] == user]
+            for user in users
+        }
+
     def read(self, obj):
         ac = []
 
@@ -34,18 +57,13 @@ class AccessControlObj(ModObj):
         if is_root:
             ac.append(('is_root', True))
 
-        userdefined_roles = tuple(sorted(obj.userdefined_roles()))
-        if userdefined_roles:
-            ac.append(('roles', userdefined_roles))
+        roles = self.roles(obj)
+        if roles:
+            ac.append(('roles', roles))
 
-        local_roles = obj.get_local_roles()
-        # Ignore local owner role if it is trivial
-        local_roles = sorted([
-            role for role in local_roles
-            if role[1] != ('Owner',)]
-        )
+        local_roles = self.local_roles(obj)
         if local_roles:
-            ac.append(('local_roles', list(local_roles)))
+            ac.append(('local_roles', local_roles))
 
         try:
             ownerinfo = obj._owner
@@ -90,21 +108,23 @@ class AccessControlObj(ModObj):
     def write(self, obj, data):
         d = dict(data)
 
-        # Create userdef roles
-        if d.get('roles', None):
-            current_roles = obj.userdefined_roles()
-            for role in d['roles']:
-                if role not in current_roles:
-                    obj._addRole(role)
+        # Set userdef roles
+        cur = self.roles(obj)
+        tgt = d.get('roles', [])
+        for role in tgt:
+            if role not in cur:
+                obj._addRole(role)
+        todelete = [r for r in cur if r not in tgt]
+        if todelete:
+            obj._delRoles(todelete)
 
-            toremove = [r for r in current_roles if r not in d['roles']]
-            if toremove:
-                obj._delRoles(toremove)
-
-        # set local roles
-        if d.get('local_roles', None):
-            for userid, roles in d['local_roles']:
-                obj.manage_setLocalRoles(userid, roles)
+        # Set local roles
+        cur = self.local_roles_to_dict(self.local_roles(obj))
+        tgt = self.local_roles_to_dict(d.get('local_roles', []))
+        users = set(cur.keys()) | set(tgt.keys())
+        for user in users:
+            if cur.get(user) != tgt.get(user):
+                obj.manage_setLocalRoles(user, tgt.get(user, []))
 
         # Permission settings
         # permissions that are not stored are understood to be acquired, with
