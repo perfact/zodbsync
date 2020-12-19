@@ -69,10 +69,11 @@ def remove_redundant_paths(paths):
     i = 0
     last = None
     while i < len(paths):
-        if last is not None and paths[i].startswith(last):
+        current = paths[i].rstrip('/') + '/'
+        if last is not None and current.startswith(last):
             del paths[i]
             continue
-        last = paths[i]
+        last = current
         i += 1
 
 

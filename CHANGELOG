@@ -1,4 +1,6 @@
 4.0.3.dev0
+  * Fix recognition of redundant paths when playing back (#50)
+
   * Record proxy roles independent of acquired roles (#49)
 
   * Adjust remaining code to the fact that config is now a dict and not a
