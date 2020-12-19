@@ -78,19 +78,19 @@ class Record(SubCommand):
                 pass
 
         if 'perfact.pfcodechg' in sys.modules and self.args.commit:
-            commit_message = self.sync.config.commit_message
+            commit_message = self.sync.config["commit_message"]
             # this fails (by design) if no repository is initialized.
             commit_done = perfact.pfcodechg.git_snapshot(
-                self.sync.config.base_dir,
+                self.sync.config["base_dir"],
                 commit_message,
             )
             # only send a mail if something has changed
-            codechg_mail = getattr(self.sync.config, 'codechange_mail', False)
+            codechg_mail = self.sync.config.get('codechange_mail', False)
             if commit_done and codechg_mail:
                 self.sync.logger.info('Commit was done! Sending mail...')
                 perfact.pfcodechg.git_mail_summary(
-                    self.sync.config.base_dir,
-                    self.sync.config.codechange_mail,
+                    self.sync.config["base_dir"],
+                    self.sync.config["codechange_mail"],
                 )
 
         if self.args.lasttxn and (newest_txnid != lasttxn):
