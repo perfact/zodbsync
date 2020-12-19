@@ -595,10 +595,7 @@ class ScriptPythonObj(ModObj):
 
         # Proxy roles
 
-        proxy_roles = []
-        for role in obj.valid_roles():
-            if obj.manage_haveProxy(role):
-                proxy_roles.append(role)
+        proxy_roles = list(obj._proxy_roles)
         proxy_roles.sort()
         meta.append(('proxy_roles', proxy_roles))
 
