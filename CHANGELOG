@@ -1,4 +1,4 @@
-4.0.3.dev0
+4.0.3
   * Delete roles and local roles on playback if they are not set in the file
     (#22)
 
