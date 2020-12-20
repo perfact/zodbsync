@@ -233,3 +233,19 @@ class TestSync():
         runner.run()
 
         assert 'lib' not in runner.sync.app.objectIds()
+
+    def test_emptying_userdefined_roles(self):
+        """
+        Check fix for #22: if a Folder defines local roles, playback must be
+        able to remove them.
+        """
+        runner = self.runner('record', '/')
+        runner.sync.app._addRole('TestRole')
+        runner.run()
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            lines = f.readlines()
+        with open(fname, 'w') as f:
+            f.writelines([line for line in lines if 'TestRole' not in line])
+        runner.sync.playback_paths(paths=['/'], recurse=False)
+        assert runner.sync.app.userdefined_roles() == ()
