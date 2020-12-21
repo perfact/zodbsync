@@ -334,7 +334,7 @@ class Watch(SubCommand):
         """
         self.logger.info('Caught signal, exiting...')
         self.unregister_signals()
-        exit.set()
+        self.exit.set()
 
     def register_signals(self):
         for sig in ('TERM', 'HUP', 'INT'):
@@ -359,11 +359,7 @@ class Watch(SubCommand):
             raise
 
         # Log in as a manager
-        uf = self.app.acl_users
-        user = uf.getUserById(self.sync.manager_user)
-        if not hasattr(user, 'aq_base'):
-            user = user.__of__(uf)
-        AccessControl.SecurityManagement.newSecurityManager(None, user)
+        self.sync.start_transaction().commit()
 
         # mapping from object id to dict describing tree structure
         self.object_tree = {}
@@ -456,9 +452,9 @@ class Watch(SubCommand):
         self.logger.info("Setup complete")
 
         # an event that is fired if we are to be terminated
-        exit = threading.Event()
+        self.exit = threading.Event()
 
-        while not exit.is_set():
+        while not self.exit.is_set():
             self.unregister_signals()
             self.sync.acquire_lock(timeout=300)
             self.register_signals()
@@ -479,4 +475,4 @@ class Watch(SubCommand):
             self.sync.release_lock()
 
             # a wait that is interrupted immediately if exit.set() is called
-            exit.wait(interval)
+            self.exit.wait(interval)
