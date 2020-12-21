@@ -8,9 +8,6 @@ import perfact.zodbsync.helpers as helpers
 import perfact.zodbsync.tests.environment as env
 
 
-ZEOPORT = 9011
-
-
 class TestSync():
     '''
     All tests defined in this class automatically use the environment fixture
@@ -23,12 +20,11 @@ class TestSync():
         Fixture that is automatically used by all tests. Initializes
         environment and injects the elements of it into the class.
         '''
-        myenv = {
-            'zeo': env.ZeoInstance(port=ZEOPORT),
-            'repo': env.Repository(),
-            'zopeconfig': env.ZopeConfig(zeoport=ZEOPORT),
-            'jslib': env.JSLib(),
-        }
+        myenv = {}
+        myenv['zeo'] = env.ZeoInstance()
+        myenv['repo'] = env.Repository()
+        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
+        myenv['jslib'] = env.JSLib()
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
         # inject items into class so methods can use them

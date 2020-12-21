@@ -13,12 +13,26 @@ conftest.py to provide an environment for the tests.
 
 
 class ZeoInstance():
-    def __init__(self, port):
+    def __init__(self):
         self.path = tempfile.mkdtemp()
-        subprocess.check_call(
-            ['mkzeoinstance', self.path, '127.0.0.1:%d' % port]
-        )
+        subprocess.check_call(['mkzeoinstance', self.path])
+
+        # replace address line to use a socket
+        fname = self.path + '/etc/zeo.conf'
+        with open(fname) as f:
+            lines = f.readlines()
+        subst = '  address ' + self.sockpath() + '\n'
+        lines = [
+            subst if '  address' in line else line
+            for line in lines
+        ]
+        with open(fname, 'w') as f:
+            f.writelines(lines)
+
         self.zeo = subprocess.Popen([self.path + '/bin/runzeo'])
+
+    def sockpath(self):
+        return self.path + '/var/zeo.sock'
 
     def cleanup(self):
         self.zeo.terminate()
@@ -42,13 +56,13 @@ class Repository():
 
 
 class ZopeConfig():
-    def __init__(self, zeoport):
+    def __init__(self, zeosock):
         self.path = tempfile.mkdtemp()
         self.config = self.path + '/zope.conf'
         with open(self.config, 'w') as f:
             f.write('''
 %define INSTANCE {path}
-%define ZEO_SERVER 127.0.0.1:{port}
+%define ZEO_SERVER {zeosock}
 
 instancehome $INSTANCE
 
@@ -62,7 +76,7 @@ instancehome $INSTANCE
     </zeoclient>
    mount-point /
 </zodb_db>
-            '''.format(port=zeoport, path=self.path)
+            '''.format(zeosock=zeosock, path=self.path)
                     )
 
     def cleanup(self):

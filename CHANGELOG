@@ -1,3 +1,6 @@
+4.0.4.dev0
+  * Switch tests to use a socket for the ZEO connection
+
 4.0.3
   * Delete roles and local roles on playback if they are not set in the file
     (#22)
