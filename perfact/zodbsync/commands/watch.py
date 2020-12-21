@@ -12,9 +12,6 @@ import shutil
 # transaction IDs
 import ZODB.FileStorage
 
-# for making an annotation to the transaction
-import transaction
-
 from ..subcommand import SubCommand
 from ..helpers import remove_redundant_paths
 from ..zodbsync import mod_read
@@ -395,7 +392,7 @@ class Watch(SubCommand):
         # collect a list of all changed paths and record them recursively.
 
         self.sync.acquire_lock(timeout=300)
-        transaction.begin()
+        self.sync.tm.begin()
         self._set_last_visible_txn()
         self._init_tree(self.app)
 
@@ -440,7 +437,7 @@ class Watch(SubCommand):
             self.logger.info('Recording %s' % path)
             self.sync.record(path)
 
-        transaction.abort()
+        self.sync.tm.abort()
 
         # store an updated txnid on disk
         self._store_last_visible_txn()
@@ -459,7 +456,7 @@ class Watch(SubCommand):
 
             # make sure we see a consistent snapshot, even though we later
             # abort this transaction since we do not write anything
-            transaction.begin()
+            self.sync.tm.begin()
             start_txnid = _increment_txnid(self.last_visible_txn)
             self._set_last_visible_txn()
             self._read_changed_oids(
@@ -467,7 +464,7 @@ class Watch(SubCommand):
                 txn_stop=self.last_visible_txn,
             )
             self._update_objects()
-            transaction.abort()
+            self.sync.tm.abort()
 
             self._store_last_visible_txn()
             self.sync.release_lock()
