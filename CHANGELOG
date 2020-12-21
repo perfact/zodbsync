@@ -1,4 +1,6 @@
 4.0.4.dev0
+  * Restore graceful shutdown of watcher
+
   * Switch tests to use a socket for the ZEO connection
 
 4.0.3
