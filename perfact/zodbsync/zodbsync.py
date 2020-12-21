@@ -9,9 +9,10 @@ import shutil
 import time  # for periodic output
 import filelock
 
-# for accessing Data.fs directly:
-import Zope2
-# for making an annotation to the transaction
+# For config loading and initial connection, possibly populating an empty ZODB
+import Zope2.App.startup
+import App.config
+# for using an explicit transaction manager
 import transaction
 # for "logging in"
 import AccessControl.SecurityManagement
@@ -75,11 +76,8 @@ def mod_format(data=None, indent=0, as_list=False):
 
 def obj_contents(obj):
     ''' Fetch list of subitems '''
-    if not hasattr(obj, 'objectItems'):
-        return []
-    result = [a[0] for a in obj.objectItems()]
-    result.sort()
-    return result
+    func = getattr(obj, 'objectIds')
+    return sorted(func()) if func else []
 
 
 def mod_read(obj=None, onerrorstop=False, default_owner=None):
@@ -261,29 +259,25 @@ class ZODBSync:
         if not create_app:
             return
 
-        assert ('conf_path' in config) != ('wsgi_conf_path' in config), (
+        conf_path = config.get('conf_path')
+        wsgi_conf_path = config.get('wsgi_conf_path')
+        assert bool(conf_path) != bool(wsgi_conf_path), (
             "Config must contain conf_path or wsgi_conf_path, but not both"
         )
 
-        conf_path = config.get("wsgi_conf_path", None)
         if conf_path:
-            from Zope2.Startup.run import configure_wsgi
-            configure_wsgi(conf_path)
-            from Zope2.App.startup import startup
-            startup()
-        else:
-            # Compatibility to Zope2
-            conf_path = config["conf_path"]
+            from Zope2.Startup.run import configure as configure_zope
+        elif wsgi_conf_path:
+            conf_path = wsgi_conf_path
+            from Zope2.Startup.run import configure_wsgi as configure_zope
 
-            # Zope2 uses the system argument list, which confuses things.
-            # We clear that list here. If arguments to Zope2 are required,
-            # these can be added here.
-            orig_args = sys.argv
-            sys.argv = sys.argv[:1]
-            Zope2.configure(conf_path)
-            sys.argv = orig_args
-
-        self.app = Zope2.app()
+        configure_zope(conf_path)
+        # Create the application root in case the ZODB is empty
+        Zope2.App.startup.startup()
+        db = App.config.getConfiguration().dbtab.getDatabase('/', is_root=1)
+        self.tm = transaction.TransactionManager()
+        root = db.open(self.tm).root
+        self.app = root.Application
 
     def acquire_lock(self, timeout=10):
         if not self.use_lock:
@@ -326,11 +320,10 @@ class ZODBSync:
             user = user.__of__(uf)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
 
-        txn_mgr = transaction  # Zope2.zpublisher_transactions_manager
-        txn_mgr.begin()
+        self.tm.begin()
         # Set a label for the transaction
-        transaction.get().note(note)
-        return txn_mgr
+        self.tm.get().note(note)
+        return self.tm
 
     def source_ext_from_meta(self, meta, obj_id):
         '''Guess a good extension from meta data.'''
