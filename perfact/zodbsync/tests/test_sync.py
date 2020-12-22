@@ -3,6 +3,10 @@ import os.path
 import subprocess
 import pytest
 
+import ZEO
+import transaction
+from AccessControl.SecurityManagement import newSecurityManager
+
 import perfact.zodbsync.main
 import perfact.zodbsync.helpers as helpers
 import perfact.zodbsync.tests.environment as env
@@ -42,6 +46,19 @@ class TestSync():
         # clean up items
         for item in myenv.values():
             item.cleanup()
+
+    @pytest.fixture(scope='function')
+    def conn(self, request):
+        """
+        Fixture that provides a secondary connection to the same ZEO
+        """
+        tm = transaction.TransactionManager()
+        db = ZEO.DB(self.zeo.sockpath())
+        conn = db.open(tm)
+        app = conn.root.Application
+
+        yield helpers.Namespace({'tm': tm, 'app': app})
+        conn.close()
 
     def runner(self, *cmd):
         '''
@@ -267,3 +284,68 @@ class TestSync():
         runner.sync.record('/', recurse=False)
         with open(fname, 'r') as f:
             assert recording == f.read()
+
+    def test_watch_change(self, conn):
+        """
+        Start the watcher, change something using the second connection without
+        commiting yet, do a step on the watcher, make sure the change is not
+        yet visible, then commit the change and do another step, making sure
+        that it is now present.
+        """
+        fname = self.repo.path + '/__root__/__meta__'
+        watcher = self.runner('watch')
+        watcher.setup()
+        conn.tm.begin()
+        conn.app._addRole('TestRole')
+        watcher.step()
+        assert 'TestRole' not in open(fname).read()
+        conn.tm.commit()
+        watcher.step()
+        assert 'TestRole' in open(fname).read()
+
+    def test_watch_move(self, conn):
+        """
+        Create a Page Template, record it using the watcher, rename it and make
+        sure the watcher notices. Then add a second one and do a
+        three-way-rename in one transaction, making sure the watcher keeps
+        track.
+        """
+        watcher = self.runner('watch')
+        watcher.setup()
+        root = self.repo.path + '/__root__/'
+        src = '/__source-utf8__.html'
+        app = conn.app
+
+        add = app.manage_addProduct['PageTemplates'].manage_addPageTemplate
+        rename = app.manage_renameObject
+
+        with conn.tm:
+            add(id='test1', text='test1')
+        watcher.step()
+        assert os.path.isdir(root + 'test1')
+
+        # Not sure how to apply this specifically to the secondary connection
+        # and why it is only needed for the rename and not the adding, but it
+        # seems to do the job
+        newSecurityManager(None, conn.app.acl_users.getUserById('perfact'))
+
+        with conn.tm:
+            rename('test1', 'test2')
+        watcher.step()
+        assert os.path.isdir(root + 'test2')
+        assert not os.path.isdir(root + 'test1')
+
+        with conn.tm:
+            add(id='test1', text='test2')
+        watcher.step()
+        assert os.path.isdir(root + 'test1')
+        assert open(root + 'test1' + src).read() == 'test2'
+        assert open(root + 'test2' + src).read() == 'test1'
+
+        with conn.tm:
+            rename('test1', 'tmp')
+            rename('test2', 'test1')
+            rename('tmp', 'test2')
+        watcher.step()
+        assert open(root + 'test1' + src).read() == 'test1'
+        assert open(root + 'test2' + src).read() == 'test2'

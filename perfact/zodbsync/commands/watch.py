@@ -339,11 +339,11 @@ class Watch(SubCommand):
         for sig in ('TERM', 'HUP', 'INT'):
             signal.signal(getattr(signal, 'SIG'+sig), signal.SIG_DFL)
 
-    def run(self, interval=10):
-        '''Periodically read new transactions, update the object tree and
-        record all changes. Handles SIGTERM and SIGINT so any running recording
-        is finished before terminating.'''
-
+    def setup(self):
+        """
+        Initially create tree and record anything that happened since the last
+        running.
+        """
         self.base_dir = os.path.join(self.sync.base_dir, self.sync.site)
         self.app = self.sync.app
 
@@ -446,25 +446,32 @@ class Watch(SubCommand):
         # an event that is fired if we are to be terminated
         self.exit = threading.Event()
 
+    def step(self):
+        """Read new transactions, update the object tree and record all
+        changes."""
+        self.unregister_signals()
+        self.sync.acquire_lock(timeout=300)
+        self.register_signals()
+
+        # make sure we see a consistent snapshot, even though we later
+        # abort this transaction since we do not write anything
+        self.sync.tm.begin()
+        start_txnid = _increment_txnid(self.last_visible_txn)
+        self._set_last_visible_txn()
+        self._read_changed_oids(
+            txn_start=start_txnid,
+            txn_stop=self.last_visible_txn,
+        )
+        self._update_objects()
+        self.sync.tm.abort()
+
+        self._store_last_visible_txn()
+        self.sync.release_lock()
+
+    def run(self, interval=10):
+        """ Run in a loop. """
+        self.setup()
         while not self.exit.is_set():
-            self.unregister_signals()
-            self.sync.acquire_lock(timeout=300)
-            self.register_signals()
-
-            # make sure we see a consistent snapshot, even though we later
-            # abort this transaction since we do not write anything
-            self.sync.tm.begin()
-            start_txnid = _increment_txnid(self.last_visible_txn)
-            self._set_last_visible_txn()
-            self._read_changed_oids(
-                txn_start=start_txnid,
-                txn_stop=self.last_visible_txn,
-            )
-            self._update_objects()
-            self.sync.tm.abort()
-
-            self._store_last_visible_txn()
-            self.sync.release_lock()
-
+            self.step()
             # a wait that is interrupted immediately if exit.set() is called
             self.exit.wait(interval)

@@ -15,6 +15,14 @@ else:
     import importlib
 
 
+class Namespace():
+    """
+    Convert a dict to a namespace, allowing access via a.b instead of a['b']
+    """
+    def __init__(self, data):
+        self.__dict__.update(data)
+
+
 def to_string(value, enc='utf-8'):
     '''This method delivers bytes in python2 and unicode in python3.'''
     if isinstance(value, str):
