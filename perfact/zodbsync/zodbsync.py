@@ -7,24 +7,28 @@ import os
 import six
 import shutil
 import time  # for periodic output
-import filelock
+# Logging (if perfact.loggingtools is not available, we only support logging to
+# stdout)
+import logging
 
-# For config loading and initial connection, possibly populating an empty ZODB
-import Zope2.App.startup
-import App.config
+import filelock
 # for using an explicit transaction manager
 import transaction
 # for "logging in"
 import AccessControl.SecurityManagement
+# For config loading and initial connection, possibly populating an empty ZODB
+import Zope2.App.startup
+import App.config
+try:
+    from Zope2.Startup.run import configure_wsgi as configure_zope
+except ImportError:
+    from Zope2.Startup.run import configure as configure_zope
 
-# Logging (if perfact.loggingtools is not available, we only support logging to
-# stdout)
-import logging
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-
 from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
     remove_redundant_paths, load_config
+
 
 # Monkey patch ZRDB not to connect to databases immediately.
 try:
@@ -166,7 +170,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
             assert False, "Type mismatch for object " + repr(data)
 
     # ID is new? Create a minimal object (depending on type)
-
     if obj is None:
         object_handlers[meta_type].create(parent, data, obj_id)
         if hasattr(parent, 'aq_explicit'):
@@ -199,12 +202,38 @@ class ZODBSync:
     respectively.
     '''
 
+    # Some objects should be ignored by the process because of their specific
+    # IDs.
+    ignore_objects = [re.compile('^__'), ]
+
+    # We write the binary sources into files ending with appropriate extensions
+    # for convenience. This table guesses the most important ones from the
+    # "content_type" property.
+    content_types = {
+        'application/pdf': 'pdf',
+        'application/json': 'json',
+        'application/javascript': 'js',
+        'image/jpeg': 'jpg',
+        'image/gif': 'gif',
+        'image/png': 'png',
+        'text/javascript': 'js',
+        'text/css': 'css',
+        'text/html': 'html',
+        'image/svg+xml': 'svg',
+    }
+
+    # In some cases, we can deduce the best extension from the object type.
+    meta_types = {
+        'Z SQL Method': 'sql',
+        'Script (Python)': 'py',
+    }
+
     def __init__(self,
                  conffile,
                  site='__root__',
                  logger=None,
                  use_lock=True,
-                 create_app=True,
+                 connect=True,
                  ):
         if logger is None:
             logger = logging.getLogger('ZODBSync')
@@ -221,7 +250,6 @@ class ZODBSync:
         if self.use_lock:
             self.lock = filelock.FileLock(self.base_dir + '/.zodbsync.lock')
         self.manager_user = config.get('manager_user', 'perfact')
-        self.create_manager_user = config.get('create_manager_user', False)
         self.default_owner = config.get('default_owner', 'perfact')
 
         # Statistics
@@ -229,55 +257,59 @@ class ZODBSync:
         self.num_obj_current = 0
         self.num_obj_last_report = time.time()
 
-        # Some objects should be ignored by the process because of
-        # their specific IDs.
-        self.ignore_objects = [re.compile('^__'), ]
+        if connect:
+            self.connect()
 
-        # We write the binary sources into files ending with
-        # appropriate extensions for convenience. This table guesses
-        # the most important ones from the "content_type" property.
-        self.content_types = {
-            'application/pdf': 'pdf',
-            'application/json': 'json',
-            'application/javascript': 'js',
-            'image/jpeg': 'jpg',
-            'image/gif': 'gif',
-            'image/png': 'png',
-            'text/javascript': 'js',
-            'text/css': 'css',
-            'text/html': 'html',
-            'image/svg+xml': 'svg',
-        }
+    def connect(self):
+        """
+        Initialize local transaction manager and connection to the ZODB
+        """
+        # Historically, we switched depending on the given config parameter
+        # which configure function to call. However, they essentially do the
+        # same and depending on the Zope version, only one is available, so it
+        # does not matter how the name of the config was given.
+        conf_path = self.config.get('wsgi_conf_path')
+        if not conf_path:
+            conf_path = self.config.get('conf_path')
 
-        # In some cases, we can deduce the best extension from the
-        # object type.
-        self.meta_types = {
-            'Z SQL Method': 'sql',
-            'Script (Python)': 'py',
-        }
-
-        if not create_app:
-            return
-
-        conf_path = config.get('conf_path')
-        wsgi_conf_path = config.get('wsgi_conf_path')
-        assert bool(conf_path) != bool(wsgi_conf_path), (
-            "Config must contain conf_path or wsgi_conf_path, but not both"
-        )
-
-        if conf_path:
-            from Zope2.Startup.run import configure as configure_zope
-        elif wsgi_conf_path:
-            conf_path = wsgi_conf_path
-            from Zope2.Startup.run import configure_wsgi as configure_zope
-
+        # Read and parse configuration
         configure_zope(conf_path)
-        # Create the application root in case the ZODB is empty
+        # This initially connects to the ZODB (mostly opening a connection to a
+        # running ZEO), sets up the application (which, for Zope 2, includes
+        # loading any Products provided in the instance) and, if the ZODB
+        # happens to be empty, initializes the application and populates it
+        # with some default stuff.
         Zope2.App.startup.startup()
-        db = App.config.getConfiguration().dbtab.getDatabase('/', is_root=1)
+
+        # We do not use the "global" app object, but open a separate connection
+        # with a new transaction manager. This ensures that initializing a
+        # second ZODBSync object that connects to a different ZEO in the same
+        # thread will not yield "client has seen newer transactions than
+        # server!" messages (which is mostly relevant for the tests).
         self.tm = transaction.TransactionManager()
+        db = App.config.getConfiguration().dbtab.getDatabase('/', is_root=1)
         root = db.open(self.tm).root
         self.app = root.Application
+
+        # Make sure the manager user exists
+        if self.config.get('create_manager_user', False):
+            self.create_manager_user()
+
+    def create_manager_user(self):
+        """
+        Make sure the manager user exists.
+        """
+        userfolder = self.app.acl_users
+        user = userfolder.getUserById(self.manager_user)
+        if user is not None:
+            return
+        self.tm.begin()
+        userfolder._doAddUser(self.manager_user, 'admin', ['Manager'], [])
+        self.logger.warning(
+            'Created user %s with password admin because this user does not'
+            ' exist!' % self.manager_user
+        )
+        self.tm.commit()
 
     def acquire_lock(self, timeout=10):
         if not self.use_lock:
@@ -303,17 +335,10 @@ class ZODBSync:
         # Log in as a manager
         uf = self.app.acl_users
         user = uf.getUserById(self.manager_user)
-        if (user is None):
-            if (self.create_manager_user):
-                user = uf._doAddUser(self.manager_user, 'admin', ['Manager'],
-                                     [])
-                self.logger.warning('Created user %s with password admin '
-                                    'because this user does not exist!' %
-                                    self.manager_user)
-            else:
-                raise Exception('User %s is not available in database. '
-                                'Perhaps you need to set create_manager_user '
-                                'in config.py?' % self.manager_user)
+        assert user is not None, (
+            'User %s is not available in database. Perhaps you need to set'
+            ' create_manager_user in config.py?' % self.manager_user
+        )
 
         self.logger.info('Using user %s' % self.manager_user)
         if not hasattr(user, 'aq_base'):
@@ -322,7 +347,8 @@ class ZODBSync:
 
         self.tm.begin()
         # Set a label for the transaction
-        self.tm.get().note(note)
+        if note:
+            self.tm.get().note(note)
         return self.tm
 
     def source_ext_from_meta(self, meta, obj_id):
@@ -739,11 +765,10 @@ class ZODBSync:
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
-        '''Retrieve all distinct paths which have changed recently.  Control
-        how far to look back in time by supplying the number of
-        seconds in Unix time in "since_secs" or the transaction ID at
-        which to stop scanning in "txnid".
-        Retrieves at most "limit" distinct paths.
+        '''Retrieve all distinct paths which have changed recently. Control how
+        far to look back in time by supplying the number of seconds in Unix
+        time in "since_secs" or the transaction ID at which to stop scanning in
+        "txnid". Retrieves at most "limit" distinct paths.
         '''
         paths = []
         newest_txnid = None

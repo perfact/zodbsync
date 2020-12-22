@@ -80,7 +80,7 @@ class SubCommand():
         self.sync = ZODBSync(
             conffile=args.config,
             logger=logger,
-            create_app=getattr(self, "create_app", True),
+            connect=getattr(self, "connect", True),
         )
         self.config = self.sync.config
 

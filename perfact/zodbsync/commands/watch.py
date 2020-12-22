@@ -353,9 +353,6 @@ class Watch(SubCommand):
             self.logger.exception("watch requires datafs_path in config")
             raise
 
-        # Log in as a manager
-        self.sync.start_transaction().commit()
-
         # mapping from object id to dict describing tree structure
         self.object_tree = {}
 
