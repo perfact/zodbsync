@@ -245,3 +245,25 @@ class TestSync():
             f.writelines([line for line in lines if 'TestRole' not in line])
         runner.sync.playback_paths(paths=['/'], recurse=False)
         assert runner.sync.app.userdefined_roles() == ()
+
+    def test_userdefined_roles_playback(self):
+        """
+        Test fix #57: Make sure that playback of an object with local roles
+        works correctly. Set a local role, record, read out the recording, play
+        back, check that it is set correctly, record again and check that the
+        recording matches the first one.
+        """
+        runner = self.runner('record', '/')
+        app = runner.sync.app
+        app._addRole('TestRole')
+        app.manage_setLocalRoles('perfact', ('TestRole',))
+        runner.run()
+
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            recording = f.read()
+        runner.sync.playback_paths(paths=['/'], recurse=False)
+        assert app.get_local_roles() == (('perfact', ('TestRole',)),)
+        runner.sync.record('/', recurse=False)
+        with open(fname, 'r') as f:
+            assert recording == f.read()

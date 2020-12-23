@@ -41,15 +41,6 @@ class AccessControlObj(ModObj):
             if role[1] != ('Owner',)]
         ))
 
-    @staticmethod
-    def local_roles_to_dict(roles):
-        """Transform list of tuples (uid, role) to dict {uid: [roles]}"""
-        users = {item[0] for item in roles}
-        return {
-            user: [item[1] for item in roles if item[0] == user]
-            for user in users
-        }
-
     def read(self, obj):
         ac = []
 
@@ -119,12 +110,12 @@ class AccessControlObj(ModObj):
             obj._delRoles(todelete)
 
         # Set local roles
-        cur = self.local_roles_to_dict(self.local_roles(obj))
-        tgt = self.local_roles_to_dict(d.get('local_roles', []))
+        cur = dict(self.local_roles(obj))
+        tgt = dict(d.get('local_roles', tuple()))
         users = set(cur.keys()) | set(tgt.keys())
         for user in users:
             if cur.get(user) != tgt.get(user):
-                obj.manage_setLocalRoles(user, tgt.get(user, []))
+                obj.manage_setLocalRoles(user, tgt.get(user, tuple()))
 
         # Permission settings
         # permissions that are not stored are understood to be acquired, with
