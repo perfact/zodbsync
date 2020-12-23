@@ -1,4 +1,5 @@
 4.0.5.dev0
+  * Fix playback of local roles
 
 4.0.4
   * Restore graceful shutdown of watcher

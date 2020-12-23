@@ -14,8 +14,6 @@ import ZODB.FileStorage
 
 # for making an annotation to the transaction
 import transaction
-# for "logging in"
-import AccessControl.SecurityManagement
 
 from ..subcommand import SubCommand
 from ..helpers import remove_redundant_paths
