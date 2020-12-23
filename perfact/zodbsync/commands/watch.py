@@ -344,7 +344,7 @@ class Watch(SubCommand):
         Initially create tree and record anything that happened since the last
         running.
         """
-        self.base_dir = os.path.join(self.sync.base_dir, self.sync.site)
+        self.base_dir = self.sync.app_dir
         self.app = self.sync.app
 
         try:
@@ -388,7 +388,7 @@ class Watch(SubCommand):
         # not know which move operations would take us from A to B. Instead, we
         # collect a list of all changed paths and record them recursively.
 
-        self.sync.acquire_lock(timeout=300)
+        self.acquire_lock(timeout=300)
         self.sync.tm.begin()
         self._set_last_visible_txn()
         self._init_tree(self.app)
@@ -439,7 +439,7 @@ class Watch(SubCommand):
         # store an updated txnid on disk
         self._store_last_visible_txn()
 
-        self.sync.release_lock()
+        self.release_lock()
 
         self.logger.info("Setup complete")
 
@@ -450,7 +450,7 @@ class Watch(SubCommand):
         """Read new transactions, update the object tree and record all
         changes."""
         self.unregister_signals()
-        self.sync.acquire_lock(timeout=300)
+        self.acquire_lock(timeout=300)
         self.register_signals()
 
         # make sure we see a consistent snapshot, even though we later
@@ -466,7 +466,7 @@ class Watch(SubCommand):
         self.sync.tm.abort()
 
         self._store_last_visible_txn()
-        self.sync.release_lock()
+        self.release_lock()
 
     def run(self, interval=10):
         """ Run in a loop. """

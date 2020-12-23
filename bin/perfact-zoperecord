@@ -2,7 +2,7 @@
 
 import argparse
 
-import perfact.zodbsync.main
+from perfact.zodbsync.main import Runner
 try:
     # psql dump for backwards compatibility
     import perfact.dbbackup
@@ -23,11 +23,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.lasttxn:
-        cmd = 'record --lasttxn'.split()
+        cmd = 'record --lasttxn'
     else:
-        cmd = 'record --commit /'.split()
+        cmd = 'record --commit /'
 
-    runner = perfact.zodbsync.main.create_runner(cmd)
+    runner = Runner(*cmd.split())
 
     # dump tables and schemas if run without --lasttxn and if the corresponding
     # variables are found in the config - this is only for backwards

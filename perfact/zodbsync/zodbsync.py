@@ -2,16 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import re
-import sys
 import os
 import six
 import shutil
 import time  # for periodic output
-# Logging (if perfact.loggingtools is not available, we only support logging to
-# stdout)
-import logging
 
-import filelock
 # for using an explicit transaction manager
 import transaction
 # for "logging in"
@@ -27,7 +22,7 @@ except ImportError:
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
 from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
-    remove_redundant_paths, load_config
+    remove_redundant_paths
 
 
 # Monkey patch ZRDB not to connect to databases immediately.
@@ -228,27 +223,13 @@ class ZODBSync:
         'Script (Python)': 'py',
     }
 
-    def __init__(self,
-                 conffile,
-                 site='__root__',
-                 logger=None,
-                 use_lock=True,
-                 connect=True,
-                 ):
-        if logger is None:
-            logger = logging.getLogger('ZODBSync')
-            logger.setLevel(logging.INFO)
-            logger.addHandler(logging.StreamHandler())
-            logger.propagate = False
+    def __init__(self, config, logger, site='__root__'):
         self.logger = logger
+        self.config = config
 
-        self.config = config = load_config(conffile)
-
-        self.site = site
         self.base_dir = config['base_dir']
-        self.use_lock = use_lock
-        if self.use_lock:
-            self.lock = filelock.FileLock(self.base_dir + '/.zodbsync.lock')
+        self.site = site
+        self.app_dir = os.path.join(self.base_dir, self.site)
         self.manager_user = config.get('manager_user', 'perfact')
         self.default_owner = config.get('default_owner', 'perfact')
 
@@ -257,13 +238,6 @@ class ZODBSync:
         self.num_obj_current = 0
         self.num_obj_last_report = time.time()
 
-        if connect:
-            self.connect()
-
-    def connect(self):
-        """
-        Initialize local transaction manager and connection to the ZODB
-        """
         # Historically, we switched depending on the given config parameter
         # which configure function to call. However, they essentially do the
         # same and depending on the Zope version, only one is available, so it
@@ -310,23 +284,6 @@ class ZODBSync:
             ' exist!' % self.manager_user
         )
         self.tm.commit()
-
-    def acquire_lock(self, timeout=10):
-        if not self.use_lock:
-            return
-        try:
-            self.lock.acquire(timeout=1)
-        except filelock.Timeout:
-            self.logger.debug("Acquiring exclusive lock...")
-            try:
-                self.lock.acquire(timeout=timeout)
-            except filelock.Timeout:
-                self.logger.error("Unable to acquire lock.")
-                sys.exit(1)
-
-    def release_lock(self):
-        if self.use_lock:
-            self.lock.release()
 
     def start_transaction(self, note=''):
         ''' Start a transaction with a given note and return the transaction
@@ -384,7 +341,7 @@ class ZODBSync:
         Return filesystem path corresponding to the object path, which might
         start with a /.
         '''
-        return os.path.join(self.base_dir, self.site, path.lstrip('/'))
+        return os.path.join(self.app_dir, path.lstrip('/'))
 
     def fs_write(self, path, data):
         '''
@@ -601,7 +558,7 @@ class ZODBSync:
             return
 
         # Step through the path components as well as the object tree.
-        folder = os.path.join(self.base_dir, self.site)
+        folder = self.app_dir
         parent_obj = None
         obj = self.app
         folder_exists = obj_exists = True
@@ -719,7 +676,7 @@ class ZODBSync:
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
-        # normalize paths - cut off filenames and the site name (__root__)
+        # normalize paths - cut off filenames and the site name
         paths = {
             path.rsplit('/', 1)[0] if (
                 path.endswith('__meta__')

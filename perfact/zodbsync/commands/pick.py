@@ -25,8 +25,8 @@ class Pick(SubCommand):
             playing back all affected paths at the end.'''
         )
 
+    @SubCommand.with_lock
     def run(self):
-        self.sync.acquire_lock()
         # Check for unstaged changes
         self.check_repo()
 

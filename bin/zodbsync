@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import perfact.zodbsync.main
+from perfact.zodbsync.main import Runner
 
 if __name__ == '__main__':
-    perfact.zodbsync.main.run()
+    Runner().run()
