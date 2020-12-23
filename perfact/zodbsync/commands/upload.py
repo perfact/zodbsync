@@ -57,12 +57,12 @@ class Upload(SubCommand):
             help='Roll back at the end.',
         )
 
+    @SubCommand.with_lock
     def run(self):
         '''
         Convert source folder into zodbsync compatible struct in repodir
         and upload it
         '''
-        self.sync.acquire_lock()
         self.check_repo()
 
         # we need both filesystem and Data.fs path representation
@@ -138,5 +138,3 @@ class Upload(SubCommand):
             self.logger.exception('Error uploading files. Resetting.')
             self.abort()
             raise
-        finally:
-            self.sync.release_lock()

@@ -18,6 +18,6 @@ class WithLock(SubCommand):
             'command', type=str, help="Shell-command to be executed",
         )
 
+    @SubCommand.with_lock
     def run(self):
-        self.sync.acquire_lock()
         subprocess.run(self.args.command, shell=True)

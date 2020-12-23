@@ -19,8 +19,10 @@ class Namespace():
     """
     Convert a dict to a namespace, allowing access via a.b instead of a['b']
     """
-    def __init__(self, data):
-        self.__dict__.update(data)
+    def __init__(self, data=None, **kw):
+        if data:
+            self.__dict__.update(data)
+        self.__dict__.update(kw)
 
 
 def to_string(value, enc='utf-8'):

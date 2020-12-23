@@ -34,8 +34,8 @@ class Playback(SubCommand):
             help='Sub-Path in Data.fs to be played back',
         )
 
+    @SubCommand.with_lock
     def run(self):
-        self.sync.acquire_lock()
         self.sync.playback_paths(
             paths=self.args.path,
             recurse=not self.args.no_recurse,
@@ -43,4 +43,3 @@ class Playback(SubCommand):
             skip_errors=self.args.skip_errors,
             dryrun=self.args.dry_run,
         )
-        self.sync.release_lock()

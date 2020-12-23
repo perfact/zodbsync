@@ -1,88 +1,54 @@
 #!/usr/bin/env python
 
-import argparse
-import logging
 import sys
 import subprocess
 import os
 
-try:
-    import perfact.loggingtools
-except ImportError:
-    pass
+import filelock
 
-from .zodbsync import ZODBSync
+from .helpers import Namespace
 
 
-class SubCommand():
+class SubCommand(Namespace):
     '''
     Base class for different sub-commands to be used by zodbsync.
     '''
-    @staticmethod
-    def create(argv, subcommands):
-        ''' Create a subcommand runner from the given argument list and the
-        list of available subcommands.
-        '''
-        parser = argparse.ArgumentParser(description='''
-            Tool to sync objects between a ZODB and a git-controlled folder on
-            the file system.
-        ''')
-        SubCommand.add_generic_args(parser)
-        # add all available SubCommand classes as sub-command runners
-        subs = parser.add_subparsers()
-        for cls in subcommands:
-            name = getattr(cls, 'subcommand', cls.__name__.lower())
-            subparser = subs.add_parser(name)
-            cls.add_args(subparser)
-            subparser.set_defaults(runner=cls)
-
-        args = parser.parse_args(argv)
-
-        return args.runner(args=args)
-
-    @staticmethod
-    def add_generic_args(parser):
-        ''' Add generic arguments not specific to a subcommand.  '''
-        default_configfile = '/etc/perfact/modsync/zodb.py'
-        parser.add_argument(
-            '--config', '-c', type=str,
-            help='Path to config (default: %s)' % default_configfile,
-            default=default_configfile
-        )
-        parser.add_argument(
-            '--no-lock', action='store_true',
-            help='Do not acquire lock. Only use inside a with-lock wrapper.',
-        )
-        if 'perfact.loggingtools' in sys.modules:
-            perfact.loggingtools.addArgs(parser, name='ZODBSync')
-
     @staticmethod
     def add_args(parser):
         ''' Overwrite to add arguments specific to sub-command. '''
         pass
 
-    def __init__(self, args):
-        '''
-        Create syncer and store environment into subcommand instance
-        '''
-        self.args = args
-        if 'perfact.loggingtools' in sys.modules:
-            logger = perfact.loggingtools.createLogger(
-                args=args, name='ZODBSync'
-            )
-        else:
-            logger = logging.getLogger('ZODBSync')
-            logger.setLevel(logging.INFO)
-            logger.addHandler(logging.StreamHandler())
-            logger.propagate = False
+    def acquire_lock(self, timeout=10):
+        if self.args.no_lock:
+            return
+        try:
+            self.lock.acquire(timeout=1)
+        except filelock.Timeout:
+            self.logger.debug("Acquiring exclusive lock...")
+            try:
+                self.lock.acquire(timeout=timeout-1)
+            except filelock.Timeout:
+                self.logger.error("Unable to acquire lock.")
+                sys.exit(1)
 
-        self.logger = logger
-        self.sync = ZODBSync(
-            conffile=args.config,
-            logger=logger,
-            connect=getattr(self, "connect", True),
-        )
-        self.config = self.sync.config
+    def release_lock(self):
+        if not self.args.no_lock:
+            self.lock.release()
+
+    @staticmethod
+    def with_lock(func):
+        """
+        Decorator for instance methods that are enveloped by a lock
+        """
+        def wrapper(self, *args, **kwargs):
+            self.acquire_lock()
+            try:
+                result = func(self, *args, **kwargs)
+            finally:
+                self.release_lock()
+            return result
+
+        return wrapper
 
     def gitcmd(self, *args):
         return ['git', '-C', self.sync.base_dir] + list(args)
@@ -108,7 +74,7 @@ class SubCommand():
             path = path[1:]
 
         data_fs_path = path
-        if path.startswith('__root__'):
+        if path.startswith(self.sync.site):
             filesystem_path = os.path.join(
                 self.config["base_dir"],
                 path
@@ -116,7 +82,7 @@ class SubCommand():
         else:
             filesystem_path = os.path.join(
                 self.config["base_dir"],
-                '__root__',
+                self.sync.site,
                 path
             )
 

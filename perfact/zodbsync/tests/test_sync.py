@@ -7,9 +7,9 @@ import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
 
-import perfact.zodbsync.main
-import perfact.zodbsync.helpers as helpers
-import perfact.zodbsync.tests.environment as env
+from ..main import Runner
+from .. import helpers
+from . import environment as env
 
 
 class TestSync():
@@ -64,9 +64,7 @@ class TestSync():
         '''
         Create runner for given zodbsync command
         '''
-        return perfact.zodbsync.main.create_runner(
-            ['--config', self.config.path] + list(cmd)
-        )
+        return Runner().parse('--config', self.config.path, *cmd)
 
     def gitrun(self, *cmd):
         '''

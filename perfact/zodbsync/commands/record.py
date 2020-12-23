@@ -40,8 +40,8 @@ class Record(SubCommand):
             help='Sub-Path in Data.fs to be recorded',
         )
 
+    @SubCommand.with_lock
     def run(self):
-        self.sync.acquire_lock()
         paths = self.args.path
         recurse = not self.args.no_recurse
 
@@ -95,5 +95,3 @@ class Record(SubCommand):
 
         if self.args.lasttxn and (newest_txnid != lasttxn):
             self.sync.txn_write(newest_txnid or '')
-
-        self.sync.release_lock()
