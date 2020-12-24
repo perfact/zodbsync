@@ -671,8 +671,7 @@ class ZODBSync:
                               encoding=encoding, skip_errors=skip_errors)
 
         # Allow actions after recursing, like sorting children
-        for handler in mod_implemented_handlers(obj, fs_data['type']):
-            handler.write_after_recurse_hook(obj, fs_data)
+        object_handlers[fs_data['type']].write_after_recurse_hook(obj, fs_data)
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
