@@ -1,168 +1,53 @@
-import AccessControl.Permission
-
+#!/usr/bin/env python
 from . import helpers
+from .object_mixins import MixinModObj
 
 
-class ModObj:
+class ModObj(object):
     meta_types = []
 
-    def implements(self, obj):
-        return True
-
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         return
 
-    def read(self, obj):
+    @staticmethod
+    def read(obj):
         return ()
 
-    def write(self, obj, data):
+    @staticmethod
+    def write(obj, data):
         return
 
-    def write_after_recurse_hook(self, obj, data):
+    @staticmethod
+    def write_after_recurse_hook(obj, data):
         ''' implement if an action is to be performed on a to-be-played-back
         object after recursing into its children. '''
         return
 
-
-class AccessControlObj(ModObj):
-    meta_types = ['AccessControl', ]
-
-    @staticmethod
-    def roles(obj):
-        """Read currently set userdefined roles"""
-        return tuple(sorted(obj.userdefined_roles()))
-
-    @staticmethod
-    def local_roles(obj):
-        """Read currently set local roles"""
-        # Ignore local owner role if it is trivial
-        return list(sorted([
-            role for role in obj.get_local_roles()
-            if role[1] != ('Owner',)]
-        ))
-
-    def read(self, obj):
-        ac = []
-
-        is_root = obj.isTopLevelPrincipiaApplicationObject
-        if is_root:
-            ac.append(('is_root', True))
-
-        roles = self.roles(obj)
-        if roles:
-            ac.append(('roles', roles))
-
-        local_roles = self.local_roles(obj)
-        if local_roles:
-            ac.append(('local_roles', local_roles))
-
-        try:
-            ownerinfo = obj._owner
-            ac.append(('owner', ownerinfo))
-        except AttributeError:
-            pass
-
-        # The object's settings where they differ from the default (acquire)
-        try:
-            # we can not use permission_settings() since it only yields
-            # permissions for currently valid roles - however, in watch mode,
-            # we do not have the acquisition context and therefore might not
-            # know all roles, so we need to go one step further down, using
-            # Permission.getRoles()
-            perm_set = obj.ac_inherited_permissions(1)
-            perm_set = [
-                AccessControl.Permission.Permission(p[0], p[1], obj)
-                for p in perm_set
-            ]
-        except AttributeError:
-            perm_set = []
-
-        out = []
-        for perm in perm_set:
-            roles = perm.getRoles(default=[])
-            # for some reason, someone decided to encode whether a permission
-            # is acquired by returning either a tuple or a list...
-            acquire = isinstance(roles, list)
-            roles = list(roles)
-            roles.sort()
-            if acquire and len(roles) == 0:
-                # Does not deviate from default
-                continue
-            out.append((perm.name, acquire, roles))
-
-        out.sort()
-        if out:
-            ac.append(('perms', out))
-
-        return ac
-
-    def write(self, obj, data):
-        d = dict(data)
-
-        # Set userdef roles
-        cur = self.roles(obj)
-        tgt = d.get('roles', [])
-        for role in tgt:
-            if role not in cur:
-                obj._addRole(role)
-        todelete = [r for r in cur if r not in tgt]
-        if todelete:
-            obj._delRoles(todelete)
-
-        # Set local roles
-        cur = dict(self.local_roles(obj))
-        tgt = dict(d.get('local_roles', tuple()))
-        users = set(cur.keys()) | set(tgt.keys())
-        for user in users:
-            if cur.get(user) != tgt.get(user):
-                obj.manage_setLocalRoles(user, tgt.get(user, tuple()))
-
-        # Permission settings
-        # permissions that are not stored are understood to be acquired, with
-        # no additional roles being granted this permission
-        # An exception is the root application object, which can not acquire
-        stored_perms = {
-            name: (acquire, roles)
-            for name, acquire, roles in d.get('perms', [])
+    @classmethod
+    def collect_handlers(cls):
+        """
+        Create a dictionary mapping the supported meta_types of each class to
+        the handler class by recursing into subclasses.
+        """
+        result = {
+            meta_type: cls
+            for meta_type in cls.meta_types
         }
-        for role in obj.ac_inherited_permissions(1):
-            name = role[0]
-            if name in stored_perms:
-                roles = stored_perms[name][1]
-                if not stored_perms[name][0]:
-                    # no acquire, which ist stored in a tuple instead of a list
-                    roles = tuple(roles)
-            else:
-                # the default is to acquire without additional roles - except
-                # for the top-level object, where it is not to acquire and
-                # allow Manager (read() will usually record all permissions for
-                # the top level object, but in case there are new permissions,
-                # we need to pick a sane default)
-                if obj.isTopLevelPrincipiaApplicationObject:
-                    roles = ('Manager',)
-                else:
-                    roles = []
-            AccessControl.Permission.Permission(name, [], obj).setRoles(roles)
-
-        # set ownership
-        if 'owner' in d:
-            owner = d['owner']
-            if isinstance(owner, str):
-                # backward compatibility for older behavior, where the
-                # corresponding UserFolder was not included
-                owner = (['acl_users'], owner)
-
-            obj._owner = d['owner']
+        for sub in cls.__subclasses__():
+            result.update(sub.collect_handlers())
+        return result
 
 
 class UserFolderObj(ModObj):
     meta_types = ['User Folder', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addUserFolder()
-        return
 
-    def read(self, obj):
+    @staticmethod
+    def read(obj):
         users = []
         for user in obj.getUsers():
             users.append((
@@ -171,15 +56,15 @@ class UserFolderObj(ModObj):
                 user.roles,
                 user.getDomains(),
             ))
-        return [('users', users)]
+        return {'users': users}
 
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         users = obj.getUsers()
         current_users = [user.getUserName() for user in users]
-        target_users = [user[0] for user in d['users']]
+        target_users = [user[0] for user in data['users']]
         obj._doDelUsers([u for u in current_users if u not in target_users])
-        for user in d['users']:
+        for user in data['users']:
             # according to AccessControl/userfolder.py, an existing user of the
             # same name is simply overwritten by _doAddUser
             obj._doAddUser(
@@ -191,194 +76,179 @@ class UserFolderObj(ModObj):
             # _doAddUser encrypts the given password, but the password in the
             # dump is already encrypted, so we have to set it manually
             obj.getUserById(user[0]).__ = user[1]
-        return
 
 
 class DTMLDocumentObj(ModObj):
     meta_types = ['DTML Document', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addDTMLDocument(id=obj_id)
-        return
 
-    def read(self, obj):
-        return [('source', helpers.to_bytes(
-            helpers.simple_html_unquote(str(obj))
-        ))]
+    @staticmethod
+    def read(obj):
+        return {
+            'source': helpers.to_bytes(helpers.simple_html_unquote(str(obj)))
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
-
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            data=helpers.to_string(d['source']),
-            title=d['title'])
-        return
+            data=helpers.to_string(data['source']),
+            title=data['title'],
+        )
 
 
 class DTMLMethodObj(DTMLDocumentObj):
     meta_types = ['DTML Method', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addDTMLMethod(id=obj_id)
-        return
 
 
 class DTMLTeXObj(DTMLDocumentObj):
     meta_types = ['DTML TeX', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['DTMLTeX'].manage_addDTMLTeX(id=obj_id)
-        return
 
 
 class ZForceObj(ModObj):
     meta_types = ['ZForce', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['ZForce'].manage_addZForce(
             id=obj_id,
             title='',
             query_id='',
-            fields_id='')
-        return
+            fields_id='',
+        )
 
-    def read(self, obj):
-        meta = []
-        meta.append(('contents', self.contents(obj)))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {}
 
-    def write(self, obj, data):
-        d = dict(data)
-
-        obj.manage_changeProperties(title=d['title'])
-        return
+    @staticmethod
+    def write(obj, data):
+        obj.manage_changeProperties(title=data['title'])
 
 
 class ZSQLMethodObj(ModObj):
     meta_types = ['Z SQL Method', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
-
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['ZSQLMethods'].manage_addZSQLMethod(
-            id=obj_id, title=d['title'],
-            connection_id=d['connection_id'],
-            arguments=d['args'], template=helpers.to_string(d['source']))
-        return
+            id=obj_id,
+            title=data['title'],
+            connection_id=data['connection_id'],
+            arguments=data['args'],
+            template=helpers.to_string(data['source']),
+        )
 
-    def read(self, obj):
-        meta = []
-        args = obj.arguments_src
-        meta.append(('args', args))
-        connection_id = obj.connection_id
-        meta.append(('connection_id', connection_id))
-        meta.append(('source', helpers.to_bytes(obj.src)))
-
-        # Advanced tab
-        advanced = {
-            'connection_hook': obj.connection_hook,
-            'max_rows': obj.max_rows_,
-            'max_cache': obj.max_cache_,
-            'cache_time': obj.cache_time_,
-            'class_name': obj.class_name_,
-            'class_file': obj.class_file_,
+    @staticmethod
+    def read(obj):
+        return {
+            'args': obj.arguments_src,
+            'connection_id': obj.connection_id,
+            'source': helpers.to_bytes(obj.src),
+            'advanced': sorted([
+                ('connection_hook', obj.connection_hook),
+                ('max_rows', obj.max_rows_),
+                ('max_cache', obj.max_cache_),
+                ('cache_time', obj.cache_time_),
+                ('class_name', obj.class_name_),
+                ('class_file', obj.class_file_),
+            ]),
         }
 
-        adv = list(advanced.items())
-        adv.sort()
-        meta.append(('advanced', adv))
-
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
-
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            connection_id=d['connection_id'],
-            arguments=d['args'],
-            template=helpers.to_string(d['source']))
+            title=data['title'],
+            connection_id=data['connection_id'],
+            arguments=data['args'],
+            template=helpers.to_string(data['source']),
+        )
 
         # Advanced settings
-        adv = dict(d['advanced'])
+        adv = dict(data['advanced'])
         obj.manage_advanced(**adv)
-        return
 
 
 class ExternalMethodObj(ModObj):
     meta_types = ['External Method', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['ExternalMethod'].manage_addExternalMethod(
             id=obj_id,
-            title=d['title'],
-            module=d['module'],
-            function=d['function'])
-        return
+            title=data['title'],
+            module=data['module'],
+            function=data['function'],
+        )
 
-    def read(self, obj):
-        meta = []
-        meta.append(('function', obj.function()))
-        meta.append(('module',  obj.module()))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {
+            'function': obj.function(),
+            'module': obj.module(),
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
-
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            module=d['module'],
-            function=d['function'])
-        return
+            title=data['title'],
+            module=data['module'],
+            function=data['function'],
+        )
 
 
 class FileObj(ModObj):
     meta_types = ['File', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addFile(id=obj_id)
-        return
 
-    def read(self, obj):
-        # Read chunked source from File/Image objects.
-        source = helpers.read_pdata(obj)
-
+    @staticmethod
+    def read(obj):
         # XXX Precondition
+        # Read chunked source from File/Image objects.
+        return {'source': helpers.read_pdata(obj)}
 
-        return [('source', source), ]
-
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         pd = helpers.prop_dict(data)
 
         # XXX Precondition?
-
         obj.manage_edit(
-            filedata=d['source'],
+            filedata=data['source'],
             content_type=pd['content_type'],
-            title=d['title'])
-        return
+            title=data['title'],
+        )
 
 
 class ImageObj(FileObj):
     meta_types = ['Image', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addImage(id=obj_id, file='')
-        return
 
 
 class FolderObj(ModObj):
     meta_types = ['Folder', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addFolder(id=obj_id)
-        return
 
-    def read(self, obj):
-        meta = []
-
+    @staticmethod
+    def read(obj):
         # Site Access
         try:
             get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
@@ -387,62 +257,49 @@ class FolderObj(ModObj):
         if get_ar:
             accessrule = get_ar and get_ar()
             if accessrule:
-                meta.append(('accessrule', accessrule))
+                return {'accessrule': accessrule}
 
-        return meta
+        return {}
 
-    def write(self, obj, data):
-        d = dict(data)
-
-        obj.manage_changeProperties(title=d['title'])
+    @staticmethod
+    def write(obj, data):
+        obj.manage_changeProperties(title=data['title'])
 
         # Access Rule
-        accessrule = d.get('accessrule', None)
+        accessrule = data.get('accessrule', None)
         if accessrule:
             obj.manage_addProduct['SiteAccess'].manage_addAccessRule(
                 method_id=accessrule
             )
-        return
 
 
 class FolderOrderedObj(FolderObj):
     meta_types = ['Folder (Ordered)', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['OFSP'].manage_addOrderedFolder(id=obj_id)
-        return
 
-    def read(self, obj):
-        meta = []
-
+    @staticmethod
+    def read(obj):
+        result = FolderObj.read(obj)
         # ordered folders store their contents to represent the ordering
-        contents = [a[0] for a in obj.objectItems()]
-        meta.append(('contents', contents))
+        result['contents'] = [a[0] for a in obj.objectItems()]
+        return result
 
-        try:
-            get_ar = obj.manage_addProduct['SiteAccess'].manage_getAccessRule
-        except (KeyError, AttributeError):
-            get_ar = None
-        accessrule = get_ar and get_ar()
-        if accessrule:
-            meta.append(('accessrule', accessrule))
-
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
-
-        obj.manage_changeProperties(title=d['title'])
+    @staticmethod
+    def write(obj, data):
+        obj.manage_changeProperties(title=data['title'])
 
         # Access Rule
-        accessrule = d.get('accessrule', None)
+        accessrule = data.get('accessrule', None)
         if accessrule:
             obj.manage_addProduct['SiteAccess'].manage_addAccessRule(
                 method_id=accessrule
             )
-        return
 
-    def write_after_recurse_hook(self, obj, data):
+    @staticmethod
+    def write_after_recurse_hook(obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
         srv_contents = [a[0] for a in obj.objectItems()]
@@ -455,420 +312,269 @@ class FolderOrderedObj(FolderObj):
 class PageTemplateObj(ModObj):
     meta_types = ['Page Template', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['PageTemplates'].manage_addPageTemplate(
             id=obj_id,
             text=''
         )
-        return
 
-    def read(self, obj):
-        return [('source', obj._text), ]
+    @staticmethod
+    def read(obj):
+        return {'source': obj._text}
 
-    def write(self, obj, data):
-        d = dict(data)
-        obj.pt_setTitle(d['title'], 'utf-8')
-        obj.write(d['source'])
-        return
-
-
-class PropertiesObj(ModObj):
-    meta_types = ['Properties', ]
-
-    def implements(self, obj):
-        if hasattr(obj, 'aq_explicit'):
-            me = obj.aq_explicit
-        else:
-            me = obj
-        return hasattr(me, 'propertyMap')
-
-    def read(self, obj):
-        meta = []
-
-        props = obj.propertyMap()
-
-        # Optional: Ignore the "title" property, if it exists
-        props = list([a for a in props if a['id'] != 'title'])
-
-        for prop in props:
-            prop['value'] = obj.getProperty(prop['id'])
-            # Handle inherited properties correctly
-            if 'mode' in prop:
-                val = getattr(obj, prop['id'])
-                del prop['mode']
-                prop['value'] = val
-
-        props = [list(a.items()) for a in props]
-
-        # Keep the items sorted and hash-friendly
-        for item in props:
-            item.sort()
-        # Sort the properties
-        props.sort()
-
-        if props:
-            meta.append(('props', props))
-
-        return meta
-
-    def write(self, obj, data):
-        import zExceptions
-        d = dict(data)
-        props = d.get('props', [])
-
-        new_ids = []
-        for prop in props:
-            pd = dict(prop)
-            new_ids.append(pd['id'])
-            if obj.hasProperty(pd['id']):
-                continue
-            try:
-                obj.manage_addProperty(pd['id'], pd['value'], pd['type'])
-            except zExceptions.BadRequest as e:
-                print("Ignoring error when adding property: "+repr(e))
-
-        # Delete surplus properties
-        old_ids = obj.propdict().keys()
-        del_ids = [a for a in old_ids if a not in new_ids+['title', ]]
-        try:
-            obj.manage_delProperties(ids=del_ids)
-        except zExceptions.BadRequest as e:
-            if str(e) == 'Cannot delete output_encoding':
-                print("Ignoring failed attempt to delete output_encoding")
-            else:
-                raise
-        except AttributeError as e:
-            if str(e) == 'alt':
-                print("Ignoring AttributeError on property deletion")
-            else:
-                raise
-        pd = helpers.prop_dict(data)
-        obj.manage_changeProperties(**pd)
-        return
+    @staticmethod
+    def write(obj, data):
+        obj.pt_setTitle(data['title'], 'utf-8')
+        obj.write(data['source'])
 
 
 class RAMCacheManagerObj(ModObj):
     meta_types = ['RAM Cache Manager', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct[
             'StandardCacheManagers'
         ].manage_addRAMCacheManager(id=obj_id)
-        return
 
-    def read(self, obj):
-        meta = []
+    @staticmethod
+    def read(obj):
+        return {
+            'settings': sorted(obj.getSettings().items())
+        }
 
-        settings = list(obj.getSettings().items())
-        settings.sort()
-
-        meta.append(('settings', settings))
-
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
-        settings = dict(d['settings'])
-
+    @staticmethod
+    def write(obj, data):
         obj.manage_editProps(
-            title=d['title'],
-            settings=settings)
-        return
+            title=data['title'],
+            settings=dict(data['settings']),
+        )
 
 
 class AcceleratedHTTPCacheManagerObj(RAMCacheManagerObj):
     meta_types = ['Accelerated HTTP Cache Manager', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct[
             'StandardCacheManagers'
         ].manage_addAcceleratedHTTPCacheManager(id=obj_id)
-        return
 
 
 class ScriptPythonObj(ModObj):
     meta_types = ['Script (Python)', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['PythonScripts'].manage_addPythonScript(
             id=obj_id
         )
-        return
 
-    def read(self, obj):
-        meta = []
+    @staticmethod
+    def read(obj):
+        return {
+            'bindings': sorted(
+                obj.getBindingAssignments().getAssignedNames().items()
+            ),
+            'args': obj.params(),
+            'source': helpers.to_bytes(obj.body()),
+            'proxy_roles': sorted(list(obj._proxy_roles)),
+        }
 
-        bindmap = list(obj.getBindingAssignments().getAssignedNames().items())
-        bindmap.sort()
-        meta.append(('bindings', bindmap))
-        meta.append(('args', obj.params()))
-        meta.append(('source', helpers.to_bytes(obj.body())))
-
-        # Proxy roles
-
-        proxy_roles = list(obj._proxy_roles)
-        proxy_roles.sort()
-        meta.append(('proxy_roles', proxy_roles))
-
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
-        obj.ZPythonScript_setTitle(title=d['title'])
-        obj.ZPythonScript_edit(params=d['args'],
-                               body=helpers.to_string(d['source']))
-        obj.ZBindings_edit(mapping=dict(d['bindings']))
-        obj.manage_proxy(roles=d['proxy_roles'])
-        return
-
-
-class ZCacheableObj(ModObj):
-    meta_types = ['ZCacheable', ]
-
-    def implements(self, obj):
-        return hasattr(obj, 'ZCacheable_getManagerId')
-
-    def read(self, obj):
-        meta = []
-        zcachemanager = obj.ZCacheable_getManagerId()
-        if zcachemanager:
-            meta.append(('zcachemanager', zcachemanager))
-
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
-        zcachemanager = d.get('zcachemanager', '')
-        obj.ZCacheable_setManagerId(zcachemanager)
-        return
+    @staticmethod
+    def write(obj, data):
+        obj.ZPythonScript_setTitle(title=data['title'])
+        obj.ZPythonScript_edit(params=data['args'],
+                               body=helpers.to_string(data['source']))
+        obj.ZBindings_edit(mapping=dict(data['bindings']))
+        obj.manage_proxy(roles=data['proxy_roles'])
 
 
 class ZPsycopgDAObj(ModObj):
     meta_types = ['Z Psycopg 2 Database Connection',
                   'Z Psycopg Database Connection', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZPsycopgDA'].manage_addZPsycopgConnection(
             id=obj_id,
-            title=d['title'],
-            connection_string=d['connection_string'],
+            title=data['title'],
+            connection_string=data['connection_string'],
         )
-        return
 
-    def read(self, obj):
-        meta = []
+    @staticmethod
+    def read(obj):
         # late additions may not yet be everywhere in the Data.fs
-        try:
-            autocommit = obj.autocommit
-        except AttributeError:
-            autocommit = False
-        try:
-            readonlymode = obj.readonlymode
-        except AttributeError:
-            readonlymode = False
+        return {
+            'autocommit': getattr(obj, 'autocommit', False),
+            'readonlymode': getattr(obj, 'readonlymode', False),
+            'connection_string': obj.connection_string,
+            'encoding': obj.encoding,
+            'tilevel': obj.tilevel,
+            'zdatetime': obj.zdatetime,
+        }
 
-        meta.append(('autocommit', autocommit))
-        meta.append(('connection_string', obj.connection_string))
-        meta.append(('encoding', obj.encoding))
-        meta.append(('readonlymode', readonlymode))
-        meta.append(('tilevel', obj.tilevel))
-        meta.append(('zdatetime', obj.zdatetime))
-        return meta
-
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            connection_string=d['connection_string'],
-            zdatetime=d['zdatetime'],
-            tilevel=d['tilevel'],
-            autocommit=d['autocommit'],
-            readonlymode=d['readonlymode'],
-            encoding=d['encoding'],
+            title=data['title'],
+            connection_string=data['connection_string'],
+            zdatetime=data['zdatetime'],
+            tilevel=data['tilevel'],
+            autocommit=data['autocommit'],
+            readonlymode=data['readonlymode'],
+            encoding=data['encoding'],
         )
-        return
 
 
 class ZPyODBCDAObj(ModObj):
     meta_types = ['Z PyODBC Database Connection', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZPyODBCDA'].addpyodbcConnectionBrowser(
             id=obj_id,
-            title=d['title'],
-            connection_string=d['connection_string'],
-            auto_commit=d['autocommit'],
-            MaxRows=d['maxrows'],
+            title=data['title'],
+            connection_string=data['connection_string'],
+            auto_commit=data['autocommit'],
+            MaxRows=data['maxrows'],
         )
-        return
 
-    def read(self, obj):
-        meta = []
-        meta.append(('autocommit', obj.auto_commit))
-        meta.append(('connection_string', obj.connx_string))
-        meta.append(('maxrows', obj.MaxRows))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {
+            'autocommit': obj.auto_commit,
+            'connection_string': obj.connx_string,
+            'maxrows': obj.MaxRows,
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            connection_string=d['connection_string'],
-            auto_commit=d['autocommit'],
-            MaxRows=d['maxrows'],
+            title=data['title'],
+            connection_string=data['connection_string'],
+            auto_commit=data['autocommit'],
+            MaxRows=data['maxrows'],
         )
-        return
 
 
 class ZcxOracleDAObj(ModObj):
     meta_types = ['Z cxOracle Database Connection', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZcxOracleDA'].manage_addZcxOracleConnection(
             id=obj_id,
-            title=d['title'],
-            connection_string=d['connection_string'],
+            title=data['title'],
+            connection_string=data['connection_string'],
         )
-        return
 
-    def read(self, obj):
-        meta = []
-        meta.append(('connection_string', obj.connection_string))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {
+            'connection_string': obj.connection_string,
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            connection_string=d['connection_string'],
+            title=data['title'],
+            connection_string=data['connection_string'],
         )
-        return
 
 
 class ZsapdbDAObj(ModObj):
     meta_types = ['Z sap Database Connection', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['ZsapdbDA'].manage_addZsapdbConnection(
             id=obj_id,
-            title=d['title'],
-            connection_string=d['connection_string'],
+            title=data['title'],
+            connection_string=data['connection_string'],
         )
-        return
 
-    def read(self, obj):
-        meta = []
-        meta.append(('connection_string', obj.connection_string))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {
+            'connection_string': obj.connection_string,
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         obj.manage_edit(
-            title=d['title'],
-            connection_string=d['connection_string'],
+            title=data['title'],
+            connection_string=data['connection_string'],
         )
-        return
 
 
 class SimpleUserFolderObj(FolderObj):
     meta_types = ['Simple User Folder', ]
 
-    def create(self, obj, data, obj_id):
+    @staticmethod
+    def create(obj, data, obj_id):
         obj.manage_addProduct['SimpleUserFolder'].addSimpleUserFolder()
-        return
 
 
 class MailHostObj(ModObj):
     meta_types = ['Mail Host', ]
 
-    def create(self, obj, data, obj_id):
-        d = dict(data)
+    @staticmethod
+    def create(obj, data, obj_id):
         # id, title, connection_string, check, zdatetime, tilevel, autocommit,
         # encoding
         obj.manage_addProduct['MailHost'].manage_addMailHost(
             id=obj_id,
-            title=d['title'],
-            smtp_host=d['smtp_host'],
-            smtp_port=d['smtp_port'],
+            title=data['title'],
+            smtp_host=data['smtp_host'],
+            smtp_port=data['smtp_port'],
         )
-        return
 
-    def read(self, obj):
-        meta = []
-        # "autocommit" is a late addition, which may not yet be everywhere in
-        # the Data.fs. Default to False
-        meta.append(('smtp_host', obj.smtp_host))
-        meta.append(('smtp_port', obj.smtp_port))
-        meta.append(('smtp_uid', obj.smtp_uid))
-        meta.append(('smtp_pwd', obj.smtp_pwd))
-        meta.append(('force_tls', obj.force_tls))
-        meta.append(('smtp_queue', obj.smtp_queue))
-        meta.append(('smtp_queue_directory', obj.smtp_queue_directory))
-        return meta
+    @staticmethod
+    def read(obj):
+        return {
+            'smtp_host': obj.smtp_host,
+            'smtp_port': obj.smtp_port,
+            'smtp_uid': obj.smtp_uid,
+            'smtp_pwd': obj.smtp_pwd,
+            'force_tls': obj.force_tls,
+            'smtp_queue': obj.smtp_queue,
+            'smtp_queue_directory': obj.smtp_queue_directory,
+        }
 
-    def write(self, obj, data):
-        d = dict(data)
+    @staticmethod
+    def write(obj, data):
         obj.manage_makeChanges(
-            title=d['title'],
-            smtp_host=d['smtp_host'],
-            smtp_port=d['smtp_port'],
-            smtp_uid=d.get('smtp_uid', ''),
-            smtp_pwd=d.get('smtp_pwd', ''),
-            force_tls=d.get('force_tls', False),
-            smtp_queue=d.get('smtp_queue', ''),
-            smtp_queue_directory=d.get('smtp_queue_directory', ''),
+            title=data['title'],
+            smtp_host=data['smtp_host'],
+            smtp_port=data['smtp_port'],
+            smtp_uid=data.get('smtp_uid', ''),
+            smtp_pwd=data.get('smtp_pwd', ''),
+            force_tls=data.get('force_tls', False),
+            smtp_queue=data.get('smtp_queue', ''),
+            smtp_queue_directory=data.get('smtp_queue_directory', ''),
         )
-        return
 
 
-object_types = {
-    'AccessControl': AccessControlObj,
-    'DTML Document': DTMLDocumentObj,
-    'DTML Method': DTMLMethodObj,
-    'DTML TeX': DTMLTeXObj,
-    'External Method': ExternalMethodObj,
-    'File': FileObj,
-    'Folder': FolderObj,
-    'Folder (Ordered)': FolderOrderedObj,
-    'Image': ImageObj,
-    'Page Template': PageTemplateObj,
-    'Properties': PropertiesObj,
-    'RAM Cache Manager': RAMCacheManagerObj,
-    'Accelerated HTTP Cache Manager': AcceleratedHTTPCacheManagerObj,
-    'Script (Python)': ScriptPythonObj,
-    'Z SQL Method': ZSQLMethodObj,
-    'ZCacheable': ZCacheableObj,
-    'Z Psycopg 2 Database Connection': ZPsycopgDAObj,
-    'Z Psycopg Database Connection': ZPsycopgDAObj,
-    'Z PyODBC Database Connection': ZPyODBCDAObj,
-    'Z cxOracle Database Connection': ZcxOracleDAObj,
-    'Z sapdb Database Connection': ZsapdbDAObj,
-    'Simple User Folder': SimpleUserFolderObj,
-    'Mail Host': MailHostObj,
-    'ZForce': ZForceObj,
-    'User Folder': UserFolderObj,
-}
-
-object_handlers = {
-    key: value() for key, value in object_types.items()
-}
+object_handlers = ModObj.collect_handlers()
 
 
 def mod_implemented_handlers(obj, meta_type):
-    interfaces = ['Properties', 'AccessControl', 'ZCacheable', ]
-    interfaces.append(meta_type)
-    # return all object handlers for interfaces the object implements
-    handlers = [object_handlers[i] for i in interfaces]
-    return [h for h in handlers if h.implements(obj)]
+    """
+    Return the handlers of interfaces that the object implements. This always
+    includes the one defined from the meta_type and may also include some of
+    the mixins.
+    """
+    return [object_handlers[meta_type]] + [
+        cls for cls in MixinModObj.__subclasses__()
+        if cls.implements(obj)
+    ]
