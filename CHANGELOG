@@ -1,3 +1,9 @@
+4.0.6.dev1
+  * Refactor argument parsing and subcommand logic
+
+  * Only initialize ZODBSync object if connection to ZODB is required
+
+  * Make sure each command releases the lock correctly
 4.0.6.dev0
   * Clean up initialization of ZODBSync object
 
