@@ -12,7 +12,7 @@ else:
 
 setuptools.setup(
     name='perfact-zodbsync',
-    version='4.0.6.dev1',
+    version='4.0.6.dev2',
     description='Zope Recorder and Playback',
     long_description=''' ''',
     author='Ján Jockusch et.al.',

@@ -347,3 +347,25 @@ class TestSync():
         watcher.step()
         assert open(root + 'test1' + src).read() == 'test1'
         assert open(root + 'test2' + src).read() == 'test2'
+
+    def test_reset(self):
+        """
+        Change the title of index_html in a second branch, reset to it and
+        check that it is played back correctly.
+        """
+        self.gitrun('checkout', '-b', 'second')
+        path = self.repo.path + '/__root__/index_html/__meta__'
+        with open(path) as f:
+            lines = f.readlines()
+        lines = [
+            line if "('title', " not in line
+            else "    ('title', 'test'),\n"
+            for line in lines
+        ]
+        with open(path, 'w') as f:
+            f.writelines(lines)
+        self.gitrun('commit', '-a', '-m', 'Change title')
+        self.gitrun('checkout', 'master')
+        runner = self.runner('reset', 'second')
+        runner.run()
+        assert runner.sync.app.index_html.title == 'test'
