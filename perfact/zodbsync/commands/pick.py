@@ -21,8 +21,8 @@ class Pick(SubCommand):
         )
         parser.add_argument(
             '--grep', type=str, help="""Find commits starting from the given
-            ones, limiting to the ones with log messages matching the
-            pattern.""",
+            ones, limiting to those with commit messages matching the
+            pattern - like "git log --grep".""",
         )
         parser.add_argument(
             'commit', type=str, nargs='*',
