@@ -186,7 +186,7 @@ class TestSync():
     def test_pick_grep(self):
         """
         Prepare three commits where the first and third share a common pattern
-        in the commit message, than pick only those.
+        in the commit message, then pick only those.
         """
         msgs = [
             'T123: first commit',
