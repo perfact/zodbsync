@@ -145,6 +145,7 @@ class TestSync():
         self.gitrun('commit', '-m', msg)
 
     def get_head_id(self):
+        """Return commit ID of current HEAD."""
         return self.gitoutput('show-ref', '--head', '--hash', 'HEAD').strip()
 
     def prepare_pick(self, name='TestFolder', msg='Second commit'):
