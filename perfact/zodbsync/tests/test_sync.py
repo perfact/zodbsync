@@ -129,13 +129,11 @@ class TestSync():
         runner.run()
         assert runner.sync.app.index_html() == content
 
-    def prepare_pick(self):
-        '''
-        Prepare a commit containing a new folder that can be picked onto the
-        initialized repository. Returns the commit ID.
-        '''
-        # Add a folder, commit it
-        folder = self.repo.path + '/__root__/TestFolder'
+    def add_folder(self, name, msg):
+        """
+        Add a folder to the root directory and commit it
+        """
+        folder = self.repo.path + '/__root__/' + name
         os.mkdir(folder)
         with open(folder + '/__meta__', 'w') as f:
             f.write('''[
@@ -144,8 +142,20 @@ class TestSync():
                 ('type', 'Folder'),
             ]''')
         self.gitrun('add', '.')
-        self.gitrun('commit', '-m', 'Second commit')
-        commit = self.gitoutput('show-ref', '--head', '--hash', 'HEAD').strip()
+        self.gitrun('commit', '-m', msg)
+
+    def get_head_id(self):
+        """Return commit ID of current HEAD."""
+        return self.gitoutput('show-ref', '--head', '--hash', 'HEAD').strip()
+
+    def prepare_pick(self, name='TestFolder', msg='Second commit'):
+        '''
+        Prepare a commit containing a new folder that can be picked onto the
+        initialized repository. Returns the commit ID.
+        '''
+        # Add a folder, commit it
+        self.add_folder('TestFolder', 'Second commit')
+        commit = self.get_head_id()
 
         # Reset the commit
         self.gitrun('reset', '--hard', 'HEAD~')
@@ -162,7 +172,7 @@ class TestSync():
 
         assert 'TestFolder' in runner.sync.app.objectIds()
 
-    def test_pick_dryrun(self, capsys):
+    def test_pick_dryrun(self):
         '''
         Pick a prepared commit in dry-run mode and check that the folder does
         not exist.
@@ -172,6 +182,28 @@ class TestSync():
         runner.run()
 
         assert 'TestFolder' not in runner.sync.app.objectIds()
+
+    def test_pick_grep(self):
+        """
+        Prepare three commits where the first and third share a common pattern
+        in the commit message, then pick only those.
+        """
+        msgs = [
+            'T123: first commit',
+            'T456: second commit',
+            'T123: third commit',
+        ]
+        for nr, msg in enumerate(msgs):
+            self.add_folder('Test' + str(nr), msg)
+        commit = self.get_head_id()
+        self.gitrun('reset', '--hard', 'HEAD~3')
+        runner = self.runner('pick', '--grep=T123', commit)
+        runner.run()
+
+        ids = runner.sync.app.objectIds()
+        assert 'Test0' in ids
+        assert 'Test1' not in ids
+        assert 'Test2' in ids
 
     def test_upload_relpath(self):
         '''

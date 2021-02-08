@@ -20,6 +20,11 @@ class Pick(SubCommand):
             help='Only check for conflicts and roll back at the end.',
         )
         parser.add_argument(
+            '--grep', type=str, help="""Find commits starting from the given
+            ones, limiting to those with commit messages matching the
+            pattern - like "git log --grep".""",
+        )
+        parser.add_argument(
             'commit', type=str, nargs='*',
             help='''Commits that are checked for compatibility and applied,
             playing back all affected paths at the end.'''
@@ -33,19 +38,24 @@ class Pick(SubCommand):
         changed_files = set()
 
         commits = []
-        for commit in self.args.commit:
-            if '..' in commit:
-                # commit range
-                commits.extend([
-                    c for c in self.gitcmd_output(
+        if self.args.grep:
+            commits = self.gitcmd_output(
+                'log', '--grep', self.args.grep,
+                '--format=%H', '--reverse', *self.args.commit
+            ).split('\n')
+        else:
+            for commit in self.args.commit:
+                if '..' in commit:
+                    # commit range
+                    commits.extend(self.gitcmd_output(
                         'log', '--format=%H', '--reverse', commit
-                    ).split('\n')
-                    if c
-                ])
-            else:
-                commits.append(commit)
+                    ).split('\n'))
+                else:
+                    commits.append(commit)
 
         for commit in commits:
+            if not commit:
+                continue
             self.logger.info('Checking and applying %s.' % commit)
             # obtain files affected by the commit
             files = [
