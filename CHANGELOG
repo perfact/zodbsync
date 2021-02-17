@@ -1,3 +1,6 @@
+4.1.1
+  * Fix regression in Zope2 compatibility introduced in 4.0.6
+
 4.1.0
   * Add --grep option to pick subcommand
 
