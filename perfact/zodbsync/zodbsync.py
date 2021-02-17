@@ -6,6 +6,7 @@ import os
 import six
 import shutil
 import time  # for periodic output
+import sys
 
 # for using an explicit transaction manager
 import transaction
@@ -16,10 +17,8 @@ import Zope2.App.startup
 import App.config
 try:
     from Zope2.Startup.run import configure_wsgi as configure_zope
-    zope_version = 4
 except ImportError:
     from Zope2.Startup.run import configure as configure_zope
-    zope_version = 2
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
@@ -248,9 +247,8 @@ class ZODBSync:
         if not conf_path:
             conf_path = self.config.get('conf_path')
 
-        # clear arguments to avoid confusing zope2 configuration procedure
-        if zope_version == 2:
-            sys.argv = sys.argv[:1]
+        # clear arguments to avoid confusing zope configuration procedure
+        sys.argv = sys.argv[:1]
 
         # Read and parse configuration
         configure_zope(conf_path)
