@@ -363,7 +363,9 @@ class TestSync():
         # Not sure how to apply this specifically to the secondary connection
         # and why it is only needed for the rename and not the adding, but it
         # seems to do the job
-        newSecurityManager(None, conn.app.acl_users.getUserById('perfact'))
+        userfolder = conn.app.acl_users
+        user = userfolder.getUser('perfact').__of__(userfolder)
+        newSecurityManager(None, user)
 
         with conn.tm:
             rename('test1', 'test2')

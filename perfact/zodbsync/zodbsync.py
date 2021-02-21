@@ -278,7 +278,7 @@ class ZODBSync:
         Make sure the manager user exists.
         """
         userfolder = self.app.acl_users
-        user = userfolder.getUserById(self.manager_user)
+        user = userfolder.getUser(self.manager_user)
         if user is not None:
             return
         self.tm.begin()
@@ -295,7 +295,7 @@ class ZODBSync:
         '''
         # Log in as a manager
         uf = self.app.acl_users
-        user = uf.getUserById(self.manager_user)
+        user = uf.getUser(self.manager_user).__of__(uf)
         assert user is not None, (
             'User %s is not available in database. Perhaps you need to set'
             ' create_manager_user in config.py?' % self.manager_user
