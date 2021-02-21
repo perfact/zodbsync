@@ -6,6 +6,11 @@ import pytest
 import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
+try:  # pragma: no cover
+    from Zope2.Startup.run import configure  # noqa: F401
+    ZOPE2 = True
+except ImportError:
+    ZOPE2 = False
 
 from ..main import Runner
 from .. import helpers
@@ -27,7 +32,8 @@ class TestSync():
         myenv = {}
         myenv['zeo'] = env.ZeoInstance()
         myenv['repo'] = env.Repository()
-        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
+        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath(),
+                                             add_tempstorage=ZOPE2)
         myenv['jslib'] = env.JSLib()
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
