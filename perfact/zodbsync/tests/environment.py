@@ -44,7 +44,7 @@ class Repository():
     def __init__(self):
         self.path = tempfile.mkdtemp()
         commands = [
-            ['init', '-b', 'master'],
+            ['init'],
             ['config', 'user.email', 'test@zodbsync.org'],
             ['config', 'user.name', 'testrepo'],
         ]
