@@ -1,3 +1,6 @@
+4.1.2.dev0
+  * Add py2-zope2 as test environment
+
 4.1.1
   * Fix regression in Zope2 compatibility introduced in 4.0.6
 

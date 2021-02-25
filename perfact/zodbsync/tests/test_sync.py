@@ -6,6 +6,11 @@ import pytest
 import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
+try:  # pragma: no cover
+    from Zope2.Startup.run import configure  # noqa: F401
+    ZOPE2 = True
+except ImportError:
+    ZOPE2 = False
 
 from ..main import Runner
 from .. import helpers
@@ -27,7 +32,8 @@ class TestSync():
         myenv = {}
         myenv['zeo'] = env.ZeoInstance()
         myenv['repo'] = env.Repository()
-        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
+        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath(),
+                                             add_tempstorage=ZOPE2)
         myenv['jslib'] = env.JSLib()
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
@@ -357,7 +363,9 @@ class TestSync():
         # Not sure how to apply this specifically to the secondary connection
         # and why it is only needed for the rename and not the adding, but it
         # seems to do the job
-        newSecurityManager(None, conn.app.acl_users.getUserById('perfact'))
+        userfolder = conn.app.acl_users
+        user = userfolder.getUser('perfact').__of__(userfolder)
+        newSecurityManager(None, user)
 
         with conn.tm:
             rename('test1', 'test2')
