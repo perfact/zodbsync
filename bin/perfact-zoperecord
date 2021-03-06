@@ -18,8 +18,7 @@ if __name__ == '__main__':
         '''
     )
     parser.add_argument('--lasttxn', action='store_true', default=False,
-                        help='Record only transactions since the last used.'
-                        )
+                        help='Record only transactions since the last used.')
 
     args = parser.parse_args()
     if args.lasttxn:
@@ -27,7 +26,7 @@ if __name__ == '__main__':
     else:
         cmd = 'record --commit /'
 
-    runner = Runner(*cmd.split())
+    runner = Runner().parse(*cmd.split())
 
     # dump tables and schemas if run without --lasttxn and if the corresponding
     # variables are found in the config - this is only for backwards
