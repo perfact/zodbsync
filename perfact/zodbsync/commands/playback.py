@@ -4,8 +4,7 @@ from ..subcommand import SubCommand
 
 
 class Playback(SubCommand):
-    ''' Sub-command to play back objects from the file system to the Data.fs.
-    '''
+    '''Play back objects from the file system to the Data.FS'''
     @staticmethod
     def add_args(parser):
         parser.add_argument(
