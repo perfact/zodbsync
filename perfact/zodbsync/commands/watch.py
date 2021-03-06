@@ -47,13 +47,11 @@ def _increment_txnid(s):
 
 
 class Watch(SubCommand):
-    """
-    Sub-command that connects to ZEO, builds a mirror of the tree structure of
-    the objects, periodically checks for new transactions, looks directly into
-    the Data.FS to get the object IDs affected by those transactions, and
-    updates its tree structure as well as the file system tree structure
-    accordingly.
-    """
+    """Periodically check for changes and record them"""
+    # Connects to ZEO, builds a mirror of the tree structure of the objects,
+    # periodically checks for new transactions, looks directly into the Data.FS
+    # to get the object IDs affected by those transactions, and updates its
+    # tree structure as well as the file system tree structure accordingly.
 
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every

@@ -13,8 +13,7 @@ from ..helpers import remove_redundant_paths
 
 
 class Record(SubCommand):
-    ''' Sub-command to record objects from the Data.FS to the file system.
-    '''
+    '''Record objects from the Data.FS to the file system'''
     @staticmethod
     def add_args(parser):
         parser.add_argument(

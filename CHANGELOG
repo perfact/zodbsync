@@ -1,4 +1,10 @@
 4.1.2.dev0
+  * Make with-lock work with Python 2
+
+  * Fix perfact-zoperecord compatibility wrapper
+
+  * Extract docstring of each subcommand for --help
+
   * Add py2-zope2 as test environment
 
 4.1.1

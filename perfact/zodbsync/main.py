@@ -60,7 +60,10 @@ class Runner(object):
         subs = parser.add_subparsers()
         for cls in self.commands:
             name = getattr(cls, 'subcommand', cls.__name__.lower())
-            subparser = subs.add_parser(name)
+            subparser = subs.add_parser(
+                name,
+                help=cls.__doc__,
+            )
             cls.add_args(subparser)
             subparser.set_defaults(command=cls)
 

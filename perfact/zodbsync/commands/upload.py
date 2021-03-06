@@ -29,8 +29,7 @@ META_TEMPLATES = {
 
 
 class Upload(SubCommand):
-    '''Upload a folder structure, e.g. a JS library, to zope Data.fs
-    '''
+    '''Upload a folder structure, e.g. a JS library, to zope Data.FS'''
 
     @staticmethod
     def add_args(parser):

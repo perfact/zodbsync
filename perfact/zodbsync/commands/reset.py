@@ -4,7 +4,7 @@ from ..subcommand import SubCommand
 
 
 class Reset(SubCommand):
-    '''Reset to some other commit and play back any changed paths.'''
+    '''Reset to some other commit and play back any changed paths'''
     @staticmethod
     def add_args(parser):
         parser.add_argument(

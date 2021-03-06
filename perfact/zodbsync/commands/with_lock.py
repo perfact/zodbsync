@@ -6,9 +6,7 @@ from ..subcommand import SubCommand
 
 
 class WithLock(SubCommand):
-    """
-    SubCommand to execute a shell command by first grabbing the lock.
-    """
+    """Execute a shell command by first grabbing the lock"""
     subcommand = 'with-lock'
     connect = False
 
