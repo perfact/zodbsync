@@ -20,4 +20,4 @@ class WithLock(SubCommand):
 
     @SubCommand.with_lock
     def run(self):
-        subprocess.run(self.args.command, shell=True)
+        subprocess.check_call(self.args.command, shell=True)
