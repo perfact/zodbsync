@@ -1,4 +1,4 @@
-4.1.2.dev0
+4.1.2
   * Make with-lock work with Python 2
 
   * Fix perfact-zoperecord compatibility wrapper
