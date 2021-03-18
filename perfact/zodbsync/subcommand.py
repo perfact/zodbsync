@@ -89,8 +89,8 @@ class SubCommand(Namespace):
         return data_fs_path, filesystem_path
 
     def check_repo(self):
-        '''Check for unstaged changes and memorize current commit after
-        acquiring lock. Move unstaged changes away via git stash'''
+        '''Check for unstaged changes and memorize current commit. Move
+        unstaged changes away via git stash'''
         self.unstaged_changes = [
             line[3:]
             for line in self.gitcmd_output(
@@ -112,6 +112,62 @@ class SubCommand(Namespace):
             ).split('\n')
             if line.endswith(' HEAD')
         ][0].split()[0]
+
+    @staticmethod
+    def gitop(func):
+        """
+        - Stash unstaged changes away
+        - memorize the current commit
+        - do something
+        - check for conflicts
+        - play back changed objects
+        - unstash
+        """
+        def wrapper(self, *args, **kwargs):
+            # Check for unstaged changes
+            self.check_repo()
+
+            try:
+                func(self, *args, **kwargs)
+                # Are these all?
+                for fname in ['rebase-merge', 'rebase-apply',
+                              'CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REVERT_HEAD']:
+                    path = os.path.join(self.sync.base_dir, '.git', fname)
+                    assert not os.path.exists(path), "Git state not clean"
+
+                files = {
+                    line for line in self.gitcmd_output(
+                        'diff', self.orig_commit, '--name-only'
+                    ).strip().split('\n')
+                    if line
+                }
+                conflicts = files & set(self.unstaged_changes)
+                assert not conflicts, "Change in unstaged files, aborting"
+
+                paths = sorted({
+                    filename[len(self.sync.site):].rsplit('/', 1)[0]
+                    for filename in files
+                })
+
+                self.sync.playback_paths(
+                    paths=paths,
+                    recurse=False,
+                    override=True,
+                    skip_errors=self.args.skip_errors,
+                    dryrun=self.args.dry_run,
+                )
+
+                if self.args.dry_run:
+                    self.abort()
+                elif self.unstaged_changes:
+                    self.gitcmd_run('stash', 'pop')
+
+            except Exception:
+                self.logger.exception('Error during operation. Resetting.')
+                self.abort()
+                raise
+
+        return wrapper
 
     def create_file(self, file_path, content):
         with open(file_path, 'w') as create_file:

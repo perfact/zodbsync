@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
+import subprocess
+
 from ..subcommand import SubCommand
 
 
-class Reset(SubCommand):
-    '''Reset to some other commit and play back any changed paths'''
+class Do(SubCommand):
+    '''Execute a command and play back any paths changed between commits'''
     @staticmethod
     def add_args(parser):
         parser.add_argument(
@@ -16,13 +18,10 @@ class Reset(SubCommand):
             help='Only check for conflicts and roll back at the end.',
         )
         parser.add_argument(
-            'commit', type=str,
-            help='''Target commit'''
+            'command', type=str, help='''command to be executed'''
         )
 
     @SubCommand.with_lock
     @SubCommand.gitop
     def run(self):
-        target = self.args.commit
-        self.logger.info('Checking and resetting to %s.' % target)
-        self.gitcmd_run('reset', '--hard', target)
+        subprocess.check_output(self.args.command, shell=True)
