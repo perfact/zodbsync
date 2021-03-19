@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 
-import sys
-
-try:
-    # for git snapshot
-    import perfact.pfcodechg
-except ImportError:
-    pass
+import smtplib
+import subprocess
+from email.mime.text import MIMEText
 
 from ..subcommand import SubCommand
 from ..helpers import remove_redundant_paths
@@ -20,11 +16,10 @@ class Record(SubCommand):
             '--lasttxn', action='store_true', default=False,
             help='Add paths mentioned in transactions since the last used',
         )
-        if 'perfact.pfcodechg' in sys.modules:
-            parser.add_argument(
-                '--commit', action='store_true', default=False,
-                help='Commit changes and send summary mail if there are any',
-            )
+        parser.add_argument(
+            '--commit', action='store_true', default=False,
+            help='Commit changes and send summary mail if there are any',
+        )
         parser.add_argument(
             '--no-recurse', action='store_true', default=False,
             help='Record only specified paths without recursing',
@@ -38,6 +33,41 @@ class Record(SubCommand):
             'path', type=str, nargs='*',
             help='Sub-Path in Data.fs to be recorded',
         )
+
+    def commit(self):
+        """
+        Do a commit of all unstaged changes and optionally send an email with a
+        summary.
+        """
+        commit_message = self.config["commit_message"]
+        self.gitcmd_run('add', '.')
+        try:
+            self.gitcmd_run('commit', '-m', commit_message)
+        except subprocess.CalledProcessError:
+            # Nothing to commit
+            return
+
+        # only send a mail if something has changed
+        codechg_mail = self.config.get('codechange_mail', False)
+        if not codechg_mail:
+            return
+
+        self.logger.info('Commit was done! Sending mail...')
+        pfsystemid = open('/etc/pfsystemid').read().strip()
+        pfsystemname = open('/etc/pfsystemname').read().strip()
+
+        status = self.gitcmd_output('show', '--name-status', 'HEAD')
+
+        msg = MIMEText(status, 'plain', 'utf-8')
+        msg['Subject'] = 'Commit summary on {} ({})'.format(pfsystemname,
+                                                            pfsystemid)
+        msg['To'] = codechg_mail
+        msg['From'] = self.config.get('codechange_sender',
+                                      'codechanges@perfact.de')
+
+        smtp = smtplib.SMTP('localhost')
+        smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_string())
+        smtp.quit()
 
     @SubCommand.with_lock
     def run(self):
@@ -76,21 +106,8 @@ class Record(SubCommand):
                 self.sync.logger.exception('Unable to record path ' + path)
                 pass
 
-        if 'perfact.pfcodechg' in sys.modules and self.args.commit:
-            commit_message = self.sync.config["commit_message"]
-            # this fails (by design) if no repository is initialized.
-            commit_done = perfact.pfcodechg.git_snapshot(
-                self.sync.config["base_dir"],
-                commit_message,
-            )
-            # only send a mail if something has changed
-            codechg_mail = self.sync.config.get('codechange_mail', False)
-            if commit_done and codechg_mail:
-                self.sync.logger.info('Commit was done! Sending mail...')
-                perfact.pfcodechg.git_mail_summary(
-                    self.sync.config["base_dir"],
-                    self.sync.config["codechange_mail"],
-                )
+        if self.args.commit:
+            self.commit()
 
         if self.args.lasttxn and (newest_txnid != lasttxn):
             self.sync.txn_write(newest_txnid or '')
