@@ -1,6 +1,6 @@
 # Path of the Zope instance configuration to use to instantiate the application
 # object
-wsgi_conf_path = '/var/lib/zope4/ema/etc/zope.conf'
+conf_path = '/var/lib/zope4/ema/etc/zope.conf'
 
 # Path to Data.fs which is needed for lookup of object IDs from transaction IDs
 # with zodbsync watch
@@ -26,3 +26,4 @@ commit_message = "Generic commit message."
 
 # email address to send commit summaries of default commits to
 #codechange_mail = "zope-devel@example.de"
+#codechange_sender = "no-reply-zodbsync-changes@example.de"
