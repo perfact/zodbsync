@@ -66,7 +66,7 @@ class Record(SubCommand):
                                       'codechanges@perfact.de')
 
         smtp = smtplib.SMTP('localhost')
-        smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_bytes())
+        smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_string())
         smtp.quit()
 
     @SubCommand.with_lock
