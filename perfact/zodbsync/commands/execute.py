@@ -19,9 +19,17 @@ class Exec(SubCommand):
             help='Only check for conflicts and roll back at the end.',
         )
         parser.add_argument(
+            '--nocd', action='store_true', default=False,
+            help='Do not cd to git repo for command',
+        )
+        parser.add_argument(
             'cmd', type=str, help='''command to be executed'''
         )
 
     @SubCommand.gitexec
     def run(self):
-        subprocess.check_call(self.args.cmd, shell=True)
+        subprocess.check_call(
+            self.args.cmd,
+            cwd=None if self.args.nocd else self.sync.base_dir,
+            shell=True,
+        )

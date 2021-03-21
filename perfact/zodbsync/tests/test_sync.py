@@ -409,3 +409,13 @@ class TestSync():
         runner = self.runner('reset', 'second')
         runner.run()
         assert runner.sync.app.index_html.title == 'test'
+
+    def test_revert(self):
+        """
+        Do the same as in test_reset, but afterwards revert it.
+        """
+        self.test_reset()
+        runner = self.runner('exec', 'git revert HEAD')
+        runner.run()
+        title = runner.sync.app.index_html.title
+        assert title != 'test'
