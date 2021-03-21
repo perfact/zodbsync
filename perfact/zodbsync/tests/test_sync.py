@@ -70,7 +70,9 @@ class TestSync():
         '''
         Create runner for given zodbsync command
         '''
-        return Runner().parse('--config', self.config.path, *cmd)
+        if not hasattr(self, 'cached_runner'):
+            self.cached_runner = Runner()
+        return self.cached_runner.parse('--config', self.config.path, *cmd)
 
     def gitrun(self, *cmd):
         '''

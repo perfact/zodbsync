@@ -82,6 +82,8 @@ class Runner(object):
         """
         Parse the given arguments and set the command accordingly. If no
         arguments are given, sys.argv is used.
+        This can be called several times on the same instance to re-use the
+        connection, but the config needs to be the same.
         """
         args = self.parser.parse_args(argv if argv else None)
         self.args = args
@@ -97,11 +99,16 @@ class Runner(object):
             logger.propagate = False
 
         self.logger = logger
-        self.config = load_config(args.config)
+        config = load_config(args.config)
+        if self.config is not None:
+            assert config == self.config, (
+                "Re-used runner with different config"
+            )
+        self.config = config
 
         # Usually, each command needs a connection to the ZODB, but it might
         # explicitly disable it.
-        if getattr(args.command, 'connect', True):
+        if self.sync is None and getattr(args.command, 'connect', True):
             self.sync = ZODBSync(config=self.config, logger=logger)
 
         if not args.no_lock:
