@@ -139,7 +139,7 @@ class SubCommand(Namespace):
 
                 files = {
                     line for line in self.gitcmd_output(
-                        'diff', self.orig_commit, '--name-only'
+                        'diff', self.orig_commit, '--name-only', '--no-renames'
                     ).strip().split('\n')
                     if line
                 }
