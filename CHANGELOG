@@ -1,5 +1,5 @@
 4.1.4.dev0
-  * Add subcommand "do" to capture many git operations
+  * Add subcommand "exec" to capture many git operations
 
 4.1.3
   * Make sure Python 2 test also run under Ubuntu

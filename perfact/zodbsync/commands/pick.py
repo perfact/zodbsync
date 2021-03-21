@@ -26,8 +26,7 @@ class Pick(SubCommand):
             playing back all affected paths at the end.'''
         )
 
-    @SubCommand.with_lock
-    @SubCommand.gitop
+    @SubCommand.gitexec
     def run(self):
         commits = []
         if self.args.grep:

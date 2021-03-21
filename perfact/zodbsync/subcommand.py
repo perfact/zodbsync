@@ -114,15 +114,17 @@ class SubCommand(Namespace):
         ][0].split()[0]
 
     @staticmethod
-    def gitop(func):
+    def gitexec(func):
         """
+        Decorator for wrapping an operation with playback:
         - Stash unstaged changes away
         - memorize the current commit
         - do something
         - check for conflicts
-        - play back changed objects
+        - play back changed objects (diff between old and new HEAD)
         - unstash
         """
+        @SubCommand.with_lock
         def wrapper(self, *args, **kwargs):
             # Check for unstaged changes
             self.check_repo()

@@ -5,8 +5,9 @@ import subprocess
 from ..subcommand import SubCommand
 
 
-class Do(SubCommand):
-    '''Execute a command and play back any paths changed between commits'''
+class Exec(SubCommand):
+    '''Execute a command and play back any paths changed between old and new
+    HEAD'''
     @staticmethod
     def add_args(parser):
         parser.add_argument(
@@ -18,10 +19,9 @@ class Do(SubCommand):
             help='Only check for conflicts and roll back at the end.',
         )
         parser.add_argument(
-            'command', type=str, help='''command to be executed'''
+            'cmd', type=str, help='''command to be executed'''
         )
 
-    @SubCommand.with_lock
-    @SubCommand.gitop
+    @SubCommand.gitexec
     def run(self):
-        subprocess.check_output(self.args.command, shell=True)
+        subprocess.check_call(self.args.cmd, shell=True)

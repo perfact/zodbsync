@@ -22,7 +22,7 @@ from .commands.pick import Pick
 from .commands.upload import Upload
 from .commands.with_lock import WithLock
 from .commands.reset import Reset
-from .commands.do import Do
+from .commands.execute import Exec
 
 # Future ideas:
 # from .commands.rebase import Rebase
@@ -32,7 +32,7 @@ class Runner(object):
     """
     Parses arguments to select the correct SubCommand subclass.
     """
-    commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Do]
+    commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Exec]
 
     def __init__(self):
         """

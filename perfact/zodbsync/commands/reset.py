@@ -20,8 +20,7 @@ class Reset(SubCommand):
             help='''Target commit'''
         )
 
-    @SubCommand.with_lock
-    @SubCommand.gitop
+    @SubCommand.gitexec
     def run(self):
         target = self.args.commit
         self.logger.info('Checking and resetting to %s.' % target)
