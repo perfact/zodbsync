@@ -88,6 +88,22 @@ class SubCommand(Namespace):
 
         return data_fs_path, filesystem_path
 
+    def _branch_info(self):
+        """Returns currently checked out branch as well as where each branch
+        points."""
+        current = self.gitcmd_output(
+            'rev-parse', '--abbrev-ref', 'HEAD'
+        ).strip()
+
+        branches = {}  # branchname -> commitid
+        output = self.gitcmd_output('show-ref', '--heads')
+        for line in output.strip().split('\n'):
+            commit, refname = line.split()
+            refname = refname[len('refs/heads/'):]
+            branches[refname] = commit
+
+        return (current, branches)
+
     def check_repo(self):
         '''Check for unstaged changes and memorize current commit. Move
         unstaged changes away via git stash'''
@@ -99,19 +115,16 @@ class SubCommand(Namespace):
             if line
         ]
 
+        self.orig_branch, self.branches = self._branch_info()
+
         if self.unstaged_changes:
             self.logger.warning(
                 "Unstaged changes found. Moving them out of the way."
             )
             self.gitcmd_run('stash', 'push', '--include-untracked')
 
-        # The commit we reset to if something doesn't work out
-        self.orig_commit = [
-            line for line in self.gitcmd_output(
-                'show-ref', '--head', 'HEAD',
-            ).split('\n')
-            if line.endswith(' HEAD')
-        ][0].split()[0]
+        # The commit to compare to with regards to changed files
+        self.orig_commit = self.branches[self.orig_branch]
 
     @staticmethod
     def gitexec(func):
@@ -178,7 +191,27 @@ class SubCommand(Namespace):
     def abort(self):
         '''Abort actions on repo and revert stash. check_repo must be
         called before this can be used'''
-        self.gitcmd_run('reset', '--hard', self.orig_commit)
+        current, branches = self._branch_info()
+        # reset currently checked out branch
+        target = self.branches.get(current)
+        if target is None:
+            # The branch was not originally present - we still need to reset it
+            # to abort any operation
+            target = branches[current]
+        self.gitcmd_run('reset', '--hard', target)
+
+        # reset all other branches
+        for branch in self.branches:
+            if branch == current:
+                continue
+            if branches[branch] == self.branches[branch]:
+                continue
+            self.gitcmd_run('branch', '-f', branch, self.branches[branch])
+
+        # check out original branch
+        if current != self.orig_branch:
+            self.gitcmd_run('checkout', self.orig_branch)
+
         if self.unstaged_changes:
             self.gitcmd_run('stash', 'pop')
 
