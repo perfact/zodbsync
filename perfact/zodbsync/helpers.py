@@ -4,14 +4,14 @@ import operator
 import string
 import six
 
-if six.PY2:
+if six.PY2:  # pragma: no cover
     import imp
     ast.Bytes = ast.Str
 
     class DummyNameConstant:
         pass
     ast.NameConstant = DummyNameConstant
-else:
+else:  # pragma: no cover
     import importlib
 
 
