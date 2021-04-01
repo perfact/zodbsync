@@ -13,6 +13,13 @@ class SubCommand(Namespace):
     '''
     Base class for different sub-commands to be used by zodbsync.
     '''
+
+    # The presence of one of these in the .git folder indicates that some
+    # process was not finished correctly, which is used to trigger a rollback
+    # in some operations. Are these all?
+    git_state_indicators = ['rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD',
+                            'MERGE_HEAD', 'REVERT_HEAD']
+
     @staticmethod
     def add_args(parser):
         ''' Overwrite to add arguments specific to sub-command. '''
@@ -144,9 +151,7 @@ class SubCommand(Namespace):
 
             try:
                 func(self, *args, **kwargs)
-                # Are these all?
-                for fname in ['rebase-merge', 'rebase-apply',
-                              'CHERRY_PICK_HEAD', 'MERGE_HEAD', 'REVERT_HEAD']:
+                for fname in self.git_state_indicators:
                     path = os.path.join(self.sync.base_dir, '.git', fname)
                     assert not os.path.exists(path), "Git state not clean"
 
@@ -159,10 +164,12 @@ class SubCommand(Namespace):
                 conflicts = files & set(self.unstaged_changes)
                 assert not conflicts, "Change in unstaged files, aborting"
 
-                paths = sorted({
-                    filename[len(self.sync.site):].rsplit('/', 1)[0]
-                    for filename in files
-                })
+                # Strip site name from the start
+                files = [fname[len(self.sync.site):] for fname in files]
+                # Strip filename to get the object path
+                dirs = [fname.rsplit('/', 1)[0] for fname in files]
+                # Make unique and sort
+                paths = sorted(set(dirs))
 
                 self.sync.playback_paths(
                     paths=paths,
