@@ -1,4 +1,8 @@
-import perfact.zodbsync.helpers as helpers
+# -*- coding: utf-8 -*-
+import six
+import pytest
+
+from .. import helpers
 
 
 def test_remove_redundant_paths():
@@ -27,3 +31,102 @@ def test_remove_redundant_paths_only_real_subpaths():
     new_paths = paths[:]
     helpers.remove_redundant_paths(new_paths)
     assert paths == new_paths
+
+
+def test_converters():
+    """
+    Several tests for to_* methods
+    """
+    for value in ['test', b'test', u'test']:
+        assert helpers.to_bytes(value) == b'test'
+        assert helpers.to_string(value) == 'test'
+        assert helpers.to_ustring(value) == u'test'
+    assert helpers.to_string([1]) == '[1]'
+    assert helpers.to_ustring([1]) == u'[1]'
+    assert helpers.to_bytes([1]) == b'[1]'
+    assert helpers.to_bytes(memoryview(b'test')) == b'test'
+
+
+def test_str_repr():
+    """
+    Check different inputs for str_repr against expected outputs
+    """
+    tests = [
+        ['äöüßáéí\n\r\t',
+         "'äöüßáéí\\n\\r\\t'"],
+
+        ['args="1, 2, 3"',
+         "'args=\"1, 2, 3\"'"],
+
+        [True, 'True'],
+
+        [45, '45'],
+
+        [34.5, '34.5'],
+
+        [('args', 'id=None, tn=False, streaming=True'),
+         "('args', 'id=None, tn=False, streaming=True')"],
+
+        ["'", '"' + "'" + '"'],  # "'"
+        ['"', "'" + '"' + "'"],  # '"'
+        ["'" + '"', "'\\'\"'"],  # '\'"'
+
+        # try a byte that is not valid UTF-8
+        [b'test\xaa', "b'test\\xaa'" if six.PY2 else u"b'test\\xaa'"],
+
+        [u'test\xaa', "u'test\\xaa'" if six.PY2 else u"'test\xaa'"],
+    ]
+    for orig, compare in tests:
+        assert helpers.str_repr(orig) == compare
+
+
+def test_literal_eval():
+    tests = [
+        ["b'test'", b'test'],
+        ["{1: 2}", {1: 2}],
+        ["[1, 2, 3]", [1, 2, 3]],
+        ["None", None],
+    ]
+    for orig, compare in tests:
+        assert helpers.literal_eval(orig) == compare
+    assert helpers.literal_eval("1 + 2") == 3
+    assert helpers.literal_eval("-True") == -1
+    with pytest.raises(Exception):
+        helpers.literal_eval('f(1)')
+
+
+def test_fix_encoding():
+    example = [
+        ('id', 'body'),
+        ('owner', 'jan'),
+        ('props', [
+            [('id', 'msg_deleted'), ('type', 'string'),
+             ('value', b'Datens\xe4tze gel\xf6scht!')],
+            [('id', 'content_type'), ('type', 'string'),
+             ('value', 'text/html')],
+            [('id', 'height'), ('type', 'int'), ('value', 20)],
+            [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
+        ('source', b'<p>\nIm Bereich Limitplanung '
+         + b'sind die Pl\xe4ne und Auswertungen '
+         + b'zusammengefa\xdft.\n'),
+        ('title', b'Werteplan Monats\xfcbersicht'),
+        ('type', 'DTML Method'),
+    ]
+    result = [
+        ('id', 'body'),
+        ('owner', 'jan'),
+        ('props',
+         [[('id', 'msg_deleted'),
+           ('type', 'string'),
+           ('value', b'Datens\xc3\xa4tze gel\xc3\xb6scht!')],
+          [('id', 'content_type'), ('type', 'string'),
+           ('value', 'text/html')],
+          [('id', 'height'), ('type', 'int'), ('value', 20)],
+          [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
+        ('source',
+         b'<p>\nIm Bereich Limitplanung sind die Pl\xc3\xa4ne '
+         b'und Auswertungen zusammengefa\xc3\x9ft.\n'),
+        ('title', b'Werteplan Monats\xc3\xbcbersicht'),
+        ('type', 'DTML Method')
+    ]
+    assert six.PY3 or helpers.fix_encoding(example, 'iso-8859-1') == result

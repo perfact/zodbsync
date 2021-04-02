@@ -88,7 +88,7 @@ class DTMLDocumentObj(ModObj):
     @staticmethod
     def read(obj):
         return {
-            'source': helpers.to_bytes(helpers.simple_html_unquote(str(obj)))
+            'source': helpers.to_bytes(obj.raw)
         }
 
     @staticmethod

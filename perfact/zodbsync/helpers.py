@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import ast
 import operator
-import string
 import six
 
 if six.PY2:  # pragma: no cover
@@ -29,9 +28,9 @@ def to_string(value, enc='utf-8'):
     '''This method delivers bytes in python2 and unicode in python3.'''
     if isinstance(value, str):
         return value
-    if isinstance(value, six.text_type):
+    if isinstance(value, six.text_type):  # pragma: nocover_py3
         return value.encode(enc)
-    if isinstance(value, six.binary_type):
+    if isinstance(value, six.binary_type):  # pragma: nocover_py2
         return value.decode(enc)
     try:
         return str(value)
@@ -50,8 +49,7 @@ def to_ustring(value, enc='utf-8'):
     try:
         return to_ustring(str(value))
     except Exception:
-        pass
-    raise ValueError("could not convert '%s' to ustring!" % str((value,)))
+        raise ValueError("could not convert '%s' to ustring!" % repr(value))
 
 
 def to_bytes(value, enc='utf-8'):
@@ -65,8 +63,7 @@ def to_bytes(value, enc='utf-8'):
     try:
         return to_bytes(str(value))
     except Exception:
-        pass
-    raise ValueError("could not convert '%s' to bytes!" % str((value,)))
+        raise ValueError("could not convert '%s' to bytes!" % repr(value))
 
 
 def remove_redundant_paths(paths):
@@ -93,38 +90,6 @@ repl = {chr(i): '\\x{:02x}'.format(i) for i in range(32)}
 repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 # make sure backslash is escaped first
 repl = [('\\', '\\\\')] + sorted(repl.items())
-
-'''
-Test cases for the doctests so we have one less level of escaping to worry
-about. There are different test cases that are accessed by index. Each test
-case consists of an input to str_repr and the desired output.
-TODO: Rewrite as unit test instead of doctest.
-'''
-str_repr_tests = [
-    ['äöüßáéí\n\r\t',
-     "'äöüßáéí\\n\\r\\t'"],
-
-    ['args="1, 2, 3"',
-     "'args=\"1, 2, 3\"'"],
-
-    [True, 'True'],
-
-    [45, '45'],
-
-    [34.5, '34.5'],
-
-    [('args', 'id=None, tn=False, streaming=True'),
-     "('args', 'id=None, tn=False, streaming=True')"],
-
-    ["'", '"' + "'" + '"'],  # "'"
-    ['"', "'" + '"' + "'"],  # '"'
-    ["'" + '"', "'\\'\"'"],  # '\'"'
-
-    # try a byte that is not valid UTF-8
-    [b'test\xaa', "b'test\\xaa'" if six.PY2 else u"b'test\\xaa'"],
-
-    [u'test\xaa', "u'test\\xaa'" if six.PY2 else u"'test\xaa'"],
-]
 
 
 def str_repr(val):
@@ -176,13 +141,6 @@ def str_repr(val):
     therefore recorded without a "u"-prefix and can be played back to both
     Python 2 and Python 3, since setting a unicode title to a value that is
     a bytes array automatically decodes the bytes array.
-
-    >>> for item in str_repr_tests:
-    ...     res = str_repr(item[0])
-    ...     if res != item[1]:
-    ...         print("input: %s" % item[0])
-    ...         print("output: %s" % res)
-    ...         print("expected: %s" % item[1])
     '''
 
     if isinstance(val, list):
@@ -191,7 +149,7 @@ def str_repr(val):
         fmt = '(%s,)' if len(val) == 1 else '(%s)'
         return fmt % ', '.join(str_repr(item) for item in val)
 
-    if six.PY2 and isinstance(val, bytes):
+    if six.PY2 and isinstance(val, bytes):  # pragma: nocover_py3
         # fall back to repr if val is not valid UTF-8
         try:
             val.decode('utf-8')
@@ -209,51 +167,10 @@ def str_repr(val):
         return repr(val)
 
 
-def fix_encoding(data, encoding):
+def fix_encoding(data, encoding):  # pragma: nocover_py3
     '''Assume that strings in 'data' are encoded in 'encoding' and change
     them to unicode or utf-8.
     Only python 2!
-
-    >>> example = [
-    ...  ('id', 'body'),
-    ...  ('owner', 'jan'),
-    ...  ('props', [
-    ...    [('id', 'msg_deleted'), ('type', 'string'),
-    ...     ('value', 'Datens\xe4tze gel\xf6scht!')],
-    ...    [('id', 'content_type'), ('type', 'string'),
-    ...     ('value', 'text/html')],
-    ...    [('id', 'height'), ('type', 'int'), ('value', 20)],
-    ...    [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-    ...  ('source', '<p>\\nIm Bereich Limitplanung '
-    ...             +'sind die Pl\\xe4ne und Auswertungen '
-    ...             +'zusammengefa\\xdft.\\n'),
-    ...  ('title', 'Werteplan Monats\xfcbersicht'),
-    ...  ('type', 'DTML Method'),
-    ... ]
-    >>> result = [ ('id', 'body'),
-    ...            ('owner', 'jan'),
-    ...            ('props',
-    ...             [[('id', 'msg_deleted'),
-    ...               ('type', 'string'),
-    ...               ('value', 'Datens\xc3\xa4tze gel\xc3\xb6scht!')],
-    ...              [('id', 'content_type'), ('type', 'string'),
-    ...               ('value', 'text/html')],
-    ...              [('id', 'height'), ('type', 'int'), ('value', 20)],
-    ...              [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-    ...            ('source',
-    ...             '<p>\\nIm Bereich Limitplanung sind die Pl\xc3\xa4ne '
-    ...             'und Auswertungen zusammengefa\xc3\x9ft.\\n'),
-    ...            ('title', 'Werteplan Monats\xc3\xbcbersicht'),
-    ...            ('type', 'DTML Method')]
-    >>> if six.PY2 and fix_encoding(example, 'iso-8859-1') != result:
-    ...     print("got:")
-    ...     print(fix_encoding(example, 'iso-8859-1'))
-    ...     print("expected:")
-    ...     print(result)
-    ... else:
-    ...     True
-    True
-
     '''
     assert six.PY2, "Not implemented for PY3 yet"
     unpacked = dict(data)
@@ -308,8 +225,6 @@ def fix_encoding(data, encoding):
     return repacked
 
 
-# Functions copied from perfact.generic
-
 def read_pdata(obj):
     '''Avoid authentication problems when reading linked pdata.'''
     if isinstance(obj.data, (six.binary_type, six.text_type)):
@@ -324,19 +239,6 @@ def read_pdata(obj):
             source += data.data
             data = data.next
     return source
-
-
-def simple_html_unquote(value):
-    '''Unquote quoted HTML text (minimal version)'''
-    tokens = [
-        ('&lt;', '<',),
-        ('&gt;', '>',),
-        ('&quot;', '"',),
-        ('&amp;', '&',),
-    ]
-    for before, after in tokens:
-        value = value.replace(before, after)
-    return value
 
 
 def literal_eval(value):
@@ -355,7 +257,7 @@ def literal_eval(value):
         ast.Mult: operator.mul,
         ast.Div: operator.truediv,
         ast.Mod: operator.mod,
-        }
+    }
 
     unary_ops = {
         ast.USub: operator.neg,
@@ -366,7 +268,7 @@ def literal_eval(value):
             return _convert(node.body)
         elif isinstance(node, ast.Str):
             return node.s
-        elif isinstance(node, ast.Bytes):
+        elif isinstance(node, ast.Bytes):  # pragma: nocover_py2
             return node.s
         elif isinstance(node, ast.Num):
             return node.n
@@ -377,10 +279,10 @@ def literal_eval(value):
         elif isinstance(node, ast.Dict):
             return dict((_convert(k), _convert(v)) for k, v
                         in zip(node.keys, node.values))
-        elif isinstance(node, ast.Name):
+        elif isinstance(node, ast.Name):  # pragma: nocover_py3
             if node.id in _safe_names:
                 return _safe_names[node.id]
-        elif isinstance(node, ast.NameConstant):
+        elif isinstance(node, ast.NameConstant):  # pragma: nocover_py2
             return node.value
         elif isinstance(node, ast.BinOp):
             return bin_ops[type(node.op)](
@@ -389,55 +291,10 @@ def literal_eval(value):
             )
         elif isinstance(node, ast.UnaryOp):
             return unary_ops[type(node.op)](_convert(node.operand))
-        else:
-            raise Exception('Unsupported type {}'.format(repr(node)))
+        raise Exception('Unsupported type {}'.format(repr(node)))
     return _convert(value)
 
 
-def cleanup_string(name,
-                   valid_chars=string.printable,
-                   replacement_char='_',
-                   merge_replacements=True,
-                   invalid_chars=''):
-    '''Sanitize a name. Only valid_chars remain in the string.  Illegal
-    characters are replaced with replacement_char. Adjacent
-    replacements characters are merged if merge_replacements is True.
-
-    '''
-    out = ''
-    merge = False
-    for i in name:
-        # Valid character? Add and continue.
-        if (i in valid_chars and i not in invalid_chars):
-            out += i
-            merge = False
-            continue
-
-        # No replacements? No action.
-        if not replacement_char:
-            continue
-        # In merge mode? No action.
-        if merge:
-            continue
-
-        # Replace.
-        out += replacement_char
-        if merge_replacements:
-            merge = True
-
-    return out
-
-
-def conserv_split(val, splitby='\n'):
-    '''Split by a character, conserving it in the result.'''
-    output = [a+splitby for a in val.split(splitby)]
-    output[-1] = output[-1][:-len(splitby)]
-    if output[-1] == '':
-        output.pop()
-    return output
-
-
-# --- Function ported over from the Data.fs
 def prop_dict(data):
     props = {}
 
@@ -459,9 +316,9 @@ def load_config(filename, name='config'):
     '''Load the module at "filename" as module "name". Return the contents
     as a dictionary. Skips contents starting with '_'.
     '''
-    if six.PY2:
+    if six.PY2:  # pragma: nocover_py3
         mod = imp.load_source(name, filename)
-    else:
+    else:  # pragma: nocover_py2
         loader = importlib.machinery.SourceFileLoader(name, filename)
         spec = importlib.util.spec_from_loader(loader.name, loader)
         mod = importlib.util.module_from_spec(spec)
