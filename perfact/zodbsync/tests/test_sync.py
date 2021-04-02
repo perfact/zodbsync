@@ -311,7 +311,8 @@ class TestSync():
         Check fix for #22: if a Folder defines local roles, playback must be
         able to remove them.
         """
-        self.app._addRole('TestRole')
+        with self.runner.sync.tm:
+            self.app._addRole('TestRole')
         self.run('record', '/')
         fname = self.repo.path + '/__root__/__meta__'
         with open(fname, 'r') as f:
@@ -328,8 +329,9 @@ class TestSync():
         back, check that it is set correctly, record again and check that the
         recording matches the first one.
         """
-        self.app._addRole('TestRole')
-        self.app.manage_setLocalRoles('perfact', ('TestRole',))
+        with self.runner.sync.tm:
+            self.app._addRole('TestRole')
+            self.app.manage_setLocalRoles('perfact', ('TestRole',))
         self.run('record', '/')
 
         fname = self.repo.path + '/__root__/__meta__'
