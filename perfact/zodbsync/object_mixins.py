@@ -11,21 +11,21 @@ addition to meta_type specific information
 
 class MixinModObj(object):
     @staticmethod
-    def read(obj):
+    def read(obj):  # pragma: no cover
         """
         Read an object and return a dictionary
         """
         raise NotImplementedError
 
     @staticmethod
-    def write(obj, data):
+    def write(obj, data):  # pragma: no cover
         """
         Write data to an existing object
         """
         raise NotImplementedError
 
     @staticmethod
-    def implements(obj):
+    def implements(obj):  # pragma: no cover
         """
         Decide if this handler can be applied to the object in question
         """
