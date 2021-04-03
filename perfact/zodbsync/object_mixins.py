@@ -124,8 +124,10 @@ class AccessControlObj(MixinModObj):
         tgt = dict(data.get('local_roles', tuple()))
         users = set(cur.keys()) | set(tgt.keys())
         for user in users:
-            if cur.get(user) != tgt.get(user):
-                obj.manage_setLocalRoles(user, tgt.get(user, tuple()))
+            if user not in tgt:
+                obj.manage_delLocalRoles([user])
+            elif cur.get(user) != tgt[user]:
+                obj.manage_setLocalRoles(user, tgt[user])
 
         # Permission settings
         # permissions that are not stored are understood to be acquired, with

@@ -7,7 +7,7 @@ import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
 try:  # pragma: no cover
-    from Zope2.Startup.run import configure  # noqa: F401
+    import ZServer  # noqa: F401
     ZOPE2 = True
 except ImportError:  # pragma: no cover
     ZOPE2 = False
@@ -23,7 +23,7 @@ class TestSync():
     (ZEO, repo etc.)
     '''
 
-    @pytest.fixture(scope='function', autouse=True)
+    @pytest.fixture(scope='class', autouse=True)
     def environment(self, request):
         '''
         Fixture that is automatically used by all tests. Initializes
@@ -45,6 +45,7 @@ class TestSync():
         self.run('record', '/')
         self.gitrun('add', '.')
         self.gitrun('commit', '-m', 'init')
+        request.cls.initial_commit = self.get_head_id()
 
         # at this point, the test is called
         yield
@@ -52,6 +53,33 @@ class TestSync():
         # clean up items
         for item in myenv.values():
             item.cleanup()
+
+    @pytest.fixture(scope='function', autouse=True)
+    def envreset(self, request):
+        """
+        Reset the environment after each test.
+        """
+        self.run('record', '/')
+        # Call test
+        yield
+        if self.runner:
+            self.runner.sync.tm.abort()
+        cmds = [
+            'reset --hard',
+            'clean -dfx',
+            'checkout master',
+            'reset --hard {}'.format(self.initial_commit),
+        ]
+        for cmd in cmds:
+            self.gitrun(*cmd.split())
+        output = self.gitoutput('show-ref', '--heads')
+        for line in output.strip().split('\n'):
+            commit, refname = line.split()
+            refname = refname[len('refs/heads/'):]
+            if refname != 'master':
+                self.gitrun('branch', '-D', refname)
+
+        self.run('playback', '--skip-errors', '/')
 
     @pytest.fixture(scope='function')
     def conn(self, request):
@@ -64,6 +92,7 @@ class TestSync():
         app = conn.root.Application
 
         yield helpers.Namespace({'tm': tm, 'app': app})
+        tm.abort()
         conn.close()
 
     def mkrunner(self, *cmd):
