@@ -1,5 +1,6 @@
 import os
 import os.path
+import base64
 import subprocess
 import pytest
 
@@ -14,7 +15,19 @@ except ImportError:  # pragma: no cover
 
 from ..main import Runner
 from .. import helpers
+from .. import extedit
 from . import environment as env
+
+
+class DummyResponse():
+    """
+    For mocking the request in extedit test
+    """
+    def __init__(self):
+        self.headers = {}
+
+    def setHeader(self, key, value):
+        self.headers[key] = value
 
 
 class TestSync():
@@ -485,3 +498,68 @@ class TestSync():
             'with-lock',
             'zodbsync --config {} --no-lock record /'.format(self.config.path),
         )
+
+    def test_extedit(self, encoding=None):
+        """
+        Update /index_html using the external editor launcher
+        """
+        resp = DummyResponse()
+        orig_request = self.app.REQUEST
+        self.app.REQUEST = helpers.Namespace(
+            _auth='dummy',
+            RESPONSE=resp,
+        )
+
+        # Read control file
+        content = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+        )
+        header_lines = [
+            'url: index_html',
+            'path: //index_html',
+            'auth: dummy',
+            'meta-type: Page Template',
+            'content-type: text/html',
+        ]
+        headers, orig_source = content.split('\n\n', 1)
+        assert headers == '\n'.join(header_lines)
+        assert resp.headers['Content-Type'] == 'application/x-perfact-zopeedit'
+
+        # Update to new content
+        new_source = 'test'
+        if encoding:
+            orig_source, new_source = [
+                helpers.to_string(base64.b64encode(helpers.to_bytes(item)))
+                for item in [orig_source, new_source]
+            ]
+        res = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+            source=new_source,
+            orig_source=orig_source,
+            encoding=encoding,
+        )
+        assert 'success' in res
+        assert resp.headers['Content-Type'] == 'application/json'
+        assert self.app.index_html._text == 'test'
+
+        # Try the update again, which must fail because the orig_source no
+        # longer matches
+        res = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+            source=new_source,
+            orig_source=orig_source,
+            encoding=encoding,
+        )
+        assert 'error' in res
+
+        # We reuse the connection between tests, so better restore this
+        self.app.REQUEST = orig_request
+
+    def test_extedit_base64(self):
+        self.test_extedit(encoding='base64')
