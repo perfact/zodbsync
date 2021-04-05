@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover
     ZOPE2 = False
 
 from ..main import Runner
+from .. import zodbsync
 from .. import helpers
 from .. import extedit
 from . import environment as env
@@ -384,6 +385,35 @@ class TestSync():
         self.runner.sync.record('/', recurse=False)
         with open(fname, 'r') as f:
             assert recording == f.read()
+
+    def test_addprop(self):
+        "Add a property to the root object"
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            content = f.read()
+        data = dict(helpers.literal_eval(content))
+        prop = {
+            'id': 'testprop',
+            'type': 'string',
+            'value': 'test',
+        }
+        data['props'] = [list(prop.items())]
+        with open(fname, 'w') as f:
+            f.write(zodbsync.mod_format(data))
+        self.run('playback', '/')
+        assert self.app.getProperty('testprop') == 'test'
+
+    def test_cacheable(self):
+        "Add a RamCacheManager and use it for index_html"
+        self.app.manage_addProduct[
+            'StandardCacheManagers'
+        ].manage_addRAMCacheManager(id="http_cache")
+        self.app.index_html.ZCacheable_setManagerId("http_cache")
+        self.run('record', '/')
+        fname = self.repo.path + '/__root__/index_html/__meta__'
+        assert "http_cache" in open(fname).read()
+        self.run('playback', '/')
+        assert self.app.index_html.ZCacheable_getManagerId() == "http_cache"
 
     def test_watch_change(self, conn):
         """
