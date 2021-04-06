@@ -42,25 +42,30 @@ the configuration when calling the scripts, copy the configuration file there
 
 The most important settings are:
 ### `conf_path` or `wsgi_conf_path`
-If using ZServer (only Zope 2), set `conf_path` to the `zope.conf` of your Zope
-instance. If it is a standalone instance exclusively accessing its ZODB, it
-must be powered down if used by zodbsync. So usually it is advisable that it is
-configured to connect to a ZEO server. If using a WSGI server (Zope 2 or Zope
-4), set `wsgi_conf_path` accordingly.
+Set `conf_path` or `wsgi_conf_path` to the `zope.conf` of your Zope instance.
+If it is a standalone instance exclusively accessing its ZODB, it must be
+powered down if used by zodbsync. So usually it is advisable that it is
+configured to connect to a ZEO server.
+
+The two options are present due to a no longer relevant difference between
+`ZServer` and `WSGI` instance handling and can now be used interchangeably.
 
 ### `base_dir`
 Inside this folder (actually, in a subfolder named `__root__`), the serialized
 objects are placed.
 
 ### `manager_user`
-The name of a user that must be defined in the top-level UserFolder (`acl_users`)
-and which has Manager permissions. This user is considered to be the default
-owner of objects if no other information is stored in the object and the
-transaction that is used to upload objects to the ZODB is done by this user.
+The name of a user that must be defined in the top-level `UserFolder`
+(`acl_users`) and which has Manager permissions. Transactions that are used to
+upload objects to the ZODB are done by this user.
+
+### `default_owner`
+This user is considered to be the default owner of objects if no other
+information is stored in the object.
 
 ### `datafs_path`
-The path to the location of the Data.fs file. This is needed for the watcher
-mode of `perfact-zoperecord`.
+The path to the location of the Data.fs file. This is needed for `zodbsync
+watch`.
 
 ## Usage
 
@@ -83,7 +88,7 @@ Only a specific list of object types is supported by `zodbsync`. Objects whose
 type is not yet supported are created with a minimal `__meta__` file,
 containing only the `title`, `type` and an `unsupported` marker.
 
-If the package `perfact.pfcodechg` is available, an additional option
+An additional option
 `--commit` allows to create a `git` commit after the recording, sending a
 summary mail containing all changed files to an address specified in the
 configuration. This can be used as automated reminder fallback if changes are
@@ -102,7 +107,7 @@ target of the move operation is recognized).
 ### `zodbsync watch`
 
 This subcommand starts a process that aims to bypass the shortcomings of
-`zodbsync record --lasttxn`.  The process stays alive and builds an object tree
+`zodbsync record --lasttxn`. The process stays alive and builds an object tree
 of all objects in the ZODB. Each time it wakes up, it scans for new
 transactions, opens the Data.FS directly (in read-only mode) to obtain all
 affected object IDs, updates its object tree and uses it to obtain the physical
@@ -124,10 +129,27 @@ marked as `unsupported`, which are ignored if found in the ZODB. If only a
 given object itself should be updated (properties, security settings etc.),
 `--no-recurse` can be used.
 
+### `zodbsync exec`
+
+This command requires the base directory to be a git repository and provides a
+wrapper for several git commands. It executes the given command, reads the
+objects changed between the old and new `HEAD` and plays them back. Any
+unstaged changes are stashed away and restored afterwards. The operation is
+aborted and rolled back if it results in a broken state (an interrupted
+`merge`, `rebase`, `cherry-pick` etc.) or if there is an overlap between the
+unstaged and the changed files.
+
+This allows commands like the following:
+
+    zodbsync exec "git cherry-pick COMMIT"
+    zodbsync exec "git checkout otherbranch"
+    zodbsync exec "git reset --hard COMMIT"
+    zodbsync exec "git revert COMMIT"
+
 ### `zodbsync pick`
 
-`pick` requires the base directory to be a git repository and provides a
-wrapper for `git cherry-pick`, taking git commits to be applied as arguments.
+As a sepcial case of `exec`, this wraps `git cherry-pick` and takes git commits
+to be applied as arguments.
 This is useful if some development has been done in a branch or on a remote
 system that has to be deployed to the current system. It then becomes possible
 to do something like
@@ -136,11 +158,11 @@ to do something like
     zodbsync pick origin/master
 
 to pull the latest commit, apply it to the current repository and upload the
-affected paths to the Data.FS. It can also be used to pull multiple commits -
-allowing, for example, to pull all commits where the commit message starts with
-T12345:
+affected paths to the Data.FS. It can also be used to pick multiple commits.
+Its argument `--grep` allows, for example, to pull all commits where the commit
+message starts with T12345:
 
-    zodbsync pick $(git log origin/master --reverse --format=%H --grep="^T12345" )
+    zodbsync pick --grep="^T12345" source/master
 
 Commit ranges in the form of `COMMIT1..COMMIT2` can also be picked, but be
 aware that there is no check that the commit range is actually a straight
@@ -149,10 +171,6 @@ that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
 practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts.
 
-If there are unstaged changes at the start of the `pick` operation, these are
-first stashed away and restored at the end, but if any of the picked commits
-touches any file that was unstaged, it is considered an error and the operation
-is cancelled.
 
 ### `zodbsync upload`
 
@@ -175,6 +193,9 @@ option `--no-lock`. For example:
 
     zodbsync with-lock "git rebase origin/main && zodbsync --no-lock playback /"
 
+Although this particular example can now be better achieved with `zodbsync
+exec`.
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,
@@ -193,11 +214,6 @@ providing the bare functionality:
     but including a call to `perfact-dbrecord` if a `databases` key is defined
     in the configuration)
 
-`zodbsync` is designed to work both with Zope 2 and Zope 4. However, only
-Zope 4 is partly covered by tests at the moment (with Python 2 and Python 3)
-because I could not figure out how to close the connection to one ZODB and
-re-open it to another within the same process with Zope 2.
-
 ## Caveats
 
 Zope allows `External Method`s to be present in the ZODB even if the
@@ -209,10 +225,6 @@ longer existing extension.
 
 ## To Do / Roadmap
 
-  * Subcommands wrapping `git reset` and `git rebase` will allow development in
-    branches, resetting a testing or a production system to the state of an
-    approved development branch and rebasing other developments onto the new
-    master.
   * Specifying a path to a python script that is executed after `playback`
     inside the same transaction will allow to store database changes in a
     connected relational (SQL) database inside ZODB using Z SQL Methods and

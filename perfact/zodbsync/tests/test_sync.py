@@ -9,7 +9,7 @@ from AccessControl.SecurityManagement import newSecurityManager
 try:  # pragma: no cover
     from Zope2.Startup.run import configure  # noqa: F401
     ZOPE2 = True
-except ImportError:
+except ImportError:  # pragma: no cover
     ZOPE2 = False
 
 from ..main import Runner
@@ -70,7 +70,9 @@ class TestSync():
         '''
         Create runner for given zodbsync command
         '''
-        return Runner().parse('--config', self.config.path, *cmd)
+        if not hasattr(self, 'cached_runner'):
+            self.cached_runner = Runner()
+        return self.cached_runner.parse('--config', self.config.path, *cmd)
 
     def gitrun(self, *cmd):
         '''
@@ -210,6 +212,20 @@ class TestSync():
         assert 'Test0' in ids
         assert 'Test1' not in ids
         assert 'Test2' in ids
+
+    def test_pick_range(self):
+        """
+        Prepare three commits and pick them as a range
+        """
+        for i in range(3):
+            self.add_folder('Test' + str(i), 'Commit ' + str(i))
+        commit = self.get_head_id()
+        self.gitrun('reset', '--hard', 'HEAD~3')
+        runner = self.runner('pick', 'HEAD..' + commit)
+        runner.run()
+        ids = runner.sync.app.objectIds()
+        for i in range(3):
+            assert 'Test' + str(i) in ids
 
     def test_upload_relpath(self):
         '''
@@ -409,3 +425,24 @@ class TestSync():
         runner = self.runner('reset', 'second')
         runner.run()
         assert runner.sync.app.index_html.title == 'test'
+
+    def test_revert(self):
+        """
+        Do the same as in test_reset, but afterwards revert it.
+        """
+        self.test_reset()
+        runner = self.runner('exec', 'git revert HEAD')
+        runner.run()
+        title = runner.sync.app.index_html.title
+        assert title != 'test'
+
+    def test_checkout(self):
+        """
+        Prepare two branches and switch between them.
+        """
+        self.gitrun('branch', 'other')
+        self.test_reset()
+        runner = self.runner('exec', 'git checkout other')
+        runner.run()
+        title = runner.sync.app.index_html.title
+        assert title != 'test'
