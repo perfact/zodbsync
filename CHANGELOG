@@ -1,4 +1,4 @@
-4.1.4.dev0
+4.1.4
   * Add subcommand `exec` to capture many git operations
 
   * Rewrite `pick` to use common code with `exec`, making it appliable to
