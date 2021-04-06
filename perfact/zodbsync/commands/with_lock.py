@@ -13,9 +13,9 @@ class WithLock(SubCommand):
     @staticmethod
     def add_args(parser):
         parser.add_argument(
-            'command', type=str, help="Shell-command to be executed",
+            'cmd', type=str, help="Shell-command to be executed",
         )
 
     @SubCommand.with_lock
     def run(self):
-        subprocess.check_call(self.args.command, shell=True)
+        subprocess.check_call(self.args.cmd, shell=True)

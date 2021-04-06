@@ -1,5 +1,6 @@
 import os
 import os.path
+import base64
 import subprocess
 import pytest
 
@@ -7,14 +8,27 @@ import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
 try:  # pragma: no cover
-    from Zope2.Startup.run import configure  # noqa: F401
+    import ZServer  # noqa: F401
     ZOPE2 = True
 except ImportError:  # pragma: no cover
     ZOPE2 = False
 
 from ..main import Runner
+from .. import zodbsync
 from .. import helpers
+from .. import extedit
 from . import environment as env
+
+
+class DummyResponse():
+    """
+    For mocking the request in extedit test
+    """
+    def __init__(self):
+        self.headers = {}
+
+    def setHeader(self, key, value):
+        self.headers[key] = value
 
 
 class TestSync():
@@ -23,7 +37,7 @@ class TestSync():
     (ZEO, repo etc.)
     '''
 
-    @pytest.fixture(scope='function', autouse=True)
+    @pytest.fixture(scope='class', autouse=True)
     def environment(self, request):
         '''
         Fixture that is automatically used by all tests. Initializes
@@ -42,9 +56,10 @@ class TestSync():
             setattr(request.cls, key, value)
 
         # Initially record everything and commit it
-        self.runner('record', '/').run()
+        self.run('record', '/')
         self.gitrun('add', '.')
         self.gitrun('commit', '-m', 'init')
+        request.cls.initial_commit = self.get_head_id()
 
         # at this point, the test is called
         yield
@@ -52,6 +67,33 @@ class TestSync():
         # clean up items
         for item in myenv.values():
             item.cleanup()
+
+    @pytest.fixture(scope='function', autouse=True)
+    def envreset(self, request):
+        """
+        Reset the environment after each test.
+        """
+        self.run('record', '/')
+        # Call test
+        yield
+        if self.runner:
+            self.runner.sync.tm.abort()
+        cmds = [
+            'reset --hard',
+            'clean -dfx',
+            'checkout master',
+            'reset --hard {}'.format(self.initial_commit),
+        ]
+        for cmd in cmds:
+            self.gitrun(*cmd.split())
+        output = self.gitoutput('show-ref', '--heads')
+        for line in output.strip().split('\n'):
+            commit, refname = line.split()
+            refname = refname[len('refs/heads/'):]
+            if refname != 'master':
+                self.gitrun('branch', '-D', refname)
+
+        self.run('playback', '--skip-errors', '/')
 
     @pytest.fixture(scope='function')
     def conn(self, request):
@@ -64,15 +106,22 @@ class TestSync():
         app = conn.root.Application
 
         yield helpers.Namespace({'tm': tm, 'app': app})
+        tm.abort()
         conn.close()
 
-    def runner(self, *cmd):
+    def mkrunner(self, *cmd):
         '''
-        Create runner for given zodbsync command
+        Create or update runner for given zodbsync command
         '''
-        if not hasattr(self, 'cached_runner'):
-            self.cached_runner = Runner()
-        return self.cached_runner.parse('--config', self.config.path, *cmd)
+        if not hasattr(self, 'runner'):
+            self.runner = Runner()
+        result = self.runner.parse('--config', self.config.path, *cmd)
+        self.app = self.runner.sync.app if self.runner.sync else None
+        return result
+
+    def run(self, *cmd):
+        "Create runner and run"
+        self.mkrunner(*cmd).run()
 
     def gitrun(self, *cmd):
         '''
@@ -91,38 +140,52 @@ class TestSync():
             universal_newlines=True,
         )
 
-    def upload_checks(self, runner):
+    def upload_checks(self):
         '''A bunch of asserts to call after an upload test has been performed
         '''
-        assert 'lib' in runner.sync.app.objectIds()
-        assert 'js' in runner.sync.app.lib.objectIds()
-        assert 'plugins' in runner.sync.app.lib.js.objectIds()
-        assert 'something_js' in runner.sync.app.lib.js.plugins.objectIds()
+        assert 'lib' in self.app.objectIds()
+        assert 'js' in self.app.lib.objectIds()
+        assert 'plugins' in self.app.lib.js.objectIds()
+        assert 'something_js' in self.app.lib.js.plugins.objectIds()
         content = 'alert(1);\n'
         data = helpers.to_string(
-            runner.sync.app.lib.js.plugins.something_js.data
+            self.app.lib.js.plugins.something_js.data
         )
         assert content == data
 
-        assert 'css' in runner.sync.app.lib.objectIds()
-        assert 'skins' in runner.sync.app.lib.css.objectIds()
-        assert 'dark_css' in runner.sync.app.lib.css.skins.objectIds()
+        assert 'css' in self.app.lib.objectIds()
+        assert 'skins' in self.app.lib.css.objectIds()
+        assert 'dark_css' in self.app.lib.css.skins.objectIds()
         content = 'body { background-color: black; }\n'
         data = helpers.to_string(
-            runner.sync.app.lib.css.skins.dark_css.data
+            self.app.lib.css.skins.dark_css.data
         )
         assert content == data
 
         # dont forget ignored files!
-        assert 'ignoreme' not in runner.sync.app.lib
+        assert 'ignoreme' not in self.app.lib
 
     def test_record(self):
-        '''
-        Record everything and make sure acl_users exists.
-        '''
+        '''Recorder tests'''
+        # Record everything and make sure acl_users exists
         assert os.path.isfile(
             self.repo.path + '/__root__/acl_users/__meta__'
         )
+        # Recording a non-existent object only logs and does not fail
+        self.run('record', '/nonexist')
+        # Recording with --lasttxn will create the file
+        self.run('record', '--lasttxn')
+        assert os.path.isfile(os.path.join(self.repo.path, '__last_txn__'))
+        # Making a change with a comment indicating the path will make lasttxn
+        # pick it up
+        tm = self.runner.sync.start_transaction(note='/testpt')
+        self.app.manage_addProduct['PageTemplates'].manage_addPageTemplate(
+            id='testpt',
+            text='test1'
+        )
+        tm.commit()
+        self.run('record', '--lasttxn')
+        assert os.path.isdir(os.path.join(self.repo.path, '__root__/testpt'))
 
     def test_playback(self):
         '''
@@ -133,9 +196,8 @@ class TestSync():
         content = '<html></html>'
         with open(path, 'w') as f:
             f.write(content)
-        runner = self.runner('playback', '/index_html')
-        runner.run()
-        assert runner.sync.app.index_html() == content
+        self.run('playback', '/index_html')
+        assert self.app.index_html() == content
 
     def add_folder(self, name, msg):
         """
@@ -175,10 +237,9 @@ class TestSync():
         Pick a prepared commit and check that the folder exists.
         '''
         commit = self.prepare_pick()
-        runner = self.runner('pick', commit)
-        runner.run()
+        self.run('pick', commit)
 
-        assert 'TestFolder' in runner.sync.app.objectIds()
+        assert 'TestFolder' in self.app.objectIds()
 
     def test_pick_dryrun(self):
         '''
@@ -186,10 +247,9 @@ class TestSync():
         not exist.
         '''
         commit = self.prepare_pick()
-        runner = self.runner('pick', commit, '--dry-run')
-        runner.run()
+        self.run('pick', commit, '--dry-run')
 
-        assert 'TestFolder' not in runner.sync.app.objectIds()
+        assert 'TestFolder' not in self.app.objectIds()
 
     def test_pick_grep(self):
         """
@@ -205,10 +265,9 @@ class TestSync():
             self.add_folder('Test' + str(nr), msg)
         commit = self.get_head_id()
         self.gitrun('reset', '--hard', 'HEAD~3')
-        runner = self.runner('pick', '--grep=T123', commit)
-        runner.run()
+        self.run('pick', '--grep=T123', commit)
 
-        ids = runner.sync.app.objectIds()
+        ids = self.app.objectIds()
         assert 'Test0' in ids
         assert 'Test1' not in ids
         assert 'Test2' in ids
@@ -221,9 +280,8 @@ class TestSync():
             self.add_folder('Test' + str(i), 'Commit ' + str(i))
         commit = self.get_head_id()
         self.gitrun('reset', '--hard', 'HEAD~3')
-        runner = self.runner('pick', 'HEAD..' + commit)
-        runner.run()
-        ids = runner.sync.app.objectIds()
+        self.run('pick', 'HEAD..' + commit)
+        ids = self.app.objectIds()
         for i in range(3):
             assert 'Test' + str(i) in ids
 
@@ -236,28 +294,25 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path)
 
-        self.upload_checks(runner)
+        self.upload_checks()
 
         # we may even omit __root__ in path!
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('lib')
 
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path)
 
-        self.upload_checks(runner)
+        self.upload_checks()
 
         # add another test case showing dot notation also works
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('.', 'lib')
 
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path)
 
-        self.upload_checks(runner)
+        self.upload_checks()
 
     def test_upload_relpath_fromrepo(self):
         '''
@@ -270,18 +325,16 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('.', '__root__', 'lib')
 
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path)
 
-        self.upload_checks(runner)
+        self.upload_checks()
 
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        runner = self.runner('upload', target_jslib_path, target_repo_path)
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path)
 
-        self.upload_checks(runner)
+        self.upload_checks()
 
         os.chdir(cur_path)
 
@@ -292,28 +345,25 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        runner = self.runner(
-            'upload', target_jslib_path, target_repo_path, '--dry-run'
-        )
-        runner.run()
+        self.run('upload', target_jslib_path, target_repo_path, '--dry-run')
 
-        assert 'lib' not in runner.sync.app.objectIds()
+        assert 'lib' not in self.app.objectIds()
 
     def test_emptying_userdefined_roles(self):
         """
         Check fix for #22: if a Folder defines local roles, playback must be
         able to remove them.
         """
-        runner = self.runner('record', '/')
-        runner.sync.app._addRole('TestRole')
-        runner.run()
+        with self.runner.sync.tm:
+            self.app._addRole('TestRole')
+        self.run('record', '/')
         fname = self.repo.path + '/__root__/__meta__'
         with open(fname, 'r') as f:
             lines = f.readlines()
         with open(fname, 'w') as f:
             f.writelines([line for line in lines if 'TestRole' not in line])
-        runner.sync.playback_paths(paths=['/'], recurse=False)
-        assert runner.sync.app.userdefined_roles() == ()
+        self.runner.sync.playback_paths(paths=['/'], recurse=False)
+        assert self.app.userdefined_roles() == ()
 
     def test_userdefined_roles_playback(self):
         """
@@ -322,20 +372,48 @@ class TestSync():
         back, check that it is set correctly, record again and check that the
         recording matches the first one.
         """
-        runner = self.runner('record', '/')
-        app = runner.sync.app
-        app._addRole('TestRole')
-        app.manage_setLocalRoles('perfact', ('TestRole',))
-        runner.run()
+        with self.runner.sync.tm:
+            self.app._addRole('TestRole')
+            self.app.manage_setLocalRoles('perfact', ('TestRole',))
+        self.run('record', '/')
 
         fname = self.repo.path + '/__root__/__meta__'
         with open(fname, 'r') as f:
             recording = f.read()
-        runner.sync.playback_paths(paths=['/'], recurse=False)
-        assert app.get_local_roles() == (('perfact', ('TestRole',)),)
-        runner.sync.record('/', recurse=False)
+        self.runner.sync.playback_paths(paths=['/'], recurse=False)
+        assert self.app.get_local_roles() == (('perfact', ('TestRole',)),)
+        self.runner.sync.record('/', recurse=False)
         with open(fname, 'r') as f:
             assert recording == f.read()
+
+    def test_addprop(self):
+        "Add a property to the root object"
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            content = f.read()
+        data = dict(helpers.literal_eval(content))
+        prop = {
+            'id': 'testprop',
+            'type': 'string',
+            'value': 'test',
+        }
+        data['props'] = [list(prop.items())]
+        with open(fname, 'w') as f:
+            f.write(zodbsync.mod_format(data))
+        self.run('playback', '/')
+        assert self.app.getProperty('testprop') == 'test'
+
+    def test_cacheable(self):
+        "Add a RamCacheManager and use it for index_html"
+        self.app.manage_addProduct[
+            'StandardCacheManagers'
+        ].manage_addRAMCacheManager(id="http_cache")
+        self.app.index_html.ZCacheable_setManagerId("http_cache")
+        self.run('record', '/')
+        fname = self.repo.path + '/__root__/index_html/__meta__'
+        assert "http_cache" in open(fname).read()
+        self.run('playback', '/')
+        assert self.app.index_html.ZCacheable_getManagerId() == "http_cache"
 
     def test_watch_change(self, conn):
         """
@@ -345,7 +423,7 @@ class TestSync():
         that it is now present.
         """
         fname = self.repo.path + '/__root__/__meta__'
-        watcher = self.runner('watch')
+        watcher = self.mkrunner('watch')
         watcher.setup()
         conn.tm.begin()
         conn.app._addRole('TestRole')
@@ -362,7 +440,7 @@ class TestSync():
         three-way-rename in one transaction, making sure the watcher keeps
         track.
         """
-        watcher = self.runner('watch')
+        watcher = self.mkrunner('watch')
         watcher.setup()
         root = self.repo.path + '/__root__/'
         src = '/__source-utf8__.html'
@@ -422,18 +500,16 @@ class TestSync():
             f.writelines(lines)
         self.gitrun('commit', '-a', '-m', 'Change title')
         self.gitrun('checkout', 'master')
-        runner = self.runner('reset', 'second')
-        runner.run()
-        assert runner.sync.app.index_html.title == 'test'
+        self.run('reset', 'second')
+        assert self.app.index_html.title == 'test'
 
     def test_revert(self):
         """
         Do the same as in test_reset, but afterwards revert it.
         """
         self.test_reset()
-        runner = self.runner('exec', 'git revert HEAD')
-        runner.run()
-        title = runner.sync.app.index_html.title
+        self.run('exec', 'git revert HEAD')
+        title = self.app.index_html.title
         assert title != 'test'
 
     def test_checkout(self):
@@ -442,7 +518,78 @@ class TestSync():
         """
         self.gitrun('branch', 'other')
         self.test_reset()
-        runner = self.runner('exec', 'git checkout other')
-        runner.run()
-        title = runner.sync.app.index_html.title
+        self.run('exec', 'git checkout other')
+        title = self.app.index_html.title
         assert title != 'test'
+
+    def test_withlock(self):
+        "Running with-lock and, inside that, --no-lock, works"
+        self.run(
+            'with-lock',
+            'zodbsync --config {} --no-lock record /'.format(self.config.path),
+        )
+
+    def test_extedit(self, encoding=None):
+        """
+        Update /index_html using the external editor launcher
+        """
+        resp = DummyResponse()
+        orig_request = self.app.REQUEST
+        self.app.REQUEST = helpers.Namespace(
+            _auth='dummy',
+            RESPONSE=resp,
+        )
+
+        # Read control file
+        content = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+        )
+        header_lines = [
+            'url: index_html',
+            'path: //index_html',
+            'auth: dummy',
+            'meta-type: Page Template',
+            'content-type: text/html',
+        ]
+        headers, orig_source = content.split('\n\n', 1)
+        assert headers == '\n'.join(header_lines)
+        assert resp.headers['Content-Type'] == 'application/x-perfact-zopeedit'
+
+        # Update to new content
+        new_source = 'test'
+        if encoding:
+            orig_source, new_source = [
+                helpers.to_string(base64.b64encode(helpers.to_bytes(item)))
+                for item in [orig_source, new_source]
+            ]
+        res = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+            source=new_source,
+            orig_source=orig_source,
+            encoding=encoding,
+        )
+        assert 'success' in res
+        assert resp.headers['Content-Type'] == 'application/json'
+        assert self.app.index_html._text == 'test'
+
+        # Try the update again, which must fail because the orig_source no
+        # longer matches
+        res = extedit.launch(
+            self.app,
+            self.app.index_html,
+            '/index_html',
+            source=new_source,
+            orig_source=orig_source,
+            encoding=encoding,
+        )
+        assert 'error' in res
+
+        # We reuse the connection between tests, so better restore this
+        self.app.REQUEST = orig_request
+
+    def test_extedit_base64(self):
+        self.test_extedit(encoding='base64')

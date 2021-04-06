@@ -1,5 +1,15 @@
 4.1.4.dev0
-  * Add subcommand "exec" to capture many git operations
+  * Add subcommand `exec` to capture many git operations
+
+  * Rewrite `pick` to use common code with `exec`, making it appliable to
+    situations where `git` is able to automatically merge, but `pick` refused
+    to do so before because the same file was changed.
+
+  * Speed up tests by reusing environment
+
+  * Increase test coverage
+
+  * Fix `with-lock` subcommand, which used the argument named `command` twice.
 
 4.1.3
   * Make sure Python 2 test also run under Ubuntu
