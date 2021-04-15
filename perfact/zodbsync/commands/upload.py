@@ -128,11 +128,12 @@ class Upload(SubCommand):
                         META_TEMPLATES.get(file_ending, META_DEFAULT)
                     )
                 )
-                self.create_binary_file(
+                self.create_file(
                     file_path=os.path.join(
                         new_file_folder, '__source__.' + file_ending
                     ),
-                    content=file_content
+                    content=file_content,
+                    binary=True
                 )
 
         # conversion done, start playback
@@ -152,7 +153,3 @@ class Upload(SubCommand):
             self.logger.exception('Error uploading files. Resetting.')
             self.abort()
             raise
-
-    def create_binary_file(self, file_path, content):
-        with open(file_path, 'wb') as create_file:
-            create_file.write(content)
