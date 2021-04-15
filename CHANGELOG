@@ -1,6 +1,12 @@
 4.1.5.dev0
   * Fix timing issues in watcher
 
+  * Add option `--keep-filenames` to subcommand `upload` to not replace
+    periods with underscores
+
+  * Add more recognized file types to subcommand `upload`
+
+
 4.1.4
   * Add subcommand `exec` to capture many git operations
 
@@ -77,7 +83,7 @@
   * Fix config path in README
 
   * Clean up Python 2 compatibility code
-  
+
   * Add subcommand with-lock and option --no-lock
 
 4.0.1
@@ -127,7 +133,7 @@
 
 3.14.1
   Bugfix release: remove option accidentally added twice
-  
+
 3.14.0
   * Auto-stash unstaged changes if picking commits
 
@@ -209,7 +215,7 @@
 
 3.11.2
   Complete separation of repositories, splitting the default config file names.
-  
+
 3.11.1
   PostgreSQL database dumps are no longer performed by zodbsync. This
   functionality was transferred into perfact.dbbackup. The repository for the
