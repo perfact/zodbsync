@@ -103,10 +103,6 @@ class Upload(SubCommand):
             for filename in files:
                 file_ending = filename.split('.')[-1]
 
-                # only support css and js files ... for now
-                if file_ending not in ['css', 'js']:
-                    continue
-
                 # read file content from source file
                 with open(
                     os.path.join(cur_dir_path, filename), 'r'
