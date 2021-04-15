@@ -62,6 +62,10 @@ class Upload(SubCommand):
             '--dry-run', action='store_true', default=False,
             help='Roll back at the end.',
         )
+        parser.add_argument(
+            '--keep-filenames', action='store_true', default=False,
+            help='Leave periods in file names',
+        )
 
     @SubCommand.with_lock
     def run(self):
@@ -109,9 +113,15 @@ class Upload(SubCommand):
                 ) as sourcefile:
                     file_content = sourcefile.read()
 
+                # choose the original filename, or replace periods
+                if self.args.keep_filenames:
+                    repo_filename = filename
+                else:
+                    repo_filename = filename.replace('.', '_')
+
                 # in repo each file gets its own folder ...
                 new_file_folder = os.path.join(
-                    new_folder, filename.replace('.', '_')
+                    new_folder, repo_filename
                 )
                 os.makedirs(new_file_folder)
 
