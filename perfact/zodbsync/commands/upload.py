@@ -25,7 +25,14 @@ META_TEMPLATES = {
     'folder': create_template('Folder'),
     'js': create_template('File', 'application/javascript'),
     'css': create_template('File', 'text/css'),
+    'html': create_template('File', 'text/html'),
+    'odt': create_template('File', 'application/vnd.oasis.opendocument.text'),
+    'ods': create_template(
+        'File', 'application/vnd.oasis.opendocument.spreadsheet'),
+    'pdf': create_template('File', 'application/pdf'),
+    'svg': create_template('File', 'image/svg+xml'),
 }
+META_DEFAULT = create_template('File', 'application/octet-stream')
 
 
 class Upload(SubCommand):
@@ -111,7 +118,9 @@ class Upload(SubCommand):
                 # ... containing __meta__ and __source__ file
                 self.create_file(
                     file_path=os.path.join(new_file_folder, '__meta__'),
-                    content=mod_format(META_TEMPLATES[file_ending])
+                    content=mod_format(
+                        META_TEMPLATES.get(file_ending, META_DEFAULT)
+                    )
                 )
                 self.create_file(
                     file_path=os.path.join(
