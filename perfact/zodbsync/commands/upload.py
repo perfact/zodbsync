@@ -63,8 +63,15 @@ class Upload(SubCommand):
             help='Roll back at the end.',
         )
         parser.add_argument(
-            '--keep-filenames', action='store_true', default=False,
-            help='Leave periods in file names',
+            '--replace-periods', action='store_true', default=False,
+            help='Replace periods in file names with underscores',
+        )
+        parser.add_argument(
+            '--valid-extensions', type=str,
+            help=(
+                'Only upload files with the extensions listed '
+                '(comma separated list). Allow all extensions by default.'
+            )
         )
 
     @SubCommand.with_lock
@@ -79,6 +86,15 @@ class Upload(SubCommand):
         data_fs_path, filesystem_path = self.datafs_filesystem_path(
             self.args.path
         )
+
+        valid_extensions = self.args.valid_extensions
+        if valid_extensions:
+            # Parse comma separated list
+            valid_extensions = [
+                item.strip()
+                for item in valid_extensions.split(',')
+                if len(item.strip()) > 0
+            ]
 
         # conversion loop: iterate over source folder, create folders in
         # repodir and corresponding files
@@ -103,17 +119,21 @@ class Upload(SubCommand):
             for filename in files:
                 file_ending = filename.split('.')[-1]
 
+                # bail out if not a valid extension
+                if valid_extensions and file_ending not in valid_extensions:
+                    continue
+
                 # read file content from source file
                 with open(
-                    os.path.join(cur_dir_path, filename), 'rb'
-                ) as sourcefile:
+                            os.path.join(cur_dir_path, filename), 'rb'
+                        ) as sourcefile:
                     file_content = sourcefile.read()
 
                 # choose the original filename, or replace periods
-                if self.args.keep_filenames:
-                    repo_filename = filename
-                else:
+                if self.args.replace_periods:
                     repo_filename = filename.replace('.', '_')
+                else:
+                    repo_filename = filename
 
                 # in repo each file gets its own folder ...
                 new_file_folder = os.path.join(
