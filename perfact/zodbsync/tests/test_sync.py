@@ -141,30 +141,33 @@ class TestSync():
             universal_newlines=True,
         )
 
-    def upload_checks(self):
+    def upload_checks(self, replace_periods=True, ignore=True):
         '''A bunch of asserts to call after an upload test has been performed
         '''
         assert 'lib' in self.app.objectIds()
         assert 'js' in self.app.lib.objectIds()
         assert 'plugins' in self.app.lib.js.objectIds()
-        assert 'something_js' in self.app.lib.js.plugins.objectIds()
+        something_js = 'something_js' if replace_periods else 'something.js'
+        assert something_js in self.app.lib.js.plugins.objectIds()
         content = 'alert(1);\n'
         data = helpers.to_string(
-            self.app.lib.js.plugins.something_js.data
+            getattr(self.app.lib.js.plugins, something_js).data
         )
         assert content == data
 
         assert 'css' in self.app.lib.objectIds()
         assert 'skins' in self.app.lib.css.objectIds()
-        assert 'dark_css' in self.app.lib.css.skins.objectIds()
+        dark_css = 'dark_css' if replace_periods else 'dark.css'
+        assert dark_css in self.app.lib.css.skins.objectIds()
         content = 'body { background-color: black; }\n'
         data = helpers.to_string(
-            self.app.lib.css.skins.dark_css.data
+            getattr(self.app.lib.css.skins, dark_css).data
         )
         assert content == data
 
         # dont forget ignored files!
-        assert 'ignoreme' not in self.app.lib
+        if ignore:
+            assert 'ignoreme' not in self.app.lib
 
     def test_record(self):
         '''Recorder tests'''
@@ -295,7 +298,11 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        self.run('upload', target_jslib_path, target_repo_path)
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
 
         self.upload_checks()
 
@@ -303,7 +310,11 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('lib')
 
-        self.run('upload', target_jslib_path, target_repo_path)
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
 
         self.upload_checks()
 
@@ -311,9 +322,46 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('.', 'lib')
 
-        self.run('upload', target_jslib_path, target_repo_path)
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
 
         self.upload_checks()
+
+    def test_upload_options(self):
+        '''
+        Test upload with different options settings.
+        '''
+        target_jslib_path = self.jslib.path
+        target_repo_path = os.path.join('__root__', 'lib')
+
+        self.run(
+            'upload',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
+        self.upload_checks(replace_periods=False)
+
+        self.run(
+            'upload', '--replace-periods',
+            target_jslib_path, target_repo_path
+        )
+        self.upload_checks(ignore=False)
+
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', '  ,, ',
+            target_jslib_path, target_repo_path
+        )
+        self.upload_checks(ignore=False)
+
+        self.run(
+            'upload',
+            target_jslib_path, target_repo_path
+        )
+        self.upload_checks(replace_periods=False, ignore=False)
 
     def test_upload_relpath_fromrepo(self):
         '''
@@ -326,14 +374,22 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('.', '__root__', 'lib')
 
-        self.run('upload', target_jslib_path, target_repo_path)
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
 
         self.upload_checks()
 
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        self.run('upload', target_jslib_path, target_repo_path)
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path
+        )
 
         self.upload_checks()
 
@@ -346,7 +402,12 @@ class TestSync():
         target_jslib_path = self.jslib.path
         target_repo_path = os.path.join('__root__', 'lib')
 
-        self.run('upload', target_jslib_path, target_repo_path, '--dry-run')
+        self.run(
+            'upload', '--replace-periods',
+            '--valid-extensions', 'css,js',
+            target_jslib_path, target_repo_path,
+            '--dry-run'
+        )
 
         assert 'lib' not in self.app.objectIds()
 
