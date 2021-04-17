@@ -58,20 +58,7 @@ class Watch(SubCommand):
         effect up to this ID is visible in the current transaction and every
         effect for transaction IDs above this are not yet visible.
         '''
-        # by default, take the last transaction in the undo record
-        records = self.app._p_jar.db().undoInfo(0, 1)
-        if not len(records):
-            # after packing, no undo records exist. Return zero
-            self.last_visible_txn = b'\x00'*8
-            return
-        self.last_visible_txn = base64.b64decode(records[0]['id'])
-        # check if there are transactions we do not see yet
-        if getattr(self.app._p_jar, '_txn_time', None):
-            # if this is set, it is the first transaction that we can not yet
-            # see, so we subtract one
-            self.last_visible_txn = _decrement_txnid(
-                self.app._p_jar._txn_time
-            )
+        self.last_visible_txn = self.app._p_jar._db.lastTransaction()
 
     def _store_last_visible_txn(self):
         '''
@@ -134,12 +121,14 @@ class Watch(SubCommand):
         # * _ltid: the transaction id that was last read.
         # It is also possible to iterate over FileIterator, which yields
         # transactions in the form of a TransactionRecord
+        self.changed_oids = set()
+        if txn_start > txn_stop:
+            return
         storage = ZODB.FileStorage.FileIterator(
             self.datafs_path,
             start=txn_start,
             stop=txn_stop,
         )
-        self.changed_oids = set()
         for txn in storage:
             # Each TransactionRecord has the following fields:
             # * _pos: Position of the first data header
@@ -387,8 +376,8 @@ class Watch(SubCommand):
         # collect a list of all changed paths and record them recursively.
 
         self.acquire_lock(timeout=300)
-        self.sync.tm.begin()
         self._set_last_visible_txn()
+        self.sync.tm.begin()
         self._init_tree(self.app)
 
         # the transaction ID stored on disk is the last transaction whose
@@ -451,15 +440,15 @@ class Watch(SubCommand):
         self.acquire_lock(timeout=300)
         self.register_signals()
 
-        # make sure we see a consistent snapshot, even though we later
-        # abort this transaction since we do not write anything
-        self.sync.tm.begin()
         start_txnid = _increment_txnid(self.last_visible_txn)
         self._set_last_visible_txn()
         self._read_changed_oids(
             txn_start=start_txnid,
             txn_stop=self.last_visible_txn,
         )
+        # make sure we see a consistent snapshot, even though we later
+        # abort this transaction since we do not write anything
+        self.sync.tm.begin()
         self._update_objects()
         self.sync.tm.abort()
 

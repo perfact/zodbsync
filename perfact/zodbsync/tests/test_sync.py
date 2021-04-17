@@ -1,4 +1,5 @@
 import os
+import time
 import os.path
 import base64
 import subprocess
@@ -415,6 +416,23 @@ class TestSync():
         self.run('playback', '/')
         assert self.app.index_html.ZCacheable_getManagerId() == "http_cache"
 
+    def watcher_step_until(self, watcher, cond):
+        """
+        After we do some changes on the secondary connection for the watcher
+        tests, the primary connection might not immediately see the change.
+        This helper function checks for a condition with several retries and
+        small waiting in between, only failing if the condition keeps being
+        false.
+        """
+        success = False
+        for i in range(5):
+            watcher.step()
+            success = cond()
+            if success:
+                break
+            time.sleep(0.5)
+        assert success
+
     def test_watch_change(self, conn):
         """
         Start the watcher, change something using the second connection without
@@ -430,8 +448,8 @@ class TestSync():
         watcher.step()
         assert 'TestRole' not in open(fname).read()
         conn.tm.commit()
-        watcher.step()
-        assert 'TestRole' in open(fname).read()
+        self.watcher_step_until(watcher,
+                                lambda: 'TestRole' in open(fname).read())
 
     def test_watch_move(self, conn):
         """
@@ -451,8 +469,8 @@ class TestSync():
 
         with conn.tm:
             add(id='test1', text='test1')
-        watcher.step()
-        assert os.path.isdir(root + 'test1')
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(root + 'test1'))
 
         # Not sure how to apply this specifically to the secondary connection
         # and why it is only needed for the rename and not the adding, but it
@@ -463,13 +481,13 @@ class TestSync():
 
         with conn.tm:
             rename('test1', 'test2')
-        watcher.step()
-        assert os.path.isdir(root + 'test2')
+        self.watcher_step_until(watcher, lambda: os.path.isdir(root + 'test2'))
         assert not os.path.isdir(root + 'test1')
 
         with conn.tm:
             add(id='test1', text='test2')
-        watcher.step()
+        self.watcher_step_until(watcher, lambda: os.path.isdir(root + 'test1'))
+
         assert os.path.isdir(root + 'test1')
         assert open(root + 'test1' + src).read() == 'test2'
         assert open(root + 'test2' + src).read() == 'test1'
@@ -478,7 +496,10 @@ class TestSync():
             rename('test1', 'tmp')
             rename('test2', 'test1')
             rename('tmp', 'test2')
-        watcher.step()
+        self.watcher_step_until(
+            watcher,
+            lambda: open(root + 'test1' + src).read() == 'test1',
+        )
         assert open(root + 'test1' + src).read() == 'test1'
         assert open(root + 'test2' + src).read() == 'test2'
 
