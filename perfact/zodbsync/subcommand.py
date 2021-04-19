@@ -191,8 +191,9 @@ class SubCommand(Namespace):
 
         return wrapper
 
-    def create_file(self, file_path, content):
-        with open(file_path, 'w') as create_file:
+    def create_file(self, file_path, content, binary=False):
+        flags = 'wb' if binary else 'w'
+        with open(file_path, flags) as create_file:
             create_file.write(content)
 
     def abort(self):
