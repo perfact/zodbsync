@@ -120,7 +120,8 @@ class Upload(SubCommand):
                 file_ending = filename.split('.')[-1]
 
                 # bail out if not a valid extension
-                if valid_extensions and file_ending not in valid_extensions:
+                if (valid_extensions is not None and
+                        file_ending not in valid_extensions):
                     continue
 
                 # read file content from source file

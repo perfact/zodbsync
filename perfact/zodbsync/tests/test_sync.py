@@ -352,10 +352,10 @@ class TestSync():
 
         self.run(
             'upload', '--replace-periods',
-            '--valid-extensions', '  ,, ',
+            '--valid-extensions', '  ,,css,js, ',
             target_jslib_path, target_repo_path
         )
-        self.upload_checks(ignore=False)
+        self.upload_checks(ignore=True)
 
         self.run(
             'upload',
