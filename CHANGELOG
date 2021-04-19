@@ -1,16 +1,18 @@
 4.1.5.dev0
   * Fix timing issues in watcher
 
-  * Add option `--keep-filenames` to subcommand `upload` to not replace
+  * Add option `--replace-periods` to subcommand `upload` to replace
     periods with underscores
 
   * Add more recognized file types to subcommand `upload`
 
+  * Add option `--valid-extensions` to subcommand `upload` to only upload
+    certain types of files
 
 4.1.4
   * Add subcommand `exec` to capture many git operations
 
-  * Rewrite `pick` to use common code with `exec`, making it appliable to
+  * Rewrite `pick` to use common code with `exec`, making it applicable to
     situations where `git` is able to automatically merge, but `pick` refused
     to do so before because the same file was changed.
 
