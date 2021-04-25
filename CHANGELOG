@@ -1,4 +1,5 @@
 4.1.6.dev0
+  * Reduce memory footprint of watcher by spawning initialization subprocess
 
 4.1.5
   * Fix timing issues in watcher

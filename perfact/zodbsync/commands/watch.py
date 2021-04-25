@@ -6,7 +6,10 @@ import signal
 import time
 import threading
 import os
+import sys
 import shutil
+import pickle
+import subprocess
 
 # For reading the Data.FS in order to obtain affected object IDs from
 # transaction IDs
@@ -52,6 +55,15 @@ class Watch(SubCommand):
     # periodically checks for new transactions, looks directly into the Data.FS
     # to get the object IDs affected by those transactions, and updates its
     # tree structure as well as the file system tree structure accordingly.
+
+    @staticmethod
+    def add_args(parser):
+        parser.add_argument(
+            '--init',
+            action='store_true',
+            default=False,
+            help='Internal mode for initialization subprocess',
+        )
 
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every
@@ -326,19 +338,24 @@ class Watch(SubCommand):
         for sig in ('TERM', 'HUP', 'INT'):
             signal.signal(getattr(signal, 'SIG'+sig), signal.SIG_DFL)
 
-    def setup(self):
+    def setup(self, init_tree=True):
         """
         Initially create tree and record anything that happened since the last
         running.
         """
         self.base_dir = self.sync.app_dir
         self.app = self.sync.app
+        # an event that is fired if we are to be terminated
+        self.exit = threading.Event()
 
         try:
             self.datafs_path = self.config["datafs_path"]
         except AttributeError:
             self.logger.exception("watch requires datafs_path in config")
             raise
+
+        if not init_tree:
+            return
 
         # mapping from object id to dict describing tree structure
         self.object_tree = {}
@@ -430,9 +447,6 @@ class Watch(SubCommand):
 
         self.logger.info("Setup complete")
 
-        # an event that is fired if we are to be terminated
-        self.exit = threading.Event()
-
     def step(self):
         """Read new transactions, update the object tree and record all
         changes."""
@@ -456,8 +470,33 @@ class Watch(SubCommand):
         self.release_lock()
 
     def run(self, interval=10):
-        """ Run in a loop. """
-        self.setup()
+        """ Setup and run in a loop. """
+        if self.args.init:
+            """
+            Subprocess for tree initialization that is spawned from the main
+            process. This is done to reduce the memory footprint of the long
+            living main process since initialization allocates a lot of memory
+            that is not really freed.
+            """
+            self.setup()
+            data = {
+                'tree': self.object_tree,
+                'add_oids': self.additional_oids,
+                'txn': self.last_visible_txn,
+            }
+            # write binary to stdout - in Py3, this requires using
+            # sys.stdout.buffer, in Py2 sys.stdout itself is used.
+            pickle.dump(data, file=getattr(sys.stdout, 'buffer', sys.stdout))
+            return
+        else:
+            cmd = [sys.executable, sys.argv[0], '--config', self.args.config,
+                   'watch', '--init']
+            data = pickle.loads(subprocess.check_output(cmd))
+            self.setup(init_tree=False)
+            self.object_tree = data['tree']
+            self.additional_oids = data['add_oids']
+            self.last_visible_txn = self.txnid_on_disk = data['txn']
+
         while not self.exit.is_set():
             self.step()
             # a wait that is interrupted immediately if exit.set() is called
