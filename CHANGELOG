@@ -1,6 +1,8 @@
 4.1.6.dev0
   * Reduce memory footprint of watcher by spawning initialization subprocess
 
+  * Restore showing of diff that causes a failed pick
+
 4.1.5
   * Fix timing issues in watcher
 

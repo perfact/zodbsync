@@ -291,6 +291,18 @@ class TestSync():
         for i in range(3):
             assert 'Test' + str(i) in ids
 
+    def test_pick_fail(self):
+        """
+        Pick a commit twice, making sure it fails and is rolled back.
+        Also pick one applyable and one unknown commit.
+        """
+        commit = self.prepare_pick()
+        for second in [commit, 'unknown']:
+            with pytest.raises(subprocess.CalledProcessError):
+                self.run('pick', commit, second)
+            assert 'TestFolder' not in self.app.objectIds()
+            assert not os.path.isdir(self.repo.path + '/__root__/TestFolder')
+
     def test_upload_relpath(self):
         '''
         Upload JS library from test environment and check for it in Data.fs
