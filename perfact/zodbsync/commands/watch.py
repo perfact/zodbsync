@@ -6,7 +6,10 @@ import signal
 import time
 import threading
 import os
+import sys
 import shutil
+import pickle
+import subprocess
 
 # For reading the Data.FS in order to obtain affected object IDs from
 # transaction IDs
@@ -53,6 +56,43 @@ class Watch(SubCommand):
     # to get the object IDs affected by those transactions, and updates its
     # tree structure as well as the file system tree structure accordingly.
 
+    @staticmethod
+    def add_args(parser):
+        parser.add_argument(
+            '--init',
+            action='store_true',
+            default=False,
+            help='Internal mode for initialization subprocess',
+        )
+
+    def __init__(self, **kw):
+        super(Watch, self).__init__(**kw)
+        self.base_dir = self.sync.app_dir
+        self.app = self.sync.app
+        # an event that is fired if we are to be terminated
+        self.exit = threading.Event()
+
+        try:
+            self.datafs_path = self.config["datafs_path"]
+        except AttributeError:
+            self.logger.exception("watch requires datafs_path in config")
+            raise
+
+        # mapping from object id to dict describing tree structure
+        self.object_tree = {}
+
+        # Mapping of additional object ids to OIDs of recorded objects. This is
+        # currently only used for `User Folder`s which contain a
+        # `PersistentMapping` and `User`s, which have their own OID and are not
+        # children in the sense that they can be obtained using objectIds(). If
+        # one of the additional OIDs is found to have been changed, the
+        # original OID is assumed to have been changed instead.
+        # If it turns out that it is possible to move a `User` from one `User
+        # Folder` to another, they should instead be represented as separate
+        # objects, but at least the management interface does not provide a
+        # method for this.
+        self.additional_oids = {}
+
     def _set_last_visible_txn(self):
         ''' Set self.last_visible_txn to a transaction ID such that every
         effect up to this ID is visible in the current transaction and every
@@ -73,7 +113,9 @@ class Watch(SubCommand):
         if not hasattr(obj, '_p_oid'):
             # objects that have no oid are ignored
             return None
-        oid = obj._p_oid
+        # In some Python/Zope versions, _p_oid is a zodbpickle.binary, which is
+        # not pickleable. We always convert it into bytes.
+        oid = bytes(obj._p_oid)
 
         children = {}  # map oid -> id
 
@@ -94,9 +136,9 @@ class Watch(SubCommand):
         # If it turns out there are other objects needing such a hack, this
         # should probably be moved to object_types
         if obj.meta_type == 'User Folder':
-            self.additional_oids[obj.data._p_oid] = oid
+            self.additional_oids[bytes(obj.data._p_oid)] = oid
             for user in obj.getUsers():
-                self.additional_oids[user._p_oid] = oid
+                self.additional_oids[bytes(user._p_oid)] = oid
 
         for child_id, child_obj in sorted(obj.objectItems()):
             child_oid = self._init_tree(
@@ -144,7 +186,8 @@ class Watch(SubCommand):
                 # * plen: the size of the pickle data, which comes after the
                 #   header
                 dlen = dhead.recordlen()
-                oid = self.additional_oids.get(dhead.oid, dhead.oid)
+                oid = self.additional_oids.get(bytes(dhead.oid),
+                                               bytes(dhead.oid))
                 self.changed_oids.add(oid)
                 pos = pos + dlen
 
@@ -244,7 +287,7 @@ class Watch(SubCommand):
         for child_id, child_obj in obj.objectItems():
             if not hasattr(child_obj, '_p_oid'):
                 continue
-            newchildren[child_obj._p_oid] = child_id
+            newchildren[bytes(child_obj._p_oid)] = child_id
 
         # go through old children and check if they are still there
         for child_oid, child_id in list(node['children'].items()):
@@ -331,29 +374,6 @@ class Watch(SubCommand):
         Initially create tree and record anything that happened since the last
         running.
         """
-        self.base_dir = self.sync.app_dir
-        self.app = self.sync.app
-
-        try:
-            self.datafs_path = self.config["datafs_path"]
-        except AttributeError:
-            self.logger.exception("watch requires datafs_path in config")
-            raise
-
-        # mapping from object id to dict describing tree structure
-        self.object_tree = {}
-
-        # Mapping of additional object ids to OIDs of recorded objects. This is
-        # currently only used for `User Folder`s which contain a
-        # `PersistentMapping` and `User`s, which have their own OID and are not
-        # children in the sense that they can be obtained using objectIds(). If
-        # one of the additional OIDs is found to have been changed, the
-        # original OID is assumed to have been changed instead.
-        # If it turns out that it is possible to move a `User` from one `User
-        # Folder` to another, they should instead be represented as separate
-        # objects, but at least the management interface does not provide a
-        # method for this.
-        self.additional_oids = {}
 
         # During initialization, we report progress every 2 seconds.
         self.last_report = None
@@ -430,8 +450,33 @@ class Watch(SubCommand):
 
         self.logger.info("Setup complete")
 
-        # an event that is fired if we are to be terminated
-        self.exit = threading.Event()
+    def spawned_setup(self):
+        """
+        Run setup in a separate process to reduce memory footprint of main
+        process. During setup, the complete object tree is read into memory,
+        which is not really released. Afterwards, the main process runs for a
+        long time and uses much less memory. Therefore, we use a separate
+        process.
+        """
+        cmd = [sys.executable, sys.argv[0], '--config', self.args.config,
+               'watch', '--init']
+        data = pickle.loads(subprocess.check_output(cmd))
+        self.object_tree = data['tree']
+        self.additional_oids = data['add_oids']
+        self.last_visible_txn = self.txnid_on_disk = data['txn']
+
+    def dump_setup_data(self, stream=sys.stdout):
+        """
+        Print pickled setup data for usage in main process.
+        """
+        data = {
+            'tree': self.object_tree,
+            'add_oids': self.additional_oids,
+            'txn': self.last_visible_txn,
+        }
+        # write binary to stdout - in Py3, this requires using
+        # sys.stdout.buffer, in Py2 sys.stdout itself is used.
+        pickle.dump(data, file=getattr(stream, 'buffer', stream))
 
     def step(self):
         """Read new transactions, update the object tree and record all
@@ -456,8 +501,13 @@ class Watch(SubCommand):
         self.release_lock()
 
     def run(self, interval=10):
-        """ Run in a loop. """
-        self.setup()
+        """ Setup and run in a loop. """
+        if self.args.init:
+            self.setup()
+            self.dump_setup_data()
+            return
+        else:
+            self.spawned_setup()
         while not self.exit.is_set():
             self.step()
             # a wait that is interrupted immediately if exit.set() is called

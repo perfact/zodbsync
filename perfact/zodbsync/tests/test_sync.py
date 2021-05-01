@@ -2,7 +2,9 @@ import os
 import time
 import os.path
 import base64
+import six
 import subprocess
+import pickle
 import pytest
 
 import ZEO
@@ -563,6 +565,22 @@ class TestSync():
         )
         assert open(root + 'test1' + src).read() == 'test1'
         assert open(root + 'test2' + src).read() == 'test2'
+
+    def test_watch_dump_setup(self):
+        """
+        Check output that a spawned initialization subprocess would generate.
+        """
+        watcher = self.mkrunner('watch')
+        watcher.setup()
+        stream = six.BytesIO()
+        watcher.dump_setup_data(stream=stream)
+        data = pickle.loads(stream.getvalue())
+        assert set(data.keys()) == {'tree', 'txn', 'add_oids'}
+        tofind = ['/', '/acl_users/', '/index_html/']
+        for obj in data['tree'].values():
+            if obj['path'] in tofind:
+                tofind.remove(obj['path'])
+        assert tofind == []
 
     def test_reset(self):
         """
