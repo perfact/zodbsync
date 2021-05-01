@@ -151,6 +151,9 @@ class SubCommand(Namespace):
 
             try:
                 func(self, *args, **kwargs)
+
+                # Fail and roll back for any of the markers of an interrupted
+                # git process (merge/rebase/cherry-pick/etc.)
                 for fname in self.git_state_indicators:
                     path = os.path.join(self.sync.base_dir, '.git', fname)
                     assert not os.path.exists(path), "Git state not clean"
@@ -185,7 +188,29 @@ class SubCommand(Namespace):
                     self.gitcmd_run('stash', 'pop')
 
             except Exception:
-                self.logger.exception('Error during operation. Resetting.')
+                self.logger.error('Error during operation. Resetting.')
+
+                # Special handling in case of interrupted cherry-pick: show
+                # differences in affected files
+                cpfname = os.path.join(self.sync.base_dir,
+                                       '.git/CHERRY_PICK_HEAD')
+                if os.path.exists(cpfname):
+                    with open(cpfname) as f:
+                        failed_commit = f.read().strip()
+                    output = self.gitcmd_output(
+                        'diff-tree', '--no-commit-id', '--name-only',
+                        '-r', failed_commit,
+                    )
+                    affected_files = [
+                        line
+                        for line in output.strip().split('\n')
+                        if line
+                    ]
+                    self.logger.error("The cherry-pick failed due to the"
+                                      " following difference:")
+                    self.gitcmd_run('diff', failed_commit + '~', 'HEAD', '--',
+                                    *affected_files)
+
                 self.abort()
                 raise
 
