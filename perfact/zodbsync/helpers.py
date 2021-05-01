@@ -14,7 +14,7 @@ else:  # pragma: no cover
     import importlib
 
 
-class Namespace():
+class Namespace(object):
     """
     Convert a dict to a namespace, allowing access via a.b instead of a['b']
     """
