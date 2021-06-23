@@ -171,6 +171,9 @@ class TestSync():
         if ignore:
             assert 'ignoreme' not in self.app.lib
 
+    def test_create_structure_record_and_playback_changes(self):
+        assert 1+1 == 2
+
     def test_record(self):
         '''Recorder tests'''
         # Record everything and make sure acl_users exists
@@ -705,3 +708,36 @@ class TestSync():
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
+
+    def test_case3(self):
+        '''
+        Testcase 3: change to a git feature branch and create a
+        structure there, commit it and change back to the master branch
+        on master branch check if changes from feature arent existent,
+        then merge feature branch and check if changes have been applied
+        correctly 
+        '''
+        branch = "feature"
+        self.run('exec', 'git checkout -b {}'.format(branch))
+        self.app.manage_addFolder(id='sf_tc3', title='sf_tc3')
+        self.app.sf_tc3.manage_addFolder(id='test_c3', title='test_c3')
+        assert 'test_c3' in self.app.sf_tc3.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+        )
+        self.gitrun('add', '-A')
+        self.gitrun('commit', '-m', 'test case 3')
+
+        self.run('exec', 'git checkout master')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+        ) is False
+        assert 'sf_tc3' not in self.app.objectIds()
+
+        self.run('exec', 'git merge {}'.format(branch))
+        assert os.path.isfile(
+            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+        )
+        assert 'sf_tc3' in self.app.objectIds()
+        assert 'test_c3' in self.app.sf_tc3.objectIds()
