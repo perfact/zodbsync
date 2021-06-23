@@ -171,9 +171,6 @@ class TestSync():
         if ignore:
             assert 'ignoreme' not in self.app.lib
 
-    def test_create_structure_record_and_playback_changes(self):
-        assert 1+1 == 2
-
     def test_record(self):
         '''Recorder tests'''
         # Record everything and make sure acl_users exists
@@ -708,7 +705,7 @@ class TestSync():
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
-        
+
     def test_case1(self):
         """
         Testcase 1: create structure in zodb and record,
@@ -772,14 +769,13 @@ class TestSync():
             meta = f.read()
         assert "('title', 'tc2_change')" in meta
 
-        
     def test_case3(self):
         '''
         Testcase 3: change to a git feature branch and create a
         structure there, commit it and change back to the master branch
         on master branch check if changes from feature arent existent,
         then merge feature branch and check if changes have been applied
-        correctly 
+        correctly
         '''
         branch = "feature"
         self.run('exec', 'git checkout -b {}'.format(branch))
