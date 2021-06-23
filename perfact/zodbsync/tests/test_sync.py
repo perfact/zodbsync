@@ -705,3 +705,34 @@ class TestSync():
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
+
+    def test_case1(self):
+        """
+        Testcase 1: create structure in zodb and record,
+        make local changes in structure, add a local folder, then playback
+        and check if changes played back correctly
+        """
+        self.app.manage_addFolder(id='superFolder', title='superFolder')
+        self.app.superFolder.manage_addFolder(id='test_c1', title='test_c1')
+        assert 'test_c1' in self.app.superFolder.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        )
+        # changes
+        path = self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        content = "[('title', 'ordner'),('type', 'Folder'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        path = self.repo.path + '/__root__/superFolder/test_c1/tc1'
+        os.mkdir(path)
+        with open(path + '/__meta__', 'w') as f:
+            f.write('''[
+                ('props', []),
+                ('id', 'superTest'),
+                ('title', ''),
+                ('type', 'Folder'),
+            ]''')
+        self.run('playback', '/')
+        assert 'ordner' == self.app.superFolder.test_c1.title
+        assert 'tc1' in self.app.superFolder.test_c1.objectIds()
