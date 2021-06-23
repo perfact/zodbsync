@@ -705,3 +705,35 @@ class TestSync():
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
+
+    def testcase2(self, conn):
+        """
+        Testcase 2: create structure while 'watch' command is running,
+        add local changes, then play those changes back and check,
+        if those changes played back correctly
+        """
+        watcher = self.mkrunner('watch')
+        watcher.setup()
+        app = conn.app
+        with conn.tm:
+            app.manage_addFolder(id='tc2_1', title='tc2_1')
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(
+                                    self.repo.path + '/__root__/tc2_1'))
+        with conn.tm:
+            app.tc2_1.manage_addFolder(id='tc2_2', title='tc2_2')
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(
+                                    self.repo.path + '/__root__/tc2_1/tc2_2'))
+        # changes
+        path = self.repo.path + '/__root__/tc2_1/tc2_2/__meta__'
+        content = "[('title', 'tc2_change'),('type', 'Folder'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        self.run('playback', '/')
+        # check zodb
+        assert 'tc2_change' == self.app.tc2_1.tc2_2.title
+        # check local
+        with open(path) as f:
+            meta = f.read()
+        assert "('title', 'tc2_change')" in meta
