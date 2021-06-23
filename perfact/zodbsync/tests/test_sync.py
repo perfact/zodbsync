@@ -708,7 +708,71 @@ class TestSync():
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
+        
+    def test_case1(self):
+        """
+        Testcase 1: create structure in zodb and record,
+        make local changes in structure, add a local folder, then playback
+        and check if changes played back correctly
+        """
+        self.app.manage_addFolder(id='superFolder', title='superFolder')
+        self.app.superFolder.manage_addFolder(id='test_c1', title='test_c1')
+        assert 'test_c1' in self.app.superFolder.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        )
+        # changes
+        path = self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        content = "[('title', 'ordner'),('type', 'Folder'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        path = self.repo.path + '/__root__/superFolder/test_c1/tc1'
+        os.mkdir(path)
+        with open(path + '/__meta__', 'w') as f:
+            f.write('''[
+                ('props', []),
+                ('id', 'superTest'),
+                ('title', ''),
+                ('type', 'Folder'),
+            ]''')
+        self.run('playback', '/')
+        assert 'ordner' == self.app.superFolder.test_c1.title
+        assert 'tc1' in self.app.superFolder.test_c1.objectIds()
 
+    def testcase2(self, conn):
+        """
+        Testcase 2: create structure while 'watch' command is running,
+        add local changes, then play those changes back and check,
+        if those changes played back correctly
+        """
+        watcher = self.mkrunner('watch')
+        watcher.setup()
+        app = conn.app
+        with conn.tm:
+            app.manage_addFolder(id='tc2_1', title='tc2_1')
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(
+                                    self.repo.path + '/__root__/tc2_1'))
+        with conn.tm:
+            app.tc2_1.manage_addFolder(id='tc2_2', title='tc2_2')
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(
+                                    self.repo.path + '/__root__/tc2_1/tc2_2'))
+        # changes
+        path = self.repo.path + '/__root__/tc2_1/tc2_2/__meta__'
+        content = "[('title', 'tc2_change'),('type', 'Folder'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        self.run('playback', '/')
+        # check zodb
+        assert 'tc2_change' == self.app.tc2_1.tc2_2.title
+        # check local
+        with open(path) as f:
+            meta = f.read()
+        assert "('title', 'tc2_change')" in meta
+
+        
     def test_case3(self):
         '''
         Testcase 3: change to a git feature branch and create a
