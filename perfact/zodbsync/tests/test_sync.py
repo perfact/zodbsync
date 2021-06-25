@@ -801,7 +801,7 @@ class TestSync():
         )
         assert 'sf_tc3' in self.app.objectIds()
 
-            def test_case4(self):
+    def test_case4(self):
         """
         Testcase 4: create a folder in zodb and record it,
         write wrong meta data to the local file system, then playback
