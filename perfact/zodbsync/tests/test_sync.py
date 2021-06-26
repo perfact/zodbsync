@@ -800,4 +800,44 @@ class TestSync():
             self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
         )
         assert 'sf_tc3' in self.app.objectIds()
-        assert 'test_c3' in self.app.sf_tc3.objectIds()
+
+    def test_case4(self):
+        """
+        Testcase 4: create a folder in zodb and record it,
+        write wrong meta data to the local file system, then playback
+        and check if an error occured
+        """
+        self.app.manage_addFolder(id='test_c4', title='test_c4')
+        self.run('record', '/')
+        # break metadata
+        path = self.repo.path + '/__root__/test_c4/__meta__'
+        content = "[('gandalf', 'ThisIsAWrongKey'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        # test playback
+        error = False
+        try:
+            self.run('playback', '/')
+        except KeyError:
+            error = True
+        assert error
+
+    def test_case5(self):
+        """
+        Testcase 5: call exec commands with wrong commits and
+        check if exceptions are thrown correctly
+        """
+        error = 0
+        try:
+            self.run('exec', 'revert ThisIsDefinitelyNoCommit')
+        except subprocess.CalledProcessError:
+            error += 1
+        try:
+            self.run('exec', 'reset ThisIsDefinitelyNoCommit')
+        except subprocess.CalledProcessError:
+            error += 1
+        try:
+            self.run('exec', 'cherry-pick ThisIsDefinitelyNoCommit')
+        except subprocess.CalledProcessError:
+            error += 1
+        assert error == 3
