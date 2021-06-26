@@ -841,3 +841,62 @@ class TestSync():
         except subprocess.CalledProcessError:
             error += 1
         assert error == 3
+
+    def test_case6(self):
+        """
+        Testcase 6: create a feature branch on which
+        two changes will be commited to one commit each
+        change back to the master branch and use pick
+        to get the changes of that last commit
+        make sure only the last changes are present
+        """
+        branch = "feature"
+        self.gitrun('checkout', '-b', branch)
+
+        # make first changes
+        folder_1 = "sf_1_tc6"
+        self.app.manage_addFolder(id=folder_1, title=folder_1)
+        assert folder_1 in self.app.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_1+'/__meta__'
+        )
+        self.gitrun('add', '-A')
+        self.gitrun('commit', '-m', 'pick_commit_1')
+
+        # make second changes
+        folder_2 = "sf_2_tc6"
+        self.app.manage_addFolder(id=folder_2, title=folder_2)
+        assert folder_2 in self.app.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_2+'/__meta__'
+        )
+        self.gitrun('add', '-A')
+        self.gitrun('commit', '-m', 'pick_commit_2')
+
+        commit = self.get_head_id()
+
+        self.run('exec', 'git checkout master')
+        # check both changes aren't existent on master branch
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_1+'/__meta__'
+        ) is False
+        assert folder_1 not in self.app.objectIds()
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_2+'/__meta__'
+        ) is False
+        assert folder_2 not in self.app.objectIds()
+
+        # pick 2nd commit and check that
+        # first arent' but second changes are applied
+        self.run('pick', commit)
+        # self.run('exec', 'git cherry-pick '+commit)
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_1+'/__meta__'
+        ) is False
+        assert folder_1 not in self.app.objectIds()
+        assert os.path.isfile(
+            self.repo.path + '/__root__/'+folder_2+'/__meta__'
+        )
+        assert folder_2 in self.app.objectIds()
