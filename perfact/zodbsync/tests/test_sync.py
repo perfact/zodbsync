@@ -900,3 +900,60 @@ class TestSync():
             self.repo.path + '/__root__/'+folder_2+'/__meta__'
         )
         assert folder_2 in self.app.objectIds()
+
+    def test_case7(self):
+        """
+        Testcase 7: create structure in zodb and record,
+        make local changes in structure, add a local folder,
+        commit these changes then playback
+        and check if changes played back correctly
+        afterwards reset the last comment and check that changes
+        are gone
+        """
+        self.app.manage_addFolder(id='superFolder', title='superFolder')
+        self.app.superFolder.manage_addFolder(id='test_c1', title='test_c1')
+        assert 'test_c1' in self.app.superFolder.objectIds()
+        self.run('record', '/')
+        assert os.path.isfile(
+            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        )
+
+        self.gitrun('add', '-A')
+        self.gitrun('commit', '-m', 'reset_commit_1')
+
+        # changes
+        path = self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        content = "[('title', 'ordner'),('type', 'Folder'),]"
+        with open(path, 'w') as f:
+            f.write(content)
+        path = self.repo.path + '/__root__/superFolder/test_c1/tc1'
+        os.mkdir(path)
+        with open(path + '/__meta__', 'w') as f:
+            f.write('''[
+                ('props', []),
+                ('id', 'superTest'),
+                ('title', ''),
+                ('type', 'Folder'),
+            ]''')
+        self.run('playback', '/')
+
+        self.gitrun('add', '-A')
+        self.gitrun('commit', '-m', 'reset_commit_2')
+
+        assert 'ordner' == self.app.superFolder.test_c1.title
+        assert 'tc1' in self.app.superFolder.test_c1.objectIds()
+
+        self.run('reset', 'HEAD~1')
+        assert 'superFolder' in self.app.objectIds()
+        assert 'test_c1' in self.app.superFolder.objectIds()
+        assert os.path.isfile(
+            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+        )
+        assert 'ordner' != self.app.superFolder.test_c1.title
+        assert 'tc1' not in self.app.superFolder.test_c1.objectIds()
+
+        self.run('reset', 'HEAD~1')
+        assert 'superFolder' not in self.app.objectIds()
+        assert os.path.isfile(
+            self.repo.path + '/__root__/superFolder/__meta__'
+        ) is False
