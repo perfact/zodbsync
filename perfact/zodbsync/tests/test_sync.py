@@ -706,9 +706,9 @@ class TestSync():
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
 
-    def test_case1(self):
+    def test_tf1_1(self):
         """
-        Testcase 1: create structure in zodb and record,
+        TF1.1: create structure in zodb and record,
         make local changes in structure, add a local folder, then playback
         and check if changes played back correctly
         """
@@ -737,9 +737,9 @@ class TestSync():
         assert 'ordner' == self.app.superFolder.test_c1.title
         assert 'tc1' in self.app.superFolder.test_c1.objectIds()
 
-    def testcase2(self, conn):
+    def test_tf2_1(self, conn):
         """
-        Testcase 2: create structure while 'watch' command is running,
+        TF2.1: create structure while 'watch' command is running,
         add local changes, then play those changes back and check,
         if those changes played back correctly
         """
@@ -769,9 +769,9 @@ class TestSync():
             meta = f.read()
         assert "('title', 'tc2_change')" in meta
 
-    def test_case3(self):
+    def test_tf3_1(self):
         '''
-        Testcase 3: change to a git feature branch and create a
+        TF3.1: change to a git feature branch and create a
         structure there, commit it and change back to the master branch
         on master branch check if changes from feature arent existent,
         then merge feature branch and check if changes have been applied
@@ -801,7 +801,7 @@ class TestSync():
         )
         assert 'sf_tc3' in self.app.objectIds()
 
-    def test_case4(self):
+    def test_tf1_2(self):
         """
         Testcase 4: create a folder in zodb and record it,
         write wrong meta data to the local file system, then playback
@@ -822,7 +822,7 @@ class TestSync():
             error = True
         assert error
 
-    def test_case5(self):
+    def test_tf3_2(self):
         """
         Testcase 5: call exec commands with wrong commits and
         check if exceptions are thrown correctly
@@ -842,7 +842,7 @@ class TestSync():
             error += 1
         assert error == 3
 
-    def test_case6(self):
+    def test_tf4_1(self):
         """
         Testcase 6: create a feature branch on which
         two changes will be commited to one commit each
@@ -901,7 +901,7 @@ class TestSync():
         )
         assert folder_2 in self.app.objectIds()
 
-    def test_case7(self):
+    def test_tf5_1(self):
         """
         Testcase 7: create structure in zodb and record,
         make local changes in structure, add a local folder,
