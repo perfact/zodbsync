@@ -712,30 +712,43 @@ class TestSync():
         make local changes in structure, add a local folder, then playback
         and check if changes played back correctly
         """
-        self.app.manage_addFolder(id='superFolder', title='superFolder')
-        self.app.superFolder.manage_addFolder(id='test_c1', title='test_c1')
-        assert 'test_c1' in self.app.superFolder.objectIds()
+
+        # create a structure of folder and sub folder
+        folder_1 = "folder_1"
+        s_folder_1 = "s_folder_1"
+        self.app.manage_addFolder(id=folder_1)
+        self.app.folder_1.manage_addFolder(id=s_folder_1, title=s_folder_1)
+        assert 's_folder_1' in self.app.folder_1.objectIds()
+
+        # record structure and check that the objects are recorded
         self.run('record', '/')
         assert os.path.isfile(
-            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         )
-        # changes
-        path = self.repo.path + '/__root__/superFolder/test_c1/__meta__'
-        content = "[('title', 'ordner'),('type', 'Folder'),]"
+        # set new title
+        path = self.repo.path + \
+            '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
+        new_title = 'new_title'
+        content = "[('title', '"+new_title+"'),('type', 'Folder'),]"
         with open(path, 'w') as f:
             f.write(content)
-        path = self.repo.path + '/__root__/superFolder/test_c1/tc1'
+
+        # create metadata for new folder
+        new_folder = "new_folder"
+        path = self.repo.path + \
+            '/__root__/'+folder_1+'/'+s_folder_1+'/'+new_folder
         os.mkdir(path)
         with open(path + '/__meta__', 'w') as f:
             f.write('''[
-                ('props', []),
-                ('id', 'superTest'),
+                ('id', '{}'),
                 ('title', ''),
                 ('type', 'Folder'),
-            ]''')
+            ]'''.format(new_folder))
+
+        # playback changes and check if they're existent
         self.run('playback', '/')
-        assert 'ordner' == self.app.superFolder.test_c1.title
-        assert 'tc1' in self.app.superFolder.test_c1.objectIds()
+        assert new_title == self.app.folder_1.s_folder_1.title
+        assert new_folder in self.app.folder_1.s_folder_1.objectIds()
 
     def test_watch_structure_changes_and_playback_local_changes(self, conn):
         """
@@ -743,31 +756,45 @@ class TestSync():
         add local changes, then play those changes back and check,
         if those changes played back correctly
         """
+
+        # start watch daemon
         watcher = self.mkrunner('watch')
         watcher.setup()
         app = conn.app
+        folder_1 = "folder_1"
+        s_folder_1 = "s_folder_1"
+
+        # create folder and wait until watch notices change
         with conn.tm:
-            app.manage_addFolder(id='tc2_1', title='tc2_1')
+            app.manage_addFolder(id=folder_1)
         self.watcher_step_until(watcher,
                                 lambda: os.path.isdir(
-                                    self.repo.path + '/__root__/tc2_1'))
+                                    self.repo.path + '/__root__/'+folder_1))
+
+        # create subfolder and wait until watch notices change
         with conn.tm:
-            app.tc2_1.manage_addFolder(id='tc2_2', title='tc2_2')
+            app.folder_1.manage_addFolder(id=s_folder_1, title=s_folder_1)
+        path = self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1
         self.watcher_step_until(watcher,
-                                lambda: os.path.isdir(
-                                    self.repo.path + '/__root__/tc2_1/tc2_2'))
-        # changes
-        path = self.repo.path + '/__root__/tc2_1/tc2_2/__meta__'
-        content = "[('title', 'tc2_change'),('type', 'Folder'),]"
+                                lambda: os.path.isdir(path))
+
+        # change title
+        new_title = "new_title"
+        path = self.repo.path + \
+            '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
+        content = "[('title', '"+new_title+"'),('type', 'Folder'),]"
         with open(path, 'w') as f:
             f.write(content)
+
+        # playback changes and check if those are existent in zodb
         self.run('playback', '/')
-        # check zodb
-        assert 'tc2_change' == self.app.tc2_1.tc2_2.title
-        # check local
+        assert new_title == self.app.folder_1.s_folder_1.title
+
+        # wait for watch to notices played back changes
         with open(path) as f:
             meta = f.read()
-        assert "('title', 'tc2_change')" in meta
+        self.watcher_step_until(watcher,
+                                lambda: "('title', '"+new_title+"')" in meta)
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
@@ -777,29 +804,35 @@ class TestSync():
         then merge feature branch and check if changes have been applied
         correctly
         '''
+
+        # change to feature branch and commit created folder/ subfolder
         branch = "feature"
+        folder_1 = "folder_1"
+        s_folder_1 = "s_folder_1"
         self.run('exec', 'git checkout -b {}'.format(branch))
-        self.app.manage_addFolder(id='sf_tc3', title='sf_tc3')
-        self.app.sf_tc3.manage_addFolder(id='test_c3', title='test_c3')
-        assert 'test_c3' in self.app.sf_tc3.objectIds()
+        self.app.manage_addFolder(id=folder_1)
+        self.app.folder_1.manage_addFolder(id=s_folder_1)
+        assert s_folder_1 in self.app.folder_1.objectIds()
         self.run('record', '/')
         assert os.path.isfile(
-            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         )
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'test case 3')
 
+        # checkout to master and check that changes are not yet existent
         self.run('exec', 'git checkout master')
         assert os.path.isfile(
-            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         ) is False
-        assert 'sf_tc3' not in self.app.objectIds()
+        assert folder_1 not in self.app.objectIds()
 
+        # merge feature branch and check that changes are applied
         self.run('exec', 'git merge {}'.format(branch))
         assert os.path.isfile(
-            self.repo.path + '/__root__/sf_tc3/test_c3/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         )
-        assert 'sf_tc3' in self.app.objectIds()
+        assert folder_1 in self.app.objectIds()
 
     def test_failing_playback_corrupt_metadata(self):
         """
@@ -807,14 +840,19 @@ class TestSync():
         write wrong meta data to the local file system, then playback
         and check if an error occured
         """
-        self.app.manage_addFolder(id='test_c4', title='test_c4')
+
+        # create new folder and record it
+        folder_1 = "folder_1"
+        self.app.manage_addFolder(id=folder_1)
         self.run('record', '/')
+
         # break metadata
-        path = self.repo.path + '/__root__/test_c4/__meta__'
+        path = self.repo.path + '/__root__/'+folder_1+'/__meta__'
         content = "[('gandalf', 'ThisIsAWrongKey'),]"
         with open(path, 'w') as f:
             f.write(content)
-        # test playback
+
+        # test that playback fails
         error = False
         try:
             self.run('playback', '/')
@@ -853,9 +891,9 @@ class TestSync():
         branch = "feature"
         self.gitrun('checkout', '-b', branch)
 
-        # make first changes
-        folder_1 = "sf_1_tc6"
-        self.app.manage_addFolder(id=folder_1, title=folder_1)
+        # make first changes and commit those
+        folder_1 = "folder_1"
+        self.app.manage_addFolder(id=folder_1)
         assert folder_1 in self.app.objectIds()
         self.run('record', '/')
         assert os.path.isfile(
@@ -864,9 +902,9 @@ class TestSync():
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'pick_commit_1')
 
-        # make second changes
+        # make second changes and commit those
         folder_2 = "sf_2_tc6"
-        self.app.manage_addFolder(id=folder_2, title=folder_2)
+        self.app.manage_addFolder(id=folder_2)
         assert folder_2 in self.app.objectIds()
         self.run('record', '/')
         assert os.path.isfile(
@@ -877,8 +915,8 @@ class TestSync():
 
         commit = self.get_head_id()
 
+        # checkout master and check both changes aren't existent
         self.run('exec', 'git checkout master')
-        # check both changes aren't existent on master branch
         assert os.path.isfile(
             self.repo.path + '/__root__/'+folder_1+'/__meta__'
         ) is False
@@ -891,7 +929,6 @@ class TestSync():
         # pick 2nd commit and check that
         # first arent' but second changes are applied
         self.run('pick', commit)
-        # self.run('exec', 'git cherry-pick '+commit)
         assert os.path.isfile(
             self.repo.path + '/__root__/'+folder_1+'/__meta__'
         ) is False
@@ -910,50 +947,63 @@ class TestSync():
         afterwards reset the last comment and check that changes
         are gone
         """
-        self.app.manage_addFolder(id='superFolder', title='superFolder')
-        self.app.superFolder.manage_addFolder(id='test_c1', title='test_c1')
-        assert 'test_c1' in self.app.superFolder.objectIds()
+
+        folder_1 = "folder_1"
+        s_folder_1 = "s_folder_1"
+
+        # create first changes and commit those
+        self.app.manage_addFolder(id=folder_1)
+        self.app.folder_1.manage_addFolder(id=s_folder_1, title=s_folder_1)
+        assert s_folder_1 in self.app.folder_1.objectIds()
         self.run('record', '/')
         assert os.path.isfile(
-            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         )
 
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'reset_commit_1')
 
-        # changes
-        path = self.repo.path + '/__root__/superFolder/test_c1/__meta__'
-        content = "[('title', 'ordner'),('type', 'Folder'),]"
+        # create second changes and commit those
+        path = self.repo.path + \
+            '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
+        new_title = "new_title"
+        content = "[('title', '"+new_title+"'),('type', 'Folder'),]"
         with open(path, 'w') as f:
             f.write(content)
-        path = self.repo.path + '/__root__/superFolder/test_c1/tc1'
+        new_folder = "new_folder"
+        path = self.repo.path + \
+            '/__root__/'+folder_1+'/'+s_folder_1+'/'+new_folder
         os.mkdir(path)
         with open(path + '/__meta__', 'w') as f:
             f.write('''[
-                ('props', []),
-                ('id', 'superTest'),
+                ('id', '{}'),
                 ('title', ''),
                 ('type', 'Folder'),
-            ]''')
+            ]'''.format(new_folder))
         self.run('playback', '/')
 
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'reset_commit_2')
 
-        assert 'ordner' == self.app.superFolder.test_c1.title
-        assert 'tc1' in self.app.superFolder.test_c1.objectIds()
+        # check that changes are existent in zodb
+        assert new_title == self.app.folder_1.s_folder_1.title
+        assert new_folder in self.app.folder_1.s_folder_1.objectIds()
 
+        # reset HEAD by one commit and check that second changes are
+        # not existent anymore but first changes still are
         self.run('reset', 'HEAD~1')
-        assert 'superFolder' in self.app.objectIds()
-        assert 'test_c1' in self.app.superFolder.objectIds()
+        assert folder_1 in self.app.objectIds()
+        assert s_folder_1 in self.app.folder_1.objectIds()
         assert os.path.isfile(
-            self.repo.path + '/__root__/superFolder/test_c1/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
         )
-        assert 'ordner' != self.app.superFolder.test_c1.title
-        assert 'tc1' not in self.app.superFolder.test_c1.objectIds()
+        assert new_title != self.app.folder_1.s_folder_1.title
+        assert new_folder not in self.app.folder_1.s_folder_1.objectIds()
 
+        # reset HEAD by one commit and check that first changes are
+        # not existent anymore
         self.run('reset', 'HEAD~1')
-        assert 'superFolder' not in self.app.objectIds()
+        assert folder_1 not in self.app.objectIds()
         assert os.path.isfile(
-            self.repo.path + '/__root__/superFolder/__meta__'
+            self.repo.path + '/__root__/'+folder_1+'/__meta__'
         ) is False
