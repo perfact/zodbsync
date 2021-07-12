@@ -708,7 +708,7 @@ class TestSync():
 
     def test_record_structure_and_playback_local_changes(self):
         """
-        TF 1.1: create structure in zodb and record,
+        create structure in zodb and record,
         make local changes in structure, add a local folder, then playback
         and check if changes played back correctly
         """
@@ -752,7 +752,7 @@ class TestSync():
 
     def test_watch_structure_changes_and_playback_local_changes(self, conn):
         """
-        TF 2.1: create structure while 'watch' command is running,
+        create structure while 'watch' command is running,
         add local changes, then play those changes back and check,
         if those changes played back correctly
         """
@@ -798,7 +798,7 @@ class TestSync():
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
-        TF 3.1: change to a git feature branch and create a
+        change to a git feature branch and create a
         structure there, commit it and change back to the master branch
         on master branch check if changes from feature arent existent,
         then merge feature branch and check if changes have been applied
@@ -836,7 +836,7 @@ class TestSync():
 
     def test_failing_playback_corrupt_metadata(self):
         """
-        TF 1.2: create a folder in zodb and record it,
+        create a folder in zodb and record it,
         write wrong meta data to the local file system, then playback
         and check if an error occured
         """
@@ -862,7 +862,7 @@ class TestSync():
 
     def test_failing_exec_commands(self):
         """
-        TF 3.2: call exec commands with wrong commits and
+        call exec commands with wrong commits and
         check if exceptions are thrown correctly
         """
         error = 0
@@ -882,7 +882,7 @@ class TestSync():
 
     def test_create_multiple_commits_on_branch_and_pick_single_on_master(self):
         """
-        TF 4.1: create a feature branch on which
+        create a feature branch on which
         two changes will be commited to one commit each
         change back to the master branch and use pick
         to get the changes of that last commit
@@ -940,7 +940,7 @@ class TestSync():
 
     def test_create_structure_and_reset_commits(self):
         """
-        TF 5.1: create structure in zodb and record,
+        create structure in zodb and record,
         make local changes in structure, add a local folder,
         commit these changes then playback
         and check if changes played back correctly
