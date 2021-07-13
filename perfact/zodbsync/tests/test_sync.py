@@ -706,6 +706,16 @@ class TestSync():
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
 
+    def meta_file_path(self, *folders):
+        """
+        takes n folders in order as arguments and returns path to meta file
+        """
+        path = self.repo.path + '/__root__/'
+        for folder in folders:
+            path = path + folder + '/'
+        path = path + '__meta__'
+        return path
+
     def test_record_structure_and_playback_local_changes(self):
         """
         create structure in zodb and record,
@@ -722,12 +732,9 @@ class TestSync():
 
         # record structure and check that the objects are recorded
         self.run('record', '/')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         # set new title
-        path = self.repo.path + \
-            '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
+        path = self.meta_file_path(folder_1, s_folder_1)
         new_title = 'new_title'
         content = "[('title', '"+new_title+"'),('type', 'Folder'),]"
         with open(path, 'w') as f:
@@ -780,8 +787,7 @@ class TestSync():
 
         # change title
         new_title = "new_title"
-        path = self.repo.path + \
-            '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
+        path = self.meta_file_path(folder_1, s_folder_1)
         content = "[('title', '"+new_title+"'),('type', 'Folder'),]"
         with open(path, 'w') as f:
             f.write(content)
@@ -814,24 +820,19 @@ class TestSync():
         self.app.folder_1.manage_addFolder(id=s_folder_1)
         assert s_folder_1 in self.app.folder_1.objectIds()
         self.run('record', '/')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'test case 3')
 
         # checkout to master and check that changes are not yet existent
         self.run('exec', 'git checkout master')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        ) is False
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1)) \
+            is False
         assert folder_1 not in self.app.objectIds()
 
         # merge feature branch and check that changes are applied
         self.run('exec', 'git merge {}'.format(branch))
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         assert folder_1 in self.app.objectIds()
 
     def test_failing_playback_corrupt_metadata(self):
@@ -896,9 +897,7 @@ class TestSync():
         self.app.manage_addFolder(id=folder_1)
         assert folder_1 in self.app.objectIds()
         self.run('record', '/')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1))
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'pick_commit_1')
 
@@ -907,9 +906,7 @@ class TestSync():
         self.app.manage_addFolder(id=folder_2)
         assert folder_2 in self.app.objectIds()
         self.run('record', '/')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_2+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_2))
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'pick_commit_2')
 
@@ -917,25 +914,17 @@ class TestSync():
 
         # checkout master and check both changes aren't existent
         self.run('exec', 'git checkout master')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/__meta__'
-        ) is False
+        assert os.path.isfile(self.meta_file_path(folder_1)) is False
         assert folder_1 not in self.app.objectIds()
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_2+'/__meta__'
-        ) is False
+        assert os.path.isfile(self.meta_file_path(folder_2)) is False
         assert folder_2 not in self.app.objectIds()
 
         # pick 2nd commit and check that
         # first arent' but second changes are applied
         self.run('pick', commit)
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/__meta__'
-        ) is False
+        assert os.path.isfile(self.meta_file_path(folder_1)) is False
         assert folder_1 not in self.app.objectIds()
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_2+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_2))
         assert folder_2 in self.app.objectIds()
 
     def test_create_structure_and_reset_commits(self):
@@ -956,9 +945,7 @@ class TestSync():
         self.app.folder_1.manage_addFolder(id=s_folder_1, title=s_folder_1)
         assert s_folder_1 in self.app.folder_1.objectIds()
         self.run('record', '/')
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
 
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'reset_commit_1')
@@ -994,9 +981,7 @@ class TestSync():
         self.run('reset', 'HEAD~1')
         assert folder_1 in self.app.objectIds()
         assert s_folder_1 in self.app.folder_1.objectIds()
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1+'/__meta__'
-        )
+        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         assert new_title != self.app.folder_1.s_folder_1.title
         assert new_folder not in self.app.folder_1.s_folder_1.objectIds()
 
@@ -1004,6 +989,4 @@ class TestSync():
         # not existent anymore
         self.run('reset', 'HEAD~1')
         assert folder_1 not in self.app.objectIds()
-        assert os.path.isfile(
-            self.repo.path + '/__root__/'+folder_1+'/__meta__'
-        ) is False
+        assert os.path.isfile(self.meta_file_path(folder_1)) is False
