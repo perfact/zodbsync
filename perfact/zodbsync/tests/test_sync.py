@@ -854,32 +854,22 @@ class TestSync():
             f.write(content)
 
         # test that playback fails
-        error = False
-        try:
+        with pytest.raises(KeyError):
             self.run('playback', '/')
-        except KeyError:
-            error = True
-        assert error
 
     def test_failing_exec_commands(self):
         """
         call exec commands with wrong commits and
         check if exceptions are thrown correctly
         """
-        error = 0
-        try:
+        with pytest.raises(subprocess.CalledProcessError):
             self.run('exec', 'revert ThisIsDefinitelyNoCommit')
-        except subprocess.CalledProcessError:
-            error += 1
-        try:
+
+        with pytest.raises(subprocess.CalledProcessError):
             self.run('exec', 'reset ThisIsDefinitelyNoCommit')
-        except subprocess.CalledProcessError:
-            error += 1
-        try:
+
+        with pytest.raises(subprocess.CalledProcessError):
             self.run('exec', 'cherry-pick ThisIsDefinitelyNoCommit')
-        except subprocess.CalledProcessError:
-            error += 1
-        assert error == 3
 
     def test_create_multiple_commits_on_branch_and_pick_single_on_master(self):
         """
