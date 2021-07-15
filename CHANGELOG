@@ -1,3 +1,6 @@
+4.1.7.dev0
+  * Add tests for more object types
+
 4.1.6
   * Reduce memory footprint of watcher by spawning initialization subprocess
 

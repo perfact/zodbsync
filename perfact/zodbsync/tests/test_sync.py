@@ -20,6 +20,7 @@ from ..main import Runner
 from .. import zodbsync
 from .. import helpers
 from .. import extedit
+from .. import object_types
 from . import environment as env
 
 
@@ -979,3 +980,37 @@ class TestSync():
         self.run('reset', 'HEAD~1')
         assert folder_1 not in self.app.objectIds()
         assert not os.path.isfile(self.meta_file_path(folder_1))
+
+    @pytest.mark.parametrize('meta_type', object_types.object_handlers)
+    def test_objecttypes(self, meta_type):
+        if meta_type in ['DTML TeX', 'ZForce', 'External Method',
+                         'Z cxOracle Database Connection',
+                         'Z sap Database Connection']:
+            pytest.xfail()
+
+        if 'Test' not in self.app.objectIds():
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='Test')
+        if meta_type in ['User Folder', 'Simple User Folder']:
+            objid = 'acl_users'
+        else:
+            objid = 'testobj'
+        parent = self.app.Test
+        handler = object_types.object_handlers[meta_type]
+        # data that is required by some objects and ignored by others
+        add_data = {
+            'title': 'test',
+            'content_type': 'text/plain',
+            'connection_id': 'dbconn',
+            'connection_string': '',
+            'autocommit': False,
+            'maxrows': 100,
+            'args': '',
+            'source': '',
+            'smtp_host': 'localhost',
+            'smtp_port': '25',
+        }
+        handler.create(parent, add_data, objid)
+        obj = getattr(parent, objid)
+        data = zodbsync.mod_read(obj)
+        handler.write(obj, data)
+        parent.manage_delObjects(ids=[objid])
