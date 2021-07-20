@@ -826,8 +826,7 @@ class TestSync():
 
         # checkout to master and check that changes are not yet existent
         self.run('exec', 'git checkout master')
-        assert os.path.isfile(self.meta_file_path(folder_1, s_folder_1)) \
-            is False
+        assert not os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         assert folder_1 not in self.app.objectIds()
 
         # merge feature branch and check that changes are applied
@@ -904,15 +903,15 @@ class TestSync():
 
         # checkout master and check both changes aren't existent
         self.run('exec', 'git checkout master')
-        assert os.path.isfile(self.meta_file_path(folder_1)) is False
+        assert not os.path.isfile(self.meta_file_path(folder_1))
         assert folder_1 not in self.app.objectIds()
-        assert os.path.isfile(self.meta_file_path(folder_2)) is False
+        assert not os.path.isfile(self.meta_file_path(folder_2))
         assert folder_2 not in self.app.objectIds()
 
         # pick 2nd commit and check that
         # first arent' but second changes are applied
         self.run('pick', commit)
-        assert os.path.isfile(self.meta_file_path(folder_1)) is False
+        assert not os.path.isfile(self.meta_file_path(folder_1))
         assert folder_1 not in self.app.objectIds()
         assert os.path.isfile(self.meta_file_path(folder_2))
         assert folder_2 in self.app.objectIds()
@@ -979,4 +978,4 @@ class TestSync():
         # not existent anymore
         self.run('reset', 'HEAD~1')
         assert folder_1 not in self.app.objectIds()
-        assert os.path.isfile(self.meta_file_path(folder_1)) is False
+        assert not os.path.isfile(self.meta_file_path(folder_1))
