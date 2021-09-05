@@ -993,7 +993,7 @@ class TestSync():
         if meta_type in ['DTML TeX', 'ZForce', 'External Method',
                          'Z cxOracle Database Connection',
                          'Z sap Database Connection']:
-            pytest.xfail()
+            pytest.skip("Skipping objects that require elaborate dependencies")
 
         if 'Test' not in self.app.objectIds():
             self.app.manage_addProduct['OFSP'].manage_addFolder(id='Test')
@@ -1021,3 +1021,31 @@ class TestSync():
         data = zodbsync.mod_read(obj)
         handler.write(obj, data)
         parent.manage_delObjects(ids=[objid])
+
+    @pytest.mark.xfail(reason="Not fixed yet")
+    def test_ordered_folder_playback(self):
+        """
+        Checks for the issue recorded in #83: A playback caused by `zodbsync
+        exec` that adds a new child to an ordered folder somewhere not at the
+        end will still place it at the end.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addOrderedFolder(
+                id="Test"
+            )
+            self.app.Test.manage_addProduct['OFSP'].manage_addFolder(
+                id="exist"
+            )
+        assert self.app.Test.objectIds() == ['exist']
+        self.run('record', '/')
+
+        folder = self.repo.path + '/__root__/Test/'
+        os.mkdir(folder + 'new')
+        with open(folder + '__meta__', 'w') as f:
+            f.write(zodbsync.mod_format({
+                "contents": ["new", "exist"],
+                "title": "",
+                "type": "Folder (Ordered)",
+            }))
+        self.run('playback', '--no-recurse', '/Test', '/Test/new')
+        assert self.app.Test.objectIds() == ['new', 'exist']
