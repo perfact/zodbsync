@@ -144,8 +144,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if default_owner is not None and 'owner' not in d:
         d['owner'] = (['acl_users'], default_owner)
 
-    # ID exists? Check if meta type matches, emit an error if not.
-
     if root is None:
         if hasattr(parent, 'aq_explicit'):
             obj = getattr(parent.aq_explicit, obj_id, None)
@@ -154,15 +152,22 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     else:
         obj = root
 
+    temp_obj = None
     # ID exists? Check for type
     if obj and obj.meta_type != meta_type:
-        if override:
-            # Remove the existing object in override mode
-            parent.manage_delObjects(ids=[obj_id, ])
-            result['override'] = True
-            obj = None
-        else:
-            assert False, "Type mismatch for object " + repr(data)
+        assert override, "Type mismatch for object " + repr(data)
+        contents = obj_contents(obj)
+        if contents:
+            # Rename so we can cut+paste the children
+            temp_obj = obj
+            temp_id = obj_id
+            while temp_id in parent.objectIds():
+                temp_id += '_'
+            parent.manage_renameObject(obj_id, temp_id)
+        # Remove the existing object in ovrride mode
+        parent.manage_delObjects(ids=[obj_id, ])
+        result['override'] = True
+        obj = None
 
     # ID is new? Create a minimal object (depending on type)
     if obj is None:
@@ -175,6 +180,11 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     # Send an update (depending on type)
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, d)
+
+    if temp_obj:
+        children = temp_obj.manage_cutObjects(temp_obj.objectIds())
+        obj.manage_pasteObjects(children)
+        parent.manage_delObjects([temp_id])
 
     result['obj'] = obj
     return result
