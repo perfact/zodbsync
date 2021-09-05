@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import re
 import os
 import six
 import shutil
@@ -197,10 +196,6 @@ class ZODBSync:
     "playback()" to get all objects from the ZODB or write them back,
     respectively.
     '''
-
-    # Some objects should be ignored by the process because of their specific
-    # IDs.
-    ignore_objects = [re.compile('^__'), ]
 
     # We write the binary sources into files ending with appropriate extensions
     # for convenience. This table guesses the most important ones from the
@@ -431,11 +426,7 @@ class ZODBSync:
         Remove all subfolders from path that are not in contents
         '''
         base_dir = self.fs_path(path)
-        current_contents = os.listdir(base_dir)
-        for item in current_contents:
-            if self.is_ignored(item):
-                continue
-
+        for item in self.fs_contents(path):
             if item not in contents:
                 self.logger.info("Removing old item %s from filesystem" %
                                  item)
@@ -475,18 +466,7 @@ class ZODBSync:
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
         filenames = os.listdir(self.fs_path(path))
-        contents = [a for a in filenames if not a.startswith('__')]
-        contents.sort()
-        return contents
-
-    def is_ignored(self, name):
-        '''Decide whether the given ID should be ignored.'''
-        ignore_found = False
-        for ign in self.ignore_objects:
-            if ign.match(name):
-                ignore_found = True
-                break
-        return ignore_found
+        return sorted([f for f in filenames if not f.startswith('__')])
 
     def record(self, path='/', recurse=True, skip_errors=False):
         '''Record Zope objects from the given path into the local
@@ -536,9 +516,6 @@ class ZODBSync:
 
         for item in contents:
             self.num_obj_current += 1
-            # Check if one of the ignore patterns matches
-            if self.is_ignored(item):
-                continue
 
             child = getattr(obj, item)
             self.record_obj(obj=child, path=os.path.join(path, item),
@@ -579,7 +556,7 @@ class ZODBSync:
             assert obj_exists, "Object %s %s" % (obj_path, error)
 
             parent_obj = obj
-            if part in [a[0] for a in obj.objectItems()]:
+            if part in obj.objectIds():
                 obj = getattr(obj, part)
             else:
                 obj_exists = False
@@ -602,7 +579,7 @@ class ZODBSync:
 
         if not folder_exists:
             self.logger.info('Removing object ' + path)
-            parent_obj.manage_delObjects(ids=[part, ])
+            parent_obj.manage_delObjects(ids=[part])
             return
 
         fs_data = self.fs_read(path, encoding=encoding)
@@ -669,8 +646,6 @@ class ZODBSync:
 
             for item in contents:
                 self.num_obj_current += 1
-                if self.is_ignored(item):
-                    continue
                 self.playback(path=os.path.join(path, item), override=override,
                               encoding=encoding, skip_errors=skip_errors)
 
