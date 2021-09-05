@@ -674,7 +674,18 @@ class ZODBSync:
                 self.playback(path=os.path.join(path, item), override=override,
                               encoding=encoding, skip_errors=skip_errors)
 
-        # Allow actions after recursing, like sorting children
+            self.playback_after_recurse(obj, fs_data)
+
+        return {
+            'obj': obj,
+            'fs_data': fs_data,
+        }
+
+    @staticmethod
+    def playback_after_recurse(obj, fs_data):
+        """
+        Allow actions after recursing, like sorting children
+        """
         object_handlers[fs_data['type']].write_after_recurse_hook(obj, fs_data)
 
     def playback_paths(self, paths, recurse=True, override=False,
@@ -704,14 +715,18 @@ class ZODBSync:
         txn_mgr = self.start_transaction(note=note)
 
         try:
+            results = []
             for path in paths:
-                self.playback(
+                results.append(self.playback(
                     path=path,
                     override=override,
                     recurse=recurse,
                     skip_errors=skip_errors,
                     encoding=encoding,
-                )
+                ))
+            for result in reversed(results):
+                if result:
+                    self.playback_after_recurse(**result)
         except Exception:
             self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()

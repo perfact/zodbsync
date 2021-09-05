@@ -1022,7 +1022,6 @@ class TestSync():
         handler.write(obj, data)
         parent.manage_delObjects(ids=[objid])
 
-    @pytest.mark.xfail(reason="Not fixed yet")
     def test_ordered_folder_playback(self):
         """
         Checks for the issue recorded in #83: A playback caused by `zodbsync
