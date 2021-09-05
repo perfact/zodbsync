@@ -983,6 +983,13 @@ class TestSync():
 
     @pytest.mark.parametrize('meta_type', object_types.object_handlers)
     def test_objecttypes(self, meta_type):
+        """
+        Generic test that is executed for each coded object type. This creates
+        an object and writes a modification to it, without actually checking
+        for anything. Some are known to fail, for example because they need
+        products that are not published on pypi or because they need external
+        ressources like non-free libraries for external data connections.
+        """
         if meta_type in ['DTML TeX', 'ZForce', 'External Method',
                          'Z cxOracle Database Connection',
                          'Z sap Database Connection']:
