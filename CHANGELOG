@@ -1,4 +1,4 @@
-4.1.7.dev0
+4.2.0
   * Add tests for more object types
 
   * Execute after-recurse-hook after loop over paths in playback, in reverse
