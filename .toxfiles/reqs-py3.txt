@@ -1,0 +1,9 @@
+# Requirements for tests with newest Zope
+zope.mkzeoinstance
+Products.StandardCacheManagers
+Products.ExternalMethod
+Products.MailHost
+Products.PythonScripts
+Products.StandardCacheManagers
+Products.SiteErrorLog
+Products.ZSQLMethods
