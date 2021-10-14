@@ -121,6 +121,20 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
 
     return meta
 
+    def fmt_mod_read(obj, default_owner=None):
+        """
+        Rearranges meta content. This allows a more strict comparison
+        by using string comparison.
+        """
+        data = dict(mod_read(obj, default_owner=default_owner))
+        src = data.get('source')
+        meta = {key: value for key, value in data.items() if key != 'source'}
+        fmt_str = mod_format(meta)
+        meta = dict(literal_eval(fmt_str))
+        if src:
+            meta['source'] = src
+        
+        return meta
 
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
               default_owner=None):
@@ -589,14 +603,14 @@ class ZODBSync:
 
         try:
             srv_data = (
-                dict(mod_read(obj, default_owner=self.manager_user))
+                fmt_mod_read(obj, default_owner=self.manager_user) 
                 if obj_exists else None
             )
         except Exception:
             self.logger.exception('Unable to read object at %s' % path)
             raise
 
-        if fs_data != srv_data:
+        if str(fs_data) != str(srv_data):
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
                 res = mod_write(
