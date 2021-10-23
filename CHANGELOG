@@ -1,3 +1,6 @@
+4.2.1.dev0
+  * Allow automatically resetting generic commits
+
 4.2.0
   * Add tests for more object types
 

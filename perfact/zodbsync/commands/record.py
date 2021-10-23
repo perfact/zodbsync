@@ -2,10 +2,12 @@
 
 import smtplib
 import subprocess
+import argparse
 from email.mime.text import MIMEText
 
 from ..subcommand import SubCommand
 from ..helpers import remove_redundant_paths
+from .reset import Reset
 
 
 class Record(SubCommand):
@@ -19,6 +21,10 @@ class Record(SubCommand):
         parser.add_argument(
             '--commit', action='store_true', default=False,
             help='Commit changes and send summary mail if there are any',
+        )
+        parser.add_argument(
+            '--autoreset', action='store_true', default=False,
+            help='Automatically reset changes after sending mail for --commit',
         )
         parser.add_argument(
             '--no-recurse', action='store_true', default=False,
@@ -49,25 +55,31 @@ class Record(SubCommand):
 
         # only send a mail if something has changed
         codechg_mail = self.config.get('codechange_mail', False)
-        if not codechg_mail:
-            return
+        if codechg_mail:
+            self.logger.info('Commit was done! Sending mail...')
+            pfsystemid = open('/etc/pfsystemid').read().strip()
+            pfsystemname = open('/etc/pfsystemname').read().strip()
 
-        self.logger.info('Commit was done! Sending mail...')
-        pfsystemid = open('/etc/pfsystemid').read().strip()
-        pfsystemname = open('/etc/pfsystemname').read().strip()
+            status = self.gitcmd_output('show', '--name-status', 'HEAD')
 
-        status = self.gitcmd_output('show', '--name-status', 'HEAD')
+            msg = MIMEText(status, 'plain', 'utf-8')
+            msg['Subject'] = 'Commit summary on {} ({})'.format(pfsystemname,
+                                                                pfsystemid)
+            msg['To'] = codechg_mail
+            msg['From'] = self.config.get('codechange_sender',
+                                          'codechanges@perfact.de')
 
-        msg = MIMEText(status, 'plain', 'utf-8')
-        msg['Subject'] = 'Commit summary on {} ({})'.format(pfsystemname,
-                                                            pfsystemid)
-        msg['To'] = codechg_mail
-        msg['From'] = self.config.get('codechange_sender',
-                                      'codechanges@perfact.de')
+            smtp = smtplib.SMTP('localhost')
+            smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_string())
+            smtp.quit()
 
-        smtp = smtplib.SMTP('localhost')
-        smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_string())
-        smtp.quit()
+        if self.args.autoreset:
+            reset = Reset(sync=self.sync, logger=self.logger)
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--no-lock', action='store_true')
+            reset.add_args(parser)
+            reset.args = parser.parse_args(['--no-lock', 'HEAD~'])
+            reset.run()
 
     @SubCommand.with_lock
     def run(self):

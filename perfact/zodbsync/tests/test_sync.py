@@ -194,6 +194,31 @@ class TestSync():
         self.run('record', '--lasttxn')
         assert os.path.isdir(os.path.join(self.repo.path, '__root__/testpt'))
 
+    def test_record_commit(self):
+        '''Record with --commit (but no mail and no autoreset)'''
+        add = (
+            self.app.manage_addProduct['PageTemplates'].manage_addPageTemplate
+        )
+        with self.runner.sync.tm:
+            add(id='test', text='test')
+        self.run('record', '/', '--commit')
+        assert os.path.isdir(os.path.join(self.repo.path, '__root__/test'))
+        commits = self.gitoutput('log', '--format=%s')
+        assert commits == "Generic commit message.\ninit\n"
+
+    def test_record_autoreset(self):
+        '''Record with --commit --autoreset.'''
+        add = (
+            self.app.manage_addProduct['PageTemplates'].manage_addPageTemplate
+        )
+        with self.runner.sync.tm:
+            add(id='test', text='test')
+        self.run('record', '/', '--commit', '--autoreset')
+        assert not os.path.isdir(os.path.join(self.repo.path, '__root__/test'))
+        commits = self.gitoutput('log', '--format=%s')
+        assert commits == "init\n"
+        assert 'test' not in self.app.objectIds()
+
     def test_playback(self):
         '''
         Record everything, change /index_html, play it back and check if the
