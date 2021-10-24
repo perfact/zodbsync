@@ -293,7 +293,7 @@ class FolderOrderedObj(FolderObj):
             )
 
     @staticmethod
-    def order(obj, data):
+    def fix_order(obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
         srv_contents = [a[0] for a in obj.objectItems()]
