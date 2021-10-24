@@ -6,6 +6,7 @@ import six
 import shutil
 import time  # for periodic output
 import sys
+from collections import deque
 
 # for using an explicit transaction manager
 import transaction
@@ -164,8 +165,9 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
             while temp_id in parent.objectIds():
                 temp_id += '_'
             parent.manage_renameObject(obj_id, temp_id)
-        # Remove the existing object in ovrride mode
-        parent.manage_delObjects(ids=[obj_id, ])
+        else:
+            # Remove the existing object in override mode
+            parent.manage_delObjects(ids=[obj_id, ])
         result['override'] = True
         obj = None
 
@@ -531,12 +533,9 @@ class ZODBSync:
             self.record_obj(obj=child, path=os.path.join(path, item),
                             skip_errors=skip_errors)
 
-    def playback(self, path=None, recurse=True, override=False,
-                 skip_errors=False, encoding=None):
+    def playback(self, path=None, override=False, skip_errors=False,
+                 encoding=None, cleanup_contents=False):
         '''Play back (write) objects from the local filesystem into Zope.'''
-        if not recurse:
-            # be more verbose because every path is explicitly requested
-            self.logger.info('Uploading %s' % path)
         path = path or ''
         parts = [part for part in path.split('/') if part]
         # Due to the necessity of handling old ZODBs where it was possible to
@@ -618,10 +617,6 @@ class ZODBSync:
                     default_owner=self.default_owner
                 )
                 obj = res['obj']
-                # if we were forced to override, we force recursing for this
-                # subpath
-                if res['override']:
-                    recurse = True
             except Exception:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
@@ -634,44 +629,10 @@ class ZODBSync:
                     self.logger.error(msg)
                     raise
 
-        if recurse:
-            contents = self.fs_contents(path)
-            srv_contents = obj_contents(obj)
-
-            # Update statistics
-            self.num_obj_total += len(contents)
-            now = time.time()
-            if now - self.num_obj_last_report > 2:
-                self.logger.info(
-                    '%d obj checked of at least %d, current path %s'
-                    % (self.num_obj_current, self.num_obj_total, path)
-                )
-                self.num_obj_last_report = now
-
-            # Find IDs in Data.fs object not present in file system
-            del_ids = [a for a in srv_contents if a not in contents]
-            if del_ids:
-                self.logger.warning('Deleting objects ' + repr(del_ids))
-                obj.manage_delObjects(ids=del_ids)
-
-            for item in contents:
-                self.num_obj_current += 1
-                self.playback(path=os.path.join(path, item), override=override,
-                              encoding=encoding, skip_errors=skip_errors)
-
-            self.playback_after_recurse(obj, fs_data)
-
         return {
             'obj': obj,
             'fs_data': fs_data,
         }
-
-    @staticmethod
-    def playback_after_recurse(obj, fs_data):
-        """
-        Allow actions after recursing, like sorting children
-        """
-        object_handlers[fs_data['type']].write_after_recurse_hook(obj, fs_data)
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
@@ -698,20 +659,55 @@ class ZODBSync:
         if len(paths) == 1:
             note += ': ' + paths[0]
         txn_mgr = self.start_transaction(note=note)
-
+        paths = deque(paths)
         try:
-            results = []
-            for path in paths:
-                results.append(self.playback(
+            fix_order = []
+            self.num_obj_total = len(paths)
+            while paths:
+                path = paths.popleft()
+                # Update statistics
+                now = time.time()
+                if now - self.num_obj_last_report > 2:
+                    self.logger.info(
+                        '%d obj checked of at least %d, current path %s'
+                        % (self.num_obj_current, self.num_obj_total, path)
+                    )
+                    self.num_obj_last_report = now
+
+                res = self.playback(
                     path=path,
                     override=override,
-                    recurse=recurse,
                     skip_errors=skip_errors,
                     encoding=encoding,
-                ))
-            for result in reversed(results):
-                if result:
-                    self.playback_after_recurse(**result)
+                )
+                if not res:
+                    continue
+
+                if recurse:
+                    contents = self.fs_contents(path)
+                    self.num_obj_total += len(contents)
+                    paths.extendleft(reversed([
+                        path + '/' + child for child in contents
+                    ]))
+
+                    srv_contents = obj_contents(res['obj'])
+                    # Find IDs in Data.fs object not present in file system
+                    del_ids = [a for a in srv_contents if a not in contents]
+                    if del_ids:
+                        self.logger.warning('Deleting objects ' +
+                                            repr(del_ids))
+                        res['obj'].manage_delObjects(ids=del_ids)
+
+                handler = object_handlers[res['fs_data']['type']]
+                if hasattr(handler, 'order'):
+                    # Need to fix order at the end
+                    fix_order.append((handler, res))
+
+            if len(fix_order):
+                self.logger.info("Fixing orders")
+            for handler, res in reversed(fix_order):
+                handler.order(res['obj'], res['fs_data'])
+
         except Exception:
             self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()

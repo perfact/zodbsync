@@ -18,12 +18,6 @@ class ModObj(object):
     def write(obj, data):
         return
 
-    @staticmethod
-    def write_after_recurse_hook(obj, data):
-        ''' implement if an action is to be performed on a to-be-played-back
-        object after recursing into its children. '''
-        return
-
     @classmethod
     def collect_handlers(cls):
         """
@@ -299,7 +293,7 @@ class FolderOrderedObj(FolderObj):
             )
 
     @staticmethod
-    def write_after_recurse_hook(obj, data):
+    def order(obj, data):
         # sort children for ordered folders
         contents = data.get('contents', [])
         srv_contents = [a[0] for a in obj.objectItems()]
