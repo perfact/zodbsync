@@ -33,17 +33,20 @@ except ImportError:
     pass
 
 
-def mod_format(data=None, indent=0, as_list=False):
+def mod_format(data=None, as_list=False, ignore_source=False):
     '''Make a printable output of the given object data. Indent the lines
     with <indent> spaces. Return a string or a list of lines if
     <as_list> is True.
     '''
-
     # Convert dictionary to sorted list of tuples (diff-friendly!)
     if isinstance(data, dict):
-        data = [(key, value) for key, value in data.items()]
-        data.sort()
+        data = list(data.items())
 
+    # ignore source, if not necessary
+    if ignore_source:
+        data = [(key, value) for key, value in data if key != 'source']
+
+    data.sort()
     # The data is now given by a list of tuples, each of which has two elements
     # (diff-friendly version of a dict). The first element of the tuple is a
     # string, while the second one might be any combination of lists, tuples
@@ -119,22 +122,6 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
             and meta.get('owner', None) == (['acl_users'], default_owner)):
         del meta['owner']
 
-    return meta
-
-
-def fmt_mod_read(obj, default_owner=None):
-    """
-    Rearranges meta content. This allows a more strict comparison
-    by using string comparison.
-    """
-    data = dict(mod_read(obj, default_owner=default_owner))
-    src = data.get('source')
-    meta = {key: value for key, value in data.items() if key != 'source'}
-    fmt_str = mod_format(meta)
-    meta = dict(literal_eval(fmt_str))
-    if src:
-        meta['source'] = src
-    
     return meta
 
 
@@ -362,7 +349,6 @@ class ZODBSync:
         '''
         Write object data out to a file with the given path.
         '''
-
         base_dir = self.fs_path(path)
         # Read the basic information
         data = dict(data)
@@ -372,8 +358,7 @@ class ZODBSync:
         write_source = isinstance(source, (bytes, six.text_type))
 
         # Build metadata
-        meta = {key: value for key, value in data.items() if key != 'source'}
-        fmt = mod_format(meta)
+        fmt = mod_format(data, ignore_source=True)
         if isinstance(fmt, six.text_type):
             fmt = fmt.encode('utf-8')
 
@@ -403,6 +388,7 @@ class ZODBSync:
             # Check if the source has changed!
 
             # Write bytes or utf-8 encoded text.
+            meta = data
             data = source
             base = '__source__'
             if isinstance(data, six.text_type):
@@ -477,7 +463,9 @@ class ZODBSync:
             # Translate file system data
             meta = dict(fix_encoding(meta, encoding))
 
-        return meta
+        # to compare zodb and fs object meta we need to decode them the same
+        # way
+        return meta, meta_str.decode('utf-8')
 
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
@@ -598,21 +586,26 @@ class ZODBSync:
             parent_obj.manage_delObjects(ids=[part])
             return
 
-        fs_data = self.fs_read(path, encoding=encoding)
+        fs_data, fs_raw_meta = self.fs_read(path, encoding=encoding)
         if 'unsupported' in fs_data:
             self.logger.warning('Skipping unsupported object ' + path)
             return
 
         try:
             srv_data = (
-                fmt_mod_read(obj, default_owner=self.manager_user) 
-                if obj_exists else None
+                mod_read(obj, default_owner=self.manager_user) if obj_exists
+                else None
             )
         except Exception:
             self.logger.exception('Unable to read object at %s' % path)
             raise
 
-        if str(fs_data) != str(srv_data):
+        # compare source code as raw if existent
+        srv_meta = mod_format(srv_data, ignore_source=True)
+        src_differs = fs_data.get('source') != srv_data.get('source')
+        # compare meta files in their string representation
+        meta_differs = fs_raw_meta != srv_meta
+        if src_differs or meta_differs:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
                 res = mod_write(
