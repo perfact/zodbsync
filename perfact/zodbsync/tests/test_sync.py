@@ -1073,3 +1073,46 @@ class TestSync():
             }))
         self.run('playback', '--no-recurse', '/Test', '/Test/new')
         assert self.app.Test.objectIds() == ['new', 'exist']
+
+    def test_change_folder_type(self):
+        """
+        Change a folder to an ordered folder, but without having all children
+        in the contents field. The named children must be in the correct order.
+        Also check that children are not unnecessarily deleted and recreated by
+        a type change.
+        Afterwards, change back to Folder and again check that the children
+        stay the same.
+        """
+        def add(parent, fid):
+            parent.manage_addProduct['OFSP'].manage_addFolder(id=fid)
+
+        with self.runner.sync.tm:
+            add(self.app, 'Test')
+            for child in ['A', 'B', 'C']:
+                add(self.app.Test, child)
+        self.run('record', '/')
+        meta = '{}/__root__/Test/__meta__'.format(self.repo.path)
+
+        with open(meta, 'w') as f:
+            f.write(zodbsync.mod_format({
+                'contents': ['B', 'A'],
+                'title': 'change',
+                'type': 'Folder (Ordered)',
+            }))
+        orig_oid = self.app.Test.A._p_oid
+        self.run('playback', '/Test', '--override')
+        assert self.app.Test.meta_type == 'Folder (Ordered)'
+        ids = self.app.Test.objectIds()
+        assert sorted(ids) == ['A', 'B', 'C']
+        assert ids.index('B') < ids.index('A')
+        assert self.app.Test.A._p_oid == orig_oid
+
+        with open(meta, 'w') as f:
+            f.write(zodbsync.mod_format({
+                'title': 'change again',
+                'type': 'Folder',
+            }))
+        self.run('playback', '/Test', '--override')
+        assert self.app.Test.meta_type == 'Folder'
+        assert sorted(self.app.Test.objectIds()) == ['A', 'B', 'C']
+        assert self.app.Test.A._p_oid == orig_oid
