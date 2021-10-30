@@ -1051,7 +1051,7 @@ class TestSync():
         """
         Checks for the issue recorded in #83: A playback caused by `zodbsync
         exec` that adds a new child to an ordered folder somewhere not at the
-        end will still place it at the end.
+        end was still placing it at the end.
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addOrderedFolder(

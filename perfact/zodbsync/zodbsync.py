@@ -131,12 +131,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if there is a meta_type mismatch.  If root is given, it should be the
     application root, which is then updated with the metadata in data, ignoring
     parent.
-    Returns a dict with the following content:
-      'obj': the (existing or created) object
-      'override': True if it was necessary to override the object
+    Returns the existing or created object
     '''
-
-    result = {'override': False}
 
     # Retrieve the object meta type.
     d = dict(data)
@@ -165,9 +161,9 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
             while temp_id in parent.objectIds():
                 temp_id += '_'
             parent.manage_renameObject(obj_id, temp_id)
-        # Remove the existing object in ovrride mode
-        parent.manage_delObjects(ids=[obj_id, ])
-        result['override'] = True
+        else:
+            # Remove the existing object in override mode
+            parent.manage_delObjects(ids=[obj_id, ])
         obj = None
 
     # ID is new? Create a minimal object (depending on type)
@@ -187,8 +183,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
         obj.manage_pasteObjects(children)
         parent.manage_delObjects([temp_id])
 
-    result['obj'] = obj
-    return result
+    return obj
 
 
 def obj_modtime(obj):
@@ -538,9 +533,8 @@ class ZODBSync:
         Returns None or a dict with the following keys:
         :add_paths: Sorted list of paths that are also to be played back. Empty
                     unless self.recurse is set.
-        :on_return: None or tuple containing a path and a callable. The
-                    callable must be called once there is nothing else to be
-                    played back below the given path.
+        :on_return: None or callable that must be called once there is nothing
+                    else to be played back below this path.
         '''
         if self.recurse:
             now = time.time()
@@ -597,10 +591,10 @@ class ZODBSync:
                 # we want to allow to pass a list of changed objects (p.e.,
                 # from git diff-tree), which might mean that if /a as well as
                 # /a/b have been deleted, both will be passed as arguments to
-                # perfact-zopeplayback. They are sorted, so /a will already
-                # have been deleted, which is why the playback of /a/b will
-                # find /a neither on the file system nor in the ZODB. We can
-                # simply return in this case.
+                # playback. They are sorted, so /a will already have been
+                # deleted, which is why the playback of /a/b will find /a
+                # neither on the file system nor in the ZODB. We can simply
+                # return in this case.
                 return
 
         if not folder_exists:
@@ -625,7 +619,7 @@ class ZODBSync:
         if fs_data != srv_data:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
-                res = mod_write(
+                obj = mod_write(
                     fs_data,
                     parent=parent_obj,
                     obj_id=part,
@@ -633,7 +627,6 @@ class ZODBSync:
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner
                 )
-                obj = res['obj']
             except Exception:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
@@ -660,11 +653,10 @@ class ZODBSync:
 
         handler = object_handlers[fs_data['type']]
         if hasattr(handler, 'fix_order'):
-            f = functools.partial(handler.fix_order, obj, fs_data)
-            on_return = (path, f)
+            on_return = functools.partial(handler.fix_order, obj, fs_data)
         return {
             'add_paths': [
-                '{}/{}/'.format(path, item) for item in contents
+                '{}/{}/'.format(path.rstrip('/'), item) for item in contents
             ],
             'on_return': on_return,
         }
@@ -725,7 +717,7 @@ class ZODBSync:
                 self.num_obj_total += len(res['add_paths'])
                 paths.extend(reversed(res['add_paths']))
                 if res['on_return']:
-                    on_return.append(res['on_return'])
+                    on_return.append((path, res['on_return']))
 
         except Exception:
             self.logger.exception('Error with path: ' + path)
