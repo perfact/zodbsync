@@ -6,6 +6,7 @@ import six
 import shutil
 import time  # for periodic output
 import sys
+import functools
 
 # for using an explicit transaction manager
 import transaction
@@ -531,18 +532,28 @@ class ZODBSync:
             self.record_obj(obj=child, path=os.path.join(path, item),
                             skip_errors=skip_errors)
 
-    def playback_from(self, paths):
+    def playback(self, path):
         '''
-        Pop at least one path from the front of the list of paths and play it
-        back from the local filesystem into the ZODB.
-        Assumes the list to be sorted and processes all items that are below
-        the first one.
+        Play back one object from the file system to the ZODB.
+        Returns None or a dict with the following keys:
+        :add_paths: Sorted list of paths that are also to be played back. Empty
+                    unless self.recurse is set.
+        :on_return: None or tuple containing a path and a callable. The
+                    callable must be called once there is nothing else to be
+                    played back below the given path.
         '''
-        path = paths.pop(0) or ''
-        self.current_path = path
-        if not self.recurse:
+        if self.recurse:
+            now = time.time()
+            if now - self.num_obj_last_report > 2:
+                self.logger.info(
+                    '%d obj checked of at least %d, current path %s'
+                    % (self.num_obj_current, self.num_obj_total, path)
+                )
+                self.num_obj_last_report = now
+        else:
             # be more verbose because every path is explicitly requested
             self.logger.info('Uploading %s' % path)
+
         parts = [part for part in path.split('/') if part]
         # Due to the necessity of handling old ZODBs where it was possible to
         # have objects with 'get' as ID (which, unfortunately, was used), we
@@ -635,24 +646,11 @@ class ZODBSync:
                     self.logger.error(msg)
                     raise
 
-        # Make sure we handle all paths below this one before possibly fixing
-        # the order
-        while paths and paths[0].startswith(path):
-            self.playback_from(paths)
-
+        contents = []
+        on_return = None
         if self.recurse:
             contents = self.fs_contents(path)
             srv_contents = obj_contents(obj)
-
-            # Update statistics
-            self.num_obj_total += len(contents)
-            now = time.time()
-            if now - self.num_obj_last_report > 2:
-                self.logger.info(
-                    '%d obj checked of at least %d, current path %s'
-                    % (self.num_obj_current, self.num_obj_total, path)
-                )
-                self.num_obj_last_report = now
 
             # Find IDs in Data.fs object not present in file system
             del_ids = [a for a in srv_contents if a not in contents]
@@ -660,13 +658,16 @@ class ZODBSync:
                 self.logger.warning('Deleting objects ' + repr(del_ids))
                 obj.manage_delObjects(ids=del_ids)
 
-            for item in contents:
-                self.num_obj_current += 1
-                self.playback_from([os.path.join(path, item)])
-
         handler = object_handlers[fs_data['type']]
         if hasattr(handler, 'fix_order'):
-            handler.fix_order(obj, fs_data)
+            f = functools.partial(handler.fix_order, obj, fs_data)
+            on_return = (path, f)
+        return {
+            'add_paths': [
+                '{}/{}/'.format(path, item) for item in contents
+            ],
+            'on_return': on_return,
+        }
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
@@ -692,17 +693,42 @@ class ZODBSync:
 
         if not len(paths):
             return
+        self.num_obj_current = 0
+        self.num_obj_total = len(paths)
 
         note = 'perfact-zopeplayback'
         if len(paths) == 1:
             note += ': ' + paths[0]
         txn_mgr = self.start_transaction(note=note)
 
+        # Change to a stack, appending and popping from the end
+        # Make sure the paths end in '/' so startswith can be used reliably
+        paths = [path.rstrip('/') + '/' for path in reversed(paths)]
+
+        # pairs of (path, callable) that are to be called when everything
+        # below the path is handled, to fix orderings in ordered folders
+        on_return = []
         try:
-            while paths:
-                self.playback_from(paths)
+            while paths or on_return:
+                if on_return:
+                    # Handle next on_return handler unless there are still
+                    # paths to be handled below it.
+                    path = on_return[-1][0]
+                    if not (paths and paths[-1].startswith(path)):
+                        on_return.pop()[1]()
+                        continue
+                self.num_obj_current += 1
+                path = paths.pop()
+                res = self.playback(path)
+                if not res:
+                    continue
+                self.num_obj_total += len(res['add_paths'])
+                paths.extend(reversed(res['add_paths']))
+                if res['on_return']:
+                    on_return.append(res['on_return'])
+
         except Exception:
-            self.logger.exception('Error with path: ' + self.current_path)
+            self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()
             raise
 
