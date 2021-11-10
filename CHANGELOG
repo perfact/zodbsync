@@ -1,4 +1,9 @@
 4.2.2.dev0
+  * Handle changes between "Folder" and "Folder (Ordered)" in playback without
+    needing to recursively play back everything below it, using cut+paste for
+    the children instead.
+
+  * Refactor playback to work iteratively with a stack of paths
 
 4.2.1
   * Allow automatically resetting generic commits
