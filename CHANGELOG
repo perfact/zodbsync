@@ -1,3 +1,5 @@
+4.2.3.dev0
+
 4.2.2
   * Handle changes between "Folder" and "Folder (Ordered)" in playback without
     needing to recursively play back everything below it, using cut+paste for
