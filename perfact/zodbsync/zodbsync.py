@@ -6,6 +6,7 @@ import six
 import shutil
 import time  # for periodic output
 import sys
+import functools
 
 # for using an explicit transaction manager
 import transaction
@@ -133,12 +134,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     if there is a meta_type mismatch.  If root is given, it should be the
     application root, which is then updated with the metadata in data, ignoring
     parent.
-    Returns a dict with the following content:
-      'obj': the (existing or created) object
-      'override': True if it was necessary to override the object
+    Returns the existing or created object
     '''
-
-    result = {'override': False}
 
     # Retrieve the object meta type.
     d = dict(data)
@@ -146,8 +143,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     if default_owner is not None and 'owner' not in d:
         d['owner'] = (['acl_users'], default_owner)
-
-    # ID exists? Check if meta type matches, emit an error if not.
 
     if root is None:
         if hasattr(parent, 'aq_explicit'):
@@ -157,15 +152,22 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     else:
         obj = root
 
+    temp_obj = None
     # ID exists? Check for type
     if obj and obj.meta_type != meta_type:
-        if override:
+        assert override, "Type mismatch for object " + repr(data)
+        contents = obj_contents(obj)
+        if contents:
+            # Rename so we can cut+paste the children
+            temp_obj = obj
+            temp_id = obj_id
+            while temp_id in parent.objectIds():
+                temp_id += '_'
+            parent.manage_renameObject(obj_id, temp_id)
+        else:
             # Remove the existing object in override mode
             parent.manage_delObjects(ids=[obj_id, ])
-            result['override'] = True
-            obj = None
-        else:
-            assert False, "Type mismatch for object " + repr(data)
+        obj = None
 
     # ID is new? Create a minimal object (depending on type)
     if obj is None:
@@ -179,8 +181,12 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, d)
 
-    result['obj'] = obj
-    return result
+    if temp_obj:
+        children = temp_obj.manage_cutObjects(temp_obj.objectIds())
+        obj.manage_pasteObjects(children)
+        parent.manage_delObjects([temp_id])
+
+    return obj
 
 
 def obj_modtime(obj):
@@ -525,13 +531,27 @@ class ZODBSync:
             self.record_obj(obj=child, path=os.path.join(path, item),
                             skip_errors=skip_errors)
 
-    def playback(self, path=None, recurse=True, override=False,
-                 skip_errors=False, encoding=None):
-        '''Play back (write) objects from the local filesystem into Zope.'''
-        if not recurse:
+    def playback(self, path):
+        '''
+        Play back one object from the file system to the ZODB.
+        Returns None or a dict with the following keys:
+        :add_paths: Sorted list of paths that are also to be played back. Empty
+                    unless self.recurse is set.
+        :on_return: None or callable that must be called once there is nothing
+                    else to be played back below this path.
+        '''
+        if self.recurse:
+            now = time.time()
+            if now - self.num_obj_last_report > 2:
+                self.logger.info(
+                    '%d obj checked of at least %d, current path %s'
+                    % (self.num_obj_current, self.num_obj_total, path)
+                )
+                self.num_obj_last_report = now
+        else:
             # be more verbose because every path is explicitly requested
             self.logger.info('Uploading %s' % path)
-        path = path or ''
+
         parts = [part for part in path.split('/') if part]
         # Due to the necessity of handling old ZODBs where it was possible to
         # have objects with 'get' as ID (which, unfortunately, was used), we
@@ -575,10 +595,10 @@ class ZODBSync:
                 # we want to allow to pass a list of changed objects (p.e.,
                 # from git diff-tree), which might mean that if /a as well as
                 # /a/b have been deleted, both will be passed as arguments to
-                # perfact-zopeplayback. They are sorted, so /a will already
-                # have been deleted, which is why the playback of /a/b will
-                # find /a neither on the file system nor in the ZODB. We can
-                # simply return in this case.
+                # playback. They are sorted, so /a will already have been
+                # deleted, which is why the playback of /a/b will find /a
+                # neither on the file system nor in the ZODB. We can simply
+                # return in this case.
                 return
 
         if not folder_exists:
@@ -608,44 +628,31 @@ class ZODBSync:
         if src_differs or meta_differs:
             self.logger.debug("Uploading: %s:%s" % (path, fs_data['type']))
             try:
-                res = mod_write(
+                obj = mod_write(
                     fs_data,
                     parent=parent_obj,
                     obj_id=part,
-                    override=override,
+                    override=self.override,
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner
                 )
-                obj = res['obj']
-                # if we were forced to override, we force recursing for this
-                # subpath
-                if res['override']:
-                    recurse = True
             except Exception:
                 # If we do not want to get errors from missing
                 # ExternalMethods, this can be used to skip them
-                severity = 'Skipping' if skip_errors else 'ERROR'
+                severity = 'Skipping' if self.skip_errors else 'ERROR'
                 msg = '%s %s:%s' % (severity, path, fs_data['type'])
-                if skip_errors:
+                if self.skip_errors:
                     self.logger.warning(msg)
                     return
                 else:
                     self.logger.error(msg)
                     raise
 
-        if recurse:
+        contents = []
+        on_return = None
+        if self.recurse:
             contents = self.fs_contents(path)
             srv_contents = obj_contents(obj)
-
-            # Update statistics
-            self.num_obj_total += len(contents)
-            now = time.time()
-            if now - self.num_obj_last_report > 2:
-                self.logger.info(
-                    '%d obj checked of at least %d, current path %s'
-                    % (self.num_obj_current, self.num_obj_total, path)
-                )
-                self.num_obj_last_report = now
 
             # Find IDs in Data.fs object not present in file system
             del_ids = [a for a in srv_contents if a not in contents]
@@ -653,27 +660,22 @@ class ZODBSync:
                 self.logger.warning('Deleting objects ' + repr(del_ids))
                 obj.manage_delObjects(ids=del_ids)
 
-            for item in contents:
-                self.num_obj_current += 1
-                self.playback(path=os.path.join(path, item), override=override,
-                              encoding=encoding, skip_errors=skip_errors)
-
-            self.playback_after_recurse(obj, fs_data)
-
+        handler = object_handlers[fs_data['type']]
+        if hasattr(handler, 'fix_order'):
+            on_return = functools.partial(handler.fix_order, obj, fs_data)
         return {
-            'obj': obj,
-            'fs_data': fs_data,
+            'add_paths': [
+                '{}/{}/'.format(path.rstrip('/'), item) for item in contents
+            ],
+            'on_return': on_return,
         }
-
-    @staticmethod
-    def playback_after_recurse(obj, fs_data):
-        """
-        Allow actions after recursing, like sorting children
-        """
-        object_handlers[fs_data['type']].write_after_recurse_hook(obj, fs_data)
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
+        self.recurse = recurse
+        self.override = override
+        self.skip_errors = skip_errors
+        self.encoding = encoding
         # normalize paths - cut off filenames and the site name
         paths = {
             path.rsplit('/', 1)[0] if (
@@ -692,25 +694,40 @@ class ZODBSync:
 
         if not len(paths):
             return
+        self.num_obj_current = 0
+        self.num_obj_total = len(paths)
 
         note = 'perfact-zopeplayback'
         if len(paths) == 1:
             note += ': ' + paths[0]
         txn_mgr = self.start_transaction(note=note)
 
+        # Change to a stack, appending and popping from the end
+        # Make sure the paths end in '/' so startswith can be used reliably
+        paths = [path.rstrip('/') + '/' for path in reversed(paths)]
+
+        # pairs of (path, callable) that are to be called when everything
+        # below the path is handled, to fix orderings in ordered folders
+        on_return = []
         try:
-            results = []
-            for path in paths:
-                results.append(self.playback(
-                    path=path,
-                    override=override,
-                    recurse=recurse,
-                    skip_errors=skip_errors,
-                    encoding=encoding,
-                ))
-            for result in reversed(results):
-                if result:
-                    self.playback_after_recurse(**result)
+            while paths or on_return:
+                if on_return:
+                    # Handle next on_return handler unless there are still
+                    # paths to be handled below it.
+                    path = on_return[-1][0]
+                    if not (paths and paths[-1].startswith(path)):
+                        on_return.pop()[1]()
+                        continue
+                self.num_obj_current += 1
+                path = paths.pop()
+                res = self.playback(path)
+                if not res:
+                    continue
+                self.num_obj_total += len(res['add_paths'])
+                paths.extend(reversed(res['add_paths']))
+                if res['on_return']:
+                    on_return.append((path, res['on_return']))
+
         except Exception:
             self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()
