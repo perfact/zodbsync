@@ -23,7 +23,7 @@ except ImportError:
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
 from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
-    remove_redundant_paths
+    remove_redundant_paths, to_bytes
 
 
 # Monkey patch ZRDB not to connect to databases immediately.
@@ -364,9 +364,7 @@ class ZODBSync:
         write_source = isinstance(source, (bytes, six.text_type))
 
         # Build metadata
-        fmt = mod_format(data, ignore_source=True)
-        if isinstance(fmt, six.text_type):
-            fmt = fmt.encode('utf-8')
+        fmt = to_bytes(mod_format(data, ignore_source=True))
 
         # Make directory for the object if it's not already there
         try:
@@ -440,9 +438,8 @@ class ZODBSync:
                                  item)
                 shutil.rmtree(os.path.join(base_dir, item))
 
-    def fs_read(self, path, encoding=None):
-        '''Read data from local file system.'''
-
+    def fs_read_raw(self, path):
+        """Read meta and source file without parsing them."""
         base_dir = self.fs_path(path)
         filenames = os.listdir(base_dir)
         src_fnames = [a for a in filenames if a.startswith('__source')]
@@ -452,26 +449,39 @@ class ZODBSync:
         meta_fname = os.path.join(base_dir, '__meta__')
         if os.path.isfile(meta_fname):
             with open(meta_fname, 'rb') as f:
-                meta_str = f.read()
-            meta = dict(literal_eval(meta_str))
+                meta = f.read()
         else:
-            # if a meta file is missing, we assume a dummy folder
-            meta = {'title': '', 'type': 'Folder'}
+            meta = None
 
+        src = None
         if src_fname:
             with open(os.path.join(base_dir, src_fname), 'rb') as f:
                 src = f.read()
             if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
-            meta['source'] = src
+
+        return (meta, src)
+
+    @staticmethod
+    def unpack_fs_data(meta, src, encoding=None):
+        # Create dictionary containing the parsed meta data as well as the
+        # source
+        if meta:
+            result = dict(literal_eval(meta))
+        else:
+            # If a meta file is missing, we assume a dummy folder
+            result = {'title': '', 'type': 'Folder'}
+        if src is not None:
+            result['source'] = src
 
         if encoding is not None:
-            # Translate file system data
-            meta = dict(fix_encoding(meta, encoding))
+            result = fix_encoding(result, encoding)
+        return result
 
-        # to compare zodb and fs object meta we need to decode them the same
-        # way
-        return meta, meta_str.decode('utf-8')
+    def fs_read(self, path, encoding=None):
+        '''Read data from local file system.'''
+        meta, src = self.fs_read_raw(path)
+        return self.unpack_fs_data(meta, src, encoding=encoding)
 
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
@@ -606,7 +616,8 @@ class ZODBSync:
             parent_obj.manage_delObjects(ids=[part])
             return
 
-        fs_data, fs_raw_meta = self.fs_read(path, encoding=encoding)
+        fs_raw_meta, fs_src = self.fs_read_raw(path)
+        fs_data = self.unpack_fs_data(fs_raw_meta, fs_src, self.encoding)
         if 'unsupported' in fs_data:
             self.logger.warning('Skipping unsupported object ' + path)
             return
@@ -614,7 +625,7 @@ class ZODBSync:
         try:
             srv_data = (
                 mod_read(obj, default_owner=self.manager_user) if obj_exists
-                else None
+                else {}
             )
         except Exception:
             self.logger.exception('Unable to read object at %s' % path)

@@ -96,37 +96,42 @@ def test_literal_eval():
 
 
 def test_fix_encoding():
-    example = [
-        ('id', 'body'),
-        ('owner', 'jan'),
-        ('props', [
+    example = {
+        'id': 'body',
+        'owner': 'jan',
+        'props': [
             [('id', 'msg_deleted'), ('type', 'string'),
              ('value', b'Datens\xe4tze gel\xf6scht!')],
             [('id', 'content_type'), ('type', 'string'),
              ('value', 'text/html')],
             [('id', 'height'), ('type', 'int'), ('value', 20)],
-            [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-        ('source', b'<p>\nIm Bereich Limitplanung '
-         + b'sind die Pl\xe4ne und Auswertungen '
-         + b'zusammengefa\xdft.\n'),
-        ('title', b'Werteplan Monats\xfcbersicht'),
-        ('type', 'DTML Method'),
-    ]
-    result = [
-        ('id', 'body'),
-        ('owner', 'jan'),
-        ('props',
-         [[('id', 'msg_deleted'),
-           ('type', 'string'),
-           ('value', b'Datens\xc3\xa4tze gel\xc3\xb6scht!')],
-          [('id', 'content_type'), ('type', 'string'),
-           ('value', 'text/html')],
-          [('id', 'height'), ('type', 'int'), ('value', 20)],
-          [('id', 'expand'), ('type', 'boolean'), ('value', 1)]]),
-        ('source',
-         b'<p>\nIm Bereich Limitplanung sind die Pl\xc3\xa4ne '
-         b'und Auswertungen zusammengefa\xc3\x9ft.\n'),
-        ('title', b'Werteplan Monats\xc3\xbcbersicht'),
-        ('type', 'DTML Method')
-    ]
+            [('id', 'expand'), ('type', 'boolean'), ('value', 1)]
+        ],
+        'source': (
+            b'<p>\nIm Bereich Limitplanung '
+            b'sind die Pl\xe4ne und Auswertungen '
+            b'zusammengefa\xdft.\n'
+        ),
+        'title': b'Werteplan Monats\xfcbersicht',
+        'type': 'DTML Method',
+    }
+    result = {
+        'id': 'body',
+        'owner': 'jan',
+        'props': [
+            [('id', 'msg_deleted'),
+             ('type', 'string'),
+             ('value', b'Datens\xc3\xa4tze gel\xc3\xb6scht!')],
+            [('id', 'content_type'), ('type', 'string'),
+             ('value', 'text/html')],
+            [('id', 'height'), ('type', 'int'), ('value', 20)],
+            [('id', 'expand'), ('type', 'boolean'), ('value', 1)]
+        ],
+        'source': (
+            b'<p>\nIm Bereich Limitplanung sind die Pl\xc3\xa4ne '
+            b'und Auswertungen zusammengefa\xc3\x9ft.\n'
+        ),
+        'title': b'Werteplan Monats\xc3\xbcbersicht',
+        'type': 'DTML Method',
+    }
     assert six.PY3 or helpers.fix_encoding(example, 'iso-8859-1') == result
