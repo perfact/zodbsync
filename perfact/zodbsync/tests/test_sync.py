@@ -1126,9 +1126,15 @@ class TestSync():
             self.app.manage_addProduct['OFSP'].manage_addFolder(id='test')
 
         folder = self.app.test
-        mtime = folder._p_mtime
+        mtime1 = folder._p_mtime
 
         self.run('record', '/test')
         self.run('playback', '/test')
-        new_mtime = folder._p_mtime
-        assert mtime == new_mtime
+        mtime2 = folder._p_mtime
+        assert mtime1 == mtime2
+
+        path = self.repo.path + '/__root__/test/__meta__'
+        fsmtime1 = os.stat(path).st_mtime
+        self.run('record', '/test')
+        fsmtime2 = os.stat(path).st_mtime
+        assert fsmtime1 == fsmtime2
