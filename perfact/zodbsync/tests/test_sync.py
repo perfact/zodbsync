@@ -1116,3 +1116,19 @@ class TestSync():
         assert self.app.Test.meta_type == 'Folder'
         assert sorted(self.app.Test.objectIds()) == ['A', 'B', 'C']
         assert self.app.Test.A._p_oid == orig_oid
+
+    def test_no_unnecessary_writes(self):
+        """
+        Check that playing back an unchanged object does not actually update
+        it.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='test')
+
+        folder = self.app.test
+        mtime = folder._p_mtime
+
+        self.run('record', '/test')
+        self.run('playback', '/test')
+        new_mtime = folder._p_mtime
+        assert mtime == new_mtime

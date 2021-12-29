@@ -448,7 +448,7 @@ class ZODBSync:
 
         meta_fname = os.path.join(base_dir, '__meta__')
         if os.path.isfile(meta_fname):
-            with open(meta_fname, 'rb') as f:
+            with open(meta_fname, 'r') as f:
                 meta = f.read()
         else:
             meta = None
