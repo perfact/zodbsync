@@ -1138,3 +1138,18 @@ class TestSync():
         self.run('record', '/test')
         fsmtime2 = os.stat(path).st_mtime
         assert fsmtime1 == fsmtime2
+
+    def test_props_truthy_values(self):
+        """
+        Check that changing a boolean property's value from True to 1 can be
+        played back correctly. See #84
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProperty('testprop', True, 'boolean')
+            self.app.manage_changeProperties(testprop=1)
+        self.run('record', '/')
+        with self.runner.sync.tm:
+            self.app.manage_changeProperties(testprop=True)
+        self.run('playback', '/')
+        value = self.app.getProperty('testprop')
+        assert str(value) == '1'
