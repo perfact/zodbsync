@@ -1116,3 +1116,19 @@ class TestSync():
         assert self.app.Test.meta_type == 'Folder'
         assert sorted(self.app.Test.objectIds()) == ['A', 'B', 'C']
         assert self.app.Test.A._p_oid == orig_oid
+
+    def test_create_userfolder(self):
+        """
+        Check that we can recover from a state where the top-level userfolder
+        was deleted.
+        Note that we here call create_manager_user manually, but this is not
+        necessary when using zodbsync playback, since it is called upon
+        initialization of the ZODBSync class if the config variable is set
+        accordingly. But since the test tries to avoid tearing down and
+        recreating the class instance, we need to call it manually.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_delObjects('acl_users')
+            self.runner.sync.create_manager_user()
+        self.run('playback', '/')
+        assert self.app.acl_users.meta_type == 'User Folder'

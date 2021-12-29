@@ -278,7 +278,10 @@ class ZODBSync:
         """
         Make sure the manager user exists.
         """
-        userfolder = self.app.acl_users
+        userfolder = getattr(self.app, 'acl_users', None)
+        if userfolder is None:
+            self.app.manage_addProduct['OFSP'].manage_addUserFolder()
+            userfolder = self.app.acl_users
         user = userfolder.getUser(self.manager_user)
         if user is not None:
             return

@@ -1,4 +1,5 @@
 4.2.3.dev0
+  * Allow recreating the top-level User Folder if it is accidentally deleted.
 
 4.2.2
   * Handle changes between "Folder" and "Folder (Ordered)" in playback without
