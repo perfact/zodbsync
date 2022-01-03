@@ -209,10 +209,13 @@ class PropertiesObj(MixinModObj):
         props = data.get('props', [])
 
         new_ids = []
+        type_changed = []
         for prop in props:
             pd = dict(prop)
             new_ids.append(pd['id'])
             if obj.hasProperty(pd['id']):
+                if obj.getPropertyType(pd['id']) != pd['type']:
+                    type_changed.append(pd)
                 continue
             try:
                 obj.manage_addProperty(pd['id'], pd['value'], pd['type'])
@@ -234,6 +237,12 @@ class PropertiesObj(MixinModObj):
                 print("Ignoring AttributeError on property deletion")
             else:
                 raise
+
+        # Change type of properties, deleting and adding new
+        obj.manage_delProperties(ids=[pd['id'] for pd in type_changed])
+        for pd in type_changed:
+            obj.manage_addProperty(pd['id'], pd['value'], pd['type'])
+
         pd = helpers.prop_dict(data)
         obj.manage_changeProperties(**pd)
 
