@@ -468,7 +468,7 @@ class ZODBSync:
 
         if encoding is not None:
             # Translate file system data
-            meta = dict(fix_encoding(meta, encoding))
+            meta = fix_encoding(meta, encoding)
 
         return meta
 

@@ -220,9 +220,7 @@ def fix_encoding(data, encoding):  # pragma: nocover_py3
             pack.sort()
             repacked_props.append(pack)
         unpacked['props'] = repacked_props
-    repacked = list(unpacked.items())
-    repacked.sort()
-    return repacked
+    return unpacked
 
 
 def read_pdata(obj):
