@@ -204,6 +204,11 @@ class PropertiesObj(MixinModObj):
 
     @staticmethod
     def write(obj, data):
+        """
+        Delete any property that is superfluous or has the wrong type.
+        Add any property that is missing or has the wrong type.
+        Change any property that was not deleted and has the wrong value.
+        """
         props = [dict(prop) for prop in data.get('props', [])]
         ids = {prop['id'] for prop in props}
         vals = {prop['id']: prop['value'] for prop in props}
