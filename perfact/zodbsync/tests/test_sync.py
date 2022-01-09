@@ -505,8 +505,8 @@ class TestSync():
         self.run('playback', '/')
         assert self.app.getProperty('testprop') == 'test'
 
-    def test_changeproptype(self):
-        "Change the type of a property"
+    def test_changeprop(self):
+        "Change first the value and then the type of a property"
         with self.runner.sync.tm:
             self.app.manage_addProperty(
                 'testprop', 'test', 'string'
@@ -516,17 +516,18 @@ class TestSync():
         with open(fname, 'r') as f:
             content = f.read()
         data = dict(helpers.literal_eval(content))
-        prop = {
-            'id': 'testprop',
-            'type': 'int',
-            'value': 1,
-        }
-        data['props'] = [list(prop.items())]
-        with open(fname, 'w') as f:
-            f.write(zodbsync.mod_format(data))
-        self.run('playback', '/')
-        assert self.app.getProperty('testprop') == 1
-        assert self.app.getPropertyType('testprop') == 'int'
+        for ptype, pval in [('string', 'changed'), ('int', 1)]:
+            prop = {
+                'id': 'testprop',
+                'type': ptype,
+                'value': pval,
+            }
+            data['props'] = [list(prop.items())]
+            with open(fname, 'w') as f:
+                f.write(zodbsync.mod_format(data))
+            self.run('playback', '/')
+            assert self.app.getProperty('testprop') == pval
+            assert self.app.getPropertyType('testprop') == ptype
 
     def test_cacheable(self):
         "Add a RamCacheManager and use it for index_html"
