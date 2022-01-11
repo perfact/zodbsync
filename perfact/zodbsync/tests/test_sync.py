@@ -505,6 +505,23 @@ class TestSync():
         self.run('playback', '/')
         assert self.app.getProperty('testprop') == 'test'
 
+    def test_addtokenprop(self):
+        "Validate tokens are correctly written"
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            content = f.read()
+        data = dict(helpers.literal_eval(content))
+        prop = {
+            'id': 'testprop',
+            'type': 'tokens',
+            'value': ('123', '518'),
+        }
+        data['props'] = [list(prop.items())]
+        with open(fname, 'w') as f:
+            f.write(zodbsync.mod_format(data))
+        self.run('playback', '/')
+        assert self.app.getProperty('testprop') == ('123', '518')
+
     def test_changeprop(self):
         "Change first the value and then the type of a property"
         with self.runner.sync.tm:
