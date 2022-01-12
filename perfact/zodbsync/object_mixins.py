@@ -208,7 +208,7 @@ class PropertiesObj(MixinModObj):
         ids = {prop['id'] for prop in props}
         vals = {prop['id']: prop['value'] for prop in props}
         types = {prop['id']: prop['type'] for prop in props}
-        cur = obj.propdict()
+        cur = obj.propertyIds()
 
         # Delete any property that is superfluous or has the wrong type
         del_ids = [
@@ -216,30 +216,25 @@ class PropertiesObj(MixinModObj):
             if p != 'title'
             and (p not in ids or types[p] != obj.getPropertyType(p))
         ]
-        try:
-            if del_ids:
-                obj.manage_delProperties(ids=del_ids)
-        except zExceptions.BadRequest as e:
-            if str(e) == 'Cannot delete output_encoding':
-                print("Ignoring failed attempt to delete output_encoding")
-            else:
-                raise
-        except AttributeError as e:
-            if str(e) == 'alt':
-                print("Ignoring AttributeError on property deletion")
-            else:
-                raise
+        for p in del_ids:
+            try:
+                obj.manage_delProperties(ids=[p])
+            except zExceptions.BadRequest as e:
+                if str(e) == 'Cannot delete output_encoding':
+                    print("Ignoring failed attempt to delete output_encoding")
+                else:
+                    raise
 
         # Add any property that should exist but is missing
         for prop in ids:
             if prop not in cur or prop in del_ids:
-                obj.manage_addProperty(prop, vals[prop], types[prop])
+                obj._setProperty(prop, vals[prop], types[prop])
 
         # Change properties that are not deleted and have the wrong value
         chg = {
             p: vals[p]
             for p in ids
-            if p not in del_ids and vals[p] != obj.getProperty(p)
+            if p not in del_ids and p in cur and vals[p] != obj.getProperty(p)
         }
         if chg:
             obj.manage_changeProperties(**chg)
