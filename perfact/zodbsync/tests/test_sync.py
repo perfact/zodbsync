@@ -505,6 +505,47 @@ class TestSync():
         self.run('playback', '/')
         assert self.app.getProperty('testprop') == 'test'
 
+    def test_addtokenprop(self):
+        "Validate tokens are correctly written"
+        fname = self.repo.path + '/__root__/__meta__'
+        with open(fname, 'r') as f:
+            content = f.read()
+        data = dict(helpers.literal_eval(content))
+        prop = {
+            'id': 'testprop',
+            'type': 'tokens',
+            'value': ('123', '518'),
+        }
+        data['props'] = [list(prop.items())]
+        with open(fname, 'w') as f:
+            f.write(zodbsync.mod_format(data))
+        self.run('playback', '/')
+        assert self.app.getProperty('testprop') == ('123', '518')
+
+    def test_changeprop(self):
+        "Change first the value and then the type of a property"
+        with self.runner.sync.tm:
+            self.app.manage_addProperty(
+                'testprop', 'test', 'string'
+            )
+        fname = self.repo.path + '/__root__/__meta__'
+        self.run('record', '/')
+        with open(fname, 'r') as f:
+            content = f.read()
+        data = dict(helpers.literal_eval(content))
+        for ptype, pval in [('string', 'changed'), ('int', 1)]:
+            prop = {
+                'id': 'testprop',
+                'type': ptype,
+                'value': pval,
+            }
+            data['props'] = [list(prop.items())]
+            with open(fname, 'w') as f:
+                f.write(zodbsync.mod_format(data))
+            self.run('playback', '/')
+            assert self.app.getProperty('testprop') == pval
+            assert self.app.getPropertyType('testprop') == ptype
+
     def test_cacheable(self):
         "Add a RamCacheManager and use it for index_html"
         self.app.manage_addProduct[
