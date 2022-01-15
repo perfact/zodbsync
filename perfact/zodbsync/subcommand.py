@@ -214,7 +214,7 @@ class SubCommand(Namespace):
                     except subprocess.CalledProcessError:
                         # Make sure the call to abort is still done, even if
                         # for example the list of affected_files is too long
-                        pass
+                        self.logger.exception("Unable to show diff")
 
                 self.abort()
                 raise
