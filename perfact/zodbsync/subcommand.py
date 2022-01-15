@@ -208,8 +208,13 @@ class SubCommand(Namespace):
                     ]
                     self.logger.error("The cherry-pick failed due to the"
                                       " following difference:")
-                    self.gitcmd_run('diff', failed_commit + '~', 'HEAD', '--',
-                                    *affected_files)
+                    try:
+                        self.gitcmd_run('diff', failed_commit + '~', 'HEAD',
+                                        '--', *affected_files)
+                    except subprocess.CalledProcessError:
+                        # Make sure the call to abort is still done, even if
+                        # for example the list of affected_files is too long
+                        self.logger.exception("Unable to show diff")
 
                 self.abort()
                 raise

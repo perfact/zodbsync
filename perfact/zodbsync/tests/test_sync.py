@@ -1173,3 +1173,25 @@ class TestSync():
             self.runner.sync.create_manager_user()
         self.run('playback', '/')
         assert self.app.acl_users.meta_type == 'User Folder'
+
+    def test_no_unnecessary_writes(self):
+        """
+        Check that recording or playing back an unchanged object does not
+        actually update it.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='test')
+
+        folder = self.app.test
+        mtime1 = folder._p_mtime
+
+        self.run('record', '/test')
+        self.run('playback', '/test')
+        mtime2 = folder._p_mtime
+        assert mtime1 == mtime2
+
+        path = self.repo.path + '/__root__/test/__meta__'
+        fsmtime1 = os.stat(path).st_mtime
+        self.run('record', '/test')
+        fsmtime2 = os.stat(path).st_mtime
+        assert fsmtime1 == fsmtime2

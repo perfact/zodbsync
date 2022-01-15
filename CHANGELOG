@@ -1,4 +1,12 @@
 4.2.4.dev0
+  * Switch fix_encoding to return dict instead of list of tuples
+
+  * Make sure to roll back a failed `pick` even if the list of changed files is
+    too long for the command line (#92)
+
+  * Add test to check that unchanged objects and paths are not actually
+    updated
+
   * Correctly playback type changes of properties
 
 4.2.3
