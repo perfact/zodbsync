@@ -1,8 +1,6 @@
 import AccessControl.Permission
 import zExceptions
 
-from . import helpers
-
 """
 Handlers for reading and writing object information that can be implemented in
 addition to meta_type specific information
@@ -206,36 +204,40 @@ class PropertiesObj(MixinModObj):
 
     @staticmethod
     def write(obj, data):
-        props = data.get('props', [])
+        props = [dict(prop) for prop in data.get('props', [])]
+        ids = {prop['id'] for prop in props}
+        vals = {prop['id']: prop['value'] for prop in props}
+        types = {prop['id']: prop['type'] for prop in props}
+        cur = obj.propertyIds()
 
-        new_ids = []
-        for prop in props:
-            pd = dict(prop)
-            new_ids.append(pd['id'])
-            if obj.hasProperty(pd['id']):
-                continue
+        # Delete any property that is superfluous or has the wrong type
+        del_ids = [
+            p for p in cur
+            if p != 'title'
+            and (p not in ids or types[p] != obj.getPropertyType(p))
+        ]
+        for p in del_ids:
             try:
-                obj.manage_addProperty(pd['id'], pd['value'], pd['type'])
+                obj.manage_delProperties(ids=[p])
             except zExceptions.BadRequest as e:
-                print("Ignoring error when adding property: "+repr(e))
+                if str(e) == 'Cannot delete output_encoding':
+                    print("Ignoring failed attempt to delete output_encoding")
+                else:
+                    raise
 
-        # Delete surplus properties
-        old_ids = obj.propdict().keys()
-        del_ids = [a for a in old_ids if a not in new_ids+['title', ]]
-        try:
-            obj.manage_delProperties(ids=del_ids)
-        except zExceptions.BadRequest as e:
-            if str(e) == 'Cannot delete output_encoding':
-                print("Ignoring failed attempt to delete output_encoding")
-            else:
-                raise
-        except AttributeError as e:
-            if str(e) == 'alt':
-                print("Ignoring AttributeError on property deletion")
-            else:
-                raise
-        pd = helpers.prop_dict(data)
-        obj.manage_changeProperties(**pd)
+        # Add any property that should exist but is missing
+        for prop in ids:
+            if prop not in cur or prop in del_ids:
+                obj._setProperty(prop, vals[prop], types[prop])
+
+        # Change properties that are not deleted and have the wrong value
+        chg = {
+            p: vals[p]
+            for p in ids
+            if p not in del_ids and p in cur and vals[p] != obj.getProperty(p)
+        }
+        if chg:
+            obj.manage_changeProperties(**chg)
 
 
 class ZCacheableObj(MixinModObj):
