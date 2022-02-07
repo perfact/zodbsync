@@ -150,7 +150,14 @@ class SubCommand(Namespace):
             self.check_repo()
 
             try:
+
                 func(self, *args, **kwargs)
+
+                # Fail and roll back if we encounter broken zope objects
+                root_path = os.path.join(self.sync.base_dir, '__root__')
+                for cur_folder, dirs, files in os.walk(root_path):
+                    msg = 'Broken object found: %s' % cur_folder
+                    assert '__meta__' in files, msg
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
