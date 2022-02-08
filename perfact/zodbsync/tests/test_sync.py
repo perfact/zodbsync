@@ -1105,7 +1105,17 @@ class TestSync():
         self.run('record', '/')
 
         folder = self.repo.path + '/__root__/Test/'
-        os.mkdir(folder + 'new')
+
+        new_folder = folder + 'new'
+        os.mkdir(new_folder)
+
+        with open(os.path.join(new_folder, '__meta__'), 'w') as f:
+            f.write(zodbsync.mod_format({
+                "contents": [],
+                "title": "",
+                "type": "Folder",
+            }))
+
         with open(folder + '__meta__', 'w') as f:
             f.write(zodbsync.mod_format({
                 "contents": ["new", "exist"],
