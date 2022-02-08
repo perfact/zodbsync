@@ -1205,3 +1205,14 @@ class TestSync():
         self.run('record', '/test')
         fsmtime2 = os.stat(path).st_mtime
         assert fsmtime1 == fsmtime2
+
+    def test_no_meta_file(self):
+        """
+        Check that a missing meta file is detected and we run into an error
+        """
+
+        broken_obj = os.path.join(self.repo.path, '__root__', 'foo')
+        os.mkdir(broken_obj)
+
+        with pytest.raises(AssertionError):
+            self.run('playback', '/foo')
