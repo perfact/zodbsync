@@ -1111,7 +1111,6 @@ class TestSync():
 
         with open(os.path.join(new_folder, '__meta__'), 'w') as f:
             f.write(zodbsync.mod_format({
-                "contents": [],
                 "title": "",
                 "type": "Folder",
             }))
