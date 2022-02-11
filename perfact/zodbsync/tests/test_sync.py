@@ -1105,7 +1105,16 @@ class TestSync():
         self.run('record', '/')
 
         folder = self.repo.path + '/__root__/Test/'
-        os.mkdir(folder + 'new')
+
+        new_folder = folder + 'new'
+        os.mkdir(new_folder)
+
+        with open(os.path.join(new_folder, '__meta__'), 'w') as f:
+            f.write(zodbsync.mod_format({
+                "title": "",
+                "type": "Folder",
+            }))
+
         with open(folder + '__meta__', 'w') as f:
             f.write(zodbsync.mod_format({
                 "contents": ["new", "exist"],
@@ -1195,3 +1204,14 @@ class TestSync():
         self.run('record', '/test')
         fsmtime2 = os.stat(path).st_mtime
         assert fsmtime1 == fsmtime2
+
+    def test_no_meta_file(self):
+        """
+        Check that a missing meta file is detected and we run into an error
+        """
+
+        broken_obj = os.path.join(self.repo.path, '__root__', 'foo')
+        os.mkdir(broken_obj)
+
+        with pytest.raises(AssertionError):
+            self.run('playback', '/foo')

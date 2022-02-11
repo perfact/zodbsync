@@ -451,13 +451,11 @@ class ZODBSync:
         src_fname = src_fnames and src_fnames[0] or None
 
         meta_fname = os.path.join(base_dir, '__meta__')
-        if os.path.isfile(meta_fname):
-            with open(meta_fname, 'rb') as f:
-                meta_str = f.read()
-            meta = dict(literal_eval(meta_str))
-        else:
-            # if a meta file is missing, we assume a dummy folder
-            meta = {'title': '', 'type': 'Folder'}
+        assert os.path.isfile(meta_fname), 'Missing meta file: %s' % meta_fname
+
+        with open(meta_fname, 'rb') as f:
+            meta_str = f.read()
+        meta = dict(literal_eval(meta_str))
 
         if src_fname:
             with open(os.path.join(base_dir, src_fname), 'rb') as f:
