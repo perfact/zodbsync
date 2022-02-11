@@ -1215,3 +1215,9 @@ class TestSync():
 
         with pytest.raises(AssertionError):
             self.run('playback', '/foo')
+
+    def test_force_default_owner(self):
+        """
+        Check if the default owner can be forced via config
+        """
+        pass
