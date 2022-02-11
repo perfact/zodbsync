@@ -1,3 +1,6 @@
+4.3.0
+  * Check for missing meta files during git operation
+
 4.2.4
   * Switch fix_encoding to return dict instead of list of tuples
 
