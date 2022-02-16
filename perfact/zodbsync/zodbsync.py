@@ -119,7 +119,8 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None,
     # default owner. also when force_default_owner is set
     owner_is_default = meta.get('owner') == (['acl_users'], default_owner)
     if (default_owner and owner_is_default) or force_default_owner:
-        del meta['owner']
+        if 'owner' in meta:
+            del meta['owner']
 
     return meta
 
