@@ -1220,4 +1220,68 @@ class TestSync():
         """
         Check if the default owner can be forced via config
         """
-        pass
+
+        self.runner.sync.force_default_owner = True
+
+        # first test: owner from meta file pushed to app
+        folder = os.path.join(self.repo.path, '__root__', 'newfolder')
+        os.mkdir(folder)
+
+        with open(os.path.join(folder, '__meta__'), 'w') as f:
+            f.write(zodbsync.mod_format({
+                "title": "",
+                "type": "Folder",
+                "owner": "Somebody",  # i used to know
+            }))
+
+        self.run('playback', '/newfolder')
+
+        expected_owner = (['acl_users'], self.runner.sync.default_owner)
+
+        assert self.app.newfolder._owner == expected_owner
+
+        # second test: owner from zope read to meta file
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='another')
+
+        self.app.another._owner = 'Somebody'
+
+        self.run('record', '/')
+
+        meta = self.runner.sync.fs_read('another')
+
+        assert 'owner' not in meta
+
+    def test_force_default_owner_negative(self):
+        """
+        Negative test for force_default_owner setting: Make sure we see
+        to old behaviour without this setting being set
+        """
+
+        self.runner.sync.force_default_owner = False
+
+        # first test: owner from meta file pushed to app
+        folder = os.path.join(self.repo.path, '__root__', 'newfolder')
+        os.mkdir(folder)
+
+        with open(os.path.join(folder, '__meta__'), 'w') as f:
+            f.write(zodbsync.mod_format({
+                "title": "",
+                "type": "Folder",
+                "owner": "Somebody",  # i used to know
+            }))
+
+        self.run('playback', '/newfolder')
+        assert self.app.newfolder._owner == 'Somebody'
+
+        # second test: owner from zope read to meta file
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='another')
+
+        self.app.another._owner = 'Somebody'
+
+        self.run('record', '/')
+
+        meta = self.runner.sync.fs_read('another')
+
+        assert meta['owner'] == 'Somebody'
