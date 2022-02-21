@@ -63,6 +63,10 @@ upload objects to the ZODB are done by this user.
 This user is considered to be the default owner of objects if no other
 information is stored in the object.
 
+### `force_default_owner`
+Can be combined with `default_owner` to enforce a specific owner for objects
+in the ZODB.
+
 ### `datafs_path`
 The path to the location of the Data.fs file. This is needed for `zodbsync
 watch`.
