@@ -80,7 +80,8 @@ def obj_contents(obj):
     return sorted(func()) if func else []
 
 
-def mod_read(obj=None, onerrorstop=False, default_owner=None):
+def mod_read(obj=None, onerrorstop=False, default_owner=None,
+             force_default_owner=False):
     '''Build a consistent metadata dictionary for all types.'''
 
     # Known types:
@@ -115,16 +116,17 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None):
         meta.update(dict(handler.read(obj)))
 
     # if default owner is set, remove the owner attribute if it matches the
-    # default owner
-    if (default_owner is not None
-            and meta.get('owner', None) == (['acl_users'], default_owner)):
-        del meta['owner']
+    # default owner. also when force_default_owner is set
+    owner_is_default = meta.get('owner') == (['acl_users'], default_owner)
+    if (default_owner) and (owner_is_default or force_default_owner):
+        if 'owner' in meta:
+            del meta['owner']
 
     return meta
 
 
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
-              default_owner=None):
+              default_owner=None, force_default_owner=False):
     '''
     Given object data in <data>, store the object, creating it if it was
     missing. With <override> = True, this method will remove an existing object
@@ -138,7 +140,9 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     d = dict(data)
     meta_type = d['type']
 
-    if default_owner is not None and 'owner' not in d:
+    no_owner_given = 'owner' not in d
+
+    if (default_owner) and (no_owner_given or force_default_owner):
         d['owner'] = (['acl_users'], default_owner)
 
     if root is None:
@@ -234,6 +238,7 @@ class ZODBSync:
         self.app_dir = os.path.join(self.base_dir, self.site)
         self.manager_user = config.get('manager_user', 'perfact')
         self.default_owner = config.get('default_owner', 'perfact')
+        self.force_default_owner = config.get('force_default_owner', False)
 
         # Statistics
         self.num_obj_total = 1
@@ -490,7 +495,11 @@ class ZODBSync:
     def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''
         try:
-            data = mod_read(obj, default_owner=self.default_owner)
+            data = mod_read(
+                obj,
+                default_owner=self.default_owner,
+                force_default_owner=self.force_default_owner,
+            )
         except Exception:
             severity = 'Skipping' if skip_errors else 'ERROR'
             msg = '%s %s' % (severity, path)
@@ -610,7 +619,11 @@ class ZODBSync:
 
         try:
             srv_data = (
-                dict(mod_read(obj, default_owner=self.manager_user))
+                dict(mod_read(
+                    obj,
+                    default_owner=self.manager_user,
+                    force_default_owner=self.force_default_owner,
+                ))
                 if obj_exists else None
             )
         except Exception:
@@ -626,7 +639,8 @@ class ZODBSync:
                     obj_id=part,
                     override=self.override,
                     root=(obj if parent_obj is None else None),
-                    default_owner=self.default_owner
+                    default_owner=self.default_owner,
+                    force_default_owner=self.force_default_owner,
                 )
             except Exception:
                 # If we do not want to get errors from missing

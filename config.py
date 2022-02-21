@@ -16,6 +16,9 @@ create_manager_user = True
 # representation
 default_owner = 'perfact'
 
+# use default owner even if we're told otherwise by meta file
+force_default_owner = False
+
 # Base directory of the repository
 base_dir = '/opt/perfact/dbutils-zoperepo'
 
