@@ -118,7 +118,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None,
     # if default owner is set, remove the owner attribute if it matches the
     # default owner. also when force_default_owner is set
     owner_is_default = meta.get('owner') == (['acl_users'], default_owner)
-    if (default_owner and owner_is_default) or force_default_owner:
+    if (default_owner) and (owner_is_default or force_default_owner):
         if 'owner' in meta:
             del meta['owner']
 
@@ -142,7 +142,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
 
     no_owner_given = 'owner' not in d
 
-    if (default_owner and no_owner_given) or (force_default_owner):
+    if (default_owner) and (no_owner_given or force_default_owner):
         d['owner'] = (['acl_users'], default_owner)
 
     if root is None:

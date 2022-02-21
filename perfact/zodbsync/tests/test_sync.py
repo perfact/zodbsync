@@ -1231,7 +1231,7 @@ class TestSync():
             f.write(zodbsync.mod_format({
                 "title": "",
                 "type": "Folder",
-                "owner": "Somebody",  # i used to know
+                "owner": (['acl_users'], "Somebody"),
             }))
 
         self.run('playback', '/newfolder')
@@ -1244,7 +1244,7 @@ class TestSync():
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFolder(id='another')
 
-        self.app.another._owner = 'Somebody'
+        self.app.another._owner = (['acl_users'], "Somebody")
 
         self.run('record', '/')
 
@@ -1268,20 +1268,20 @@ class TestSync():
             f.write(zodbsync.mod_format({
                 "title": "",
                 "type": "Folder",
-                "owner": "Somebody",  # i used to know
+                "owner": (['acl_users'], "Somebody"),
             }))
 
         self.run('playback', '/newfolder')
-        assert self.app.newfolder._owner == 'Somebody'
+        assert self.app.newfolder._owner == (['acl_users'], "Somebody")
 
         # second test: owner from zope read to meta file
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFolder(id='another')
 
-        self.app.another._owner = 'Somebody'
+        self.app.another._owner = (['acl_users'], "Somebody")
 
         self.run('record', '/')
 
         meta = self.runner.sync.fs_read('another')
 
-        assert meta['owner'] == 'Somebody'
+        assert meta['owner'] == (['acl_users'], "Somebody")
