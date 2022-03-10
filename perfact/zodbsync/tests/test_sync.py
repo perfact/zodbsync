@@ -6,6 +6,7 @@ import six
 import subprocess
 import pickle
 import pytest
+import shutil
 
 import ZEO
 import transaction
@@ -22,6 +23,7 @@ from .. import helpers
 from .. import extedit
 from .. import object_types
 from . import environment as env
+from ..commands import watch
 
 
 class DummyResponse():
@@ -868,6 +870,47 @@ class TestSync():
             meta = f.read()
         self.watcher_step_until(watcher,
                                 lambda: "('title', '"+new_title+"')" in meta)
+
+    def test_watch_structure_changes_and_playback_deleted_folder(self, conn):
+        """
+        create structure while 'watch' command is running,
+        remove a folder, then play those changes back and check,
+        whether the step function correctly "crashes"
+        """
+
+        # start watch daemon
+        watcher = self.mkrunner('watch')
+        watcher.setup()
+        app = conn.app
+        folder_1 = "folder_1"
+        s_folder_1 = "s_folder_1"
+
+        # create folder and wait until watch notices change
+        with conn.tm:
+            app.manage_addFolder(id=folder_1)
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(
+                                    self.repo.path + '/__root__/'+folder_1))
+
+        # create subfolder and wait until watch notices change
+        with conn.tm:
+            app.folder_1.manage_addFolder(id=s_folder_1, title=s_folder_1)
+        path = self.repo.path + '/__root__/'+folder_1+'/'+s_folder_1
+        self.watcher_step_until(watcher,
+                                lambda: os.path.isdir(path))
+
+        # remove folder s_folder_1
+        shutil.rmtree(path)
+
+        # playback changes and check if those are existent in zodb
+        self.run('playback', '/')
+        # assert new_title == self.app.folder_1.s_folder_1.title
+
+        # wait for watch to notices played back changes
+        with pytest.raises(watch.TreeOutdatedException):
+            self.watcher_step_until(watcher, lambda: True)
+        # release the lock the same way the watcher process does
+        watcher.release_lock()
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
