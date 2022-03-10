@@ -904,7 +904,6 @@ class TestSync():
 
         # playback changes and check if those are existent in zodb
         self.run('playback', '/')
-        # assert new_title == self.app.folder_1.s_folder_1.title
 
         # wait for watch to notices played back changes
         with pytest.raises(watch.TreeOutdatedException):
