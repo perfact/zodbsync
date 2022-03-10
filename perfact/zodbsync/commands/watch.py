@@ -49,6 +49,12 @@ def _increment_txnid(s):
     return bytes(arr)
 
 
+class TreeOutdatedException(Exception):
+    """Exception which is raised if the internal tree structure
+    is not matching the actual Filesystem anymore"""
+    pass
+
+
 class Watch(SubCommand):
     """Periodically check for changes and record them"""
     # Connects to ZEO, builds a mirror of the tree structure of the objects,
@@ -311,7 +317,12 @@ class Watch(SubCommand):
                     )
                 )
                 os.makedirs(self.base_dir+newpath)
-                os.rename(self.base_dir+oldpath, self.base_dir+newpath)
+                try:
+                    os.rename(self.base_dir+oldpath, self.base_dir+newpath)
+                except OSError as err:
+                    if err.errno == 2:  # no such file or directory
+                        raise TreeOutdatedException()
+                    raise
                 self._update_path(child_oid, newpath)
 
         # go through new children and check if they have old parents
@@ -509,6 +520,10 @@ class Watch(SubCommand):
         else:
             self.spawned_setup()
         while not self.exit.is_set():
-            self.step()
+            try:
+                self.step()
+            except TreeOutdatedException:
+                self.release_lock()
+                self.exit.set()
             # a wait that is interrupted immediately if exit.set() is called
             self.exit.wait(interval)
