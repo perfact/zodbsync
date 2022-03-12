@@ -1,3 +1,8 @@
+4.3.0+dev0
+  * Add config variable to force default user usage
+
+  * Change recording of lists to use separate lines
+
 4.3.0
   * Check for missing meta files during git operation
 
