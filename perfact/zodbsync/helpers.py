@@ -190,26 +190,23 @@ def mod_format_lines(data, seprules=None, level=0, section=None):
         if len(data) == 1:
             lastsep = True
 
-    output = [opn]
+    result = [opn]
     for idx, item in enumerate(data):
         if level == 0:
             section = item[0]
-        rows = mod_format_lines(item, seprules, level+1, section)
-        addsep = lastsep or idx < len(data) - 1
+        lines = mod_format_lines(item, seprules, level+1, section)
+        if idx < len(data) - 1 or lastsep:
+            lines[-1] += ',' if linesep else ', '
         if linesep:
-            if addsep:
-                rows[-1] += ','
-            output.extend(['    ' + row for row in rows])
+            result.extend(['    ' + line for line in lines])
         else:
-            if addsep:
-                rows[-1] += ', '
-            output[-1] += rows[0]
-            output.extend(rows[1:])
+            result[-1] += lines[0]
+            result.extend(lines[1:])
     if linesep:
-        output.append(cls)
+        result.append(cls)
     else:
-        output[-1] += cls
-    return output
+        result[-1] += cls
+    return result
 
 
 def fix_encoding(data, encoding):  # pragma: nocover_py3
