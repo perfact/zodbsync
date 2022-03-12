@@ -174,6 +174,9 @@ def mod_format_lines(data, seprules=None, level=0, section=None):
     if isinstance(data, dict):
         data = sorted(data.items())
 
+    if not isinstance(data, (list, tuple)):
+        return [str_repr(data)]
+
     # start new line for each element
     linesep = level in seprules.get(section, [])
     # add separator after last element
@@ -187,29 +190,26 @@ def mod_format_lines(data, seprules=None, level=0, section=None):
         if len(data) == 1:
             lastsep = True
 
-    if isinstance(data, (list, tuple)):
-        output = [opn]
-        for idx, item in enumerate(data):
-            if level == 0:
-                section = item[0]
-            rows = mod_format_lines(item, seprules, level+1, section)
-            addsep = lastsep or idx < len(data) - 1
-            if linesep:
-                if addsep:
-                    rows[-1] += ','
-                output.extend(['    ' + row for row in rows])
-            else:
-                if addsep:
-                    rows[-1] += ', '
-                output[-1] += rows[0]
-                output.extend(rows[1:])
+    output = [opn]
+    for idx, item in enumerate(data):
+        if level == 0:
+            section = item[0]
+        rows = mod_format_lines(item, seprules, level+1, section)
+        addsep = lastsep or idx < len(data) - 1
         if linesep:
-            output.append(cls)
+            if addsep:
+                rows[-1] += ','
+            output.extend(['    ' + row for row in rows])
         else:
-            output[-1] += cls
-        return output
-
-    return [str_repr(data)]
+            if addsep:
+                rows[-1] += ', '
+            output[-1] += rows[0]
+            output.extend(rows[1:])
+    if linesep:
+        output.append(cls)
+    else:
+        output[-1] += cls
+    return output
 
 
 def fix_encoding(data, encoding):  # pragma: nocover_py3
