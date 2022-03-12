@@ -92,18 +92,14 @@ repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 repl = [('\\', '\\\\')] + sorted(repl.items())
 
 
-def str_repr(val, indent=''):
+def str_repr(val):
     '''
     Generic string representation of a value, used to serialize metadata.
 
     This function is similar to repr(), giving a string representation of val
     that can be stored to disk, read in again and fed into eval() in order to
     regain the data. It supports basic data types (None, bool, int, float),
-    strings (both bytes and unicode) and lists and tuples (with contents that
-    are themselves also supported). Other data types might also be supported
-    since it falls back to using repr(), but then the elements might be handled
-    differently (so if a dict contains string values, the special string
-    handling will no longer be used).
+    and strings (both bytes and unicode).
 
     The most notable difference to repr() is the handling of strings. One of
     the use cases of zodbsync is the transition of a ZODB from Python 2/Zope2
@@ -143,19 +139,6 @@ def str_repr(val, indent=''):
     a bytes array automatically decodes the bytes array.
     '''
 
-    if isinstance(val, list):
-        newindent = indent + '    '
-        rows = [
-            '{}{},'.format(newindent, str_repr(item, newindent))
-            for item in val
-        ]
-        rows.append(indent + ']')
-        return '[\n' + '\n'.join(rows)
-
-    if isinstance(val, tuple):
-        fmt = '({},)' if len(val) == 1 else '({})'
-        return fmt.format(', '.join([str_repr(item, indent) for item in val]))
-
     if six.PY2 and isinstance(val, bytes):  # pragma: nocover_py3
         # fall back to repr if val is not valid UTF-8
         try:
@@ -170,8 +153,63 @@ def str_repr(val, indent=''):
             return '"%s"' % val
         else:
             return "'%s'" % val.replace("'", "\\'")
+    else:
+        return repr(val)
 
-    return repr(val)
+
+def mod_format_lines(data, seprules=None, level=0, section=None):
+    '''Make a printable output of the given object data.
+    Dicts are converted to sorted lists of tuples, tuples and lists recurse
+    into the subelements. The top-level element should be a dict. Its keys are
+    passed as `section` into the recursion. `seprules` is a dictionary mapping
+    from section name to a list of levels which should be split into separate
+    lines if they contain an iterable.
+    Returns a list of strings which can be indented together or joined with
+    newlines at the end.
+    '''
+    if seprules is None:
+        seprules = {}
+
+    # Convert dictionary to sorted list of tuples (diff-friendly!)
+    if isinstance(data, dict):
+        data = sorted(data.items())
+
+    # start new line for each element
+    linesep = level in seprules.get(section, [])
+    # add separator after last element
+    lastsep = linesep
+
+    if isinstance(data, list):
+        opn, cls = '[', ']'
+
+    if isinstance(data, tuple):
+        opn, cls = '(', ')'
+        if len(data) == 1:
+            lastsep = True
+
+    if isinstance(data, (list, tuple)):
+        output = [opn]
+        for idx, item in enumerate(data):
+            if level == 0:
+                section = item[0]
+            rows = mod_format_lines(item, seprules, level+1, section)
+            addsep = lastsep or idx < len(data) - 1
+            if linesep:
+                if addsep:
+                    rows[-1] += ','
+                output.extend(['    ' + row for row in rows])
+            else:
+                if addsep:
+                    rows[-1] += ', '
+                output[-1] += rows[0]
+                output.extend(rows[1:])
+        if linesep:
+            output.append(cls)
+        else:
+            output[-1] += cls
+        return output
+
+    return [str_repr(data)]
 
 
 def fix_encoding(data, encoding):  # pragma: nocover_py3

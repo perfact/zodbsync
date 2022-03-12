@@ -22,7 +22,7 @@ except ImportError:
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
+from .helpers import mod_format_lines, to_string, literal_eval, fix_encoding, \
     remove_redundant_paths
 
 
@@ -34,24 +34,25 @@ except ImportError:
     pass
 
 
-def mod_format(data=None, indent=0, as_list=False):
+def mod_format(data=None, as_list=False, level=0, section=None):
     '''Make a printable output of the given object data. Indent the lines
-    with <indent> spaces. Return a string or a list of lines if
-    <as_list> is True.
+    with <indent> spaces. Return a string or a list of lines if <as_list> is
+    True.
+    Dicts are converted to sorted lists of tuples, tuples and lists recurse
+    into the subelements. The keys of the top-level dict are passed as
+    <section> to lower levels.
     '''
+    rules = {
+        None: [0],
+        'perms': [2, 4],
+        'props': [2, 5],
+        'roles': [2],
+        'local_roles': [2, 4],
+        'users': [2],
+        'bindings': [2],
+    }
 
-    # Convert dictionary to sorted list of tuples (diff-friendly!)
-    if isinstance(data, dict):
-        data = [(key, value) for key, value in data.items()]
-        data.sort()
-
-    # The data is now given by a list of tuples, each of which has two elements
-    # (diff-friendly version of a dict). The first element of the tuple is a
-    # string, while the second one might be any combination of lists, tuples
-    # and PODs (unicode, bytes, numbers, booleans ...). Usually, we keep each
-    # element in one line. An exception are lists with multiple elements, which
-    # allow an additional indentation, being split over multiple lines.
-    return str_repr(data) + '\n'
+    return '\n'.join(mod_format_lines(data, rules)) + '\n'
 
 
 def obj_contents(obj):
