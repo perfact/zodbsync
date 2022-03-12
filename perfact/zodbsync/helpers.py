@@ -92,7 +92,7 @@ repl.update({'\n': '\\n', '\r': '\\r', '\t': '\\t'})
 repl = [('\\', '\\\\')] + sorted(repl.items())
 
 
-def str_repr(val):
+def str_repr(val, indent=0):
     '''
     Generic string representation of a value, used to serialize metadata.
 
@@ -144,10 +144,16 @@ def str_repr(val):
     '''
 
     if isinstance(val, list):
-        return '[%s]' % ', '.join(str_repr(item) for item in val)
+        p = ' ' * 4
+        rows = [
+            '{}{},'.format(p * (indent+1), str_repr(item, indent+1))
+            for item in val
+        ]
+        rows.append(p * indent + ']')
+        return '[\n' + '\n'.join(rows)
     elif isinstance(val, tuple):
-        fmt = '(%s,)' if len(val) == 1 else '(%s)'
-        return fmt % ', '.join(str_repr(item) for item in val)
+        fmt = '({},)' if len(val) == 1 else '({})'
+        return fmt.format(', '.join(str_repr(item, indent) for item in val))
 
     if six.PY2 and isinstance(val, bytes):  # pragma: nocover_py3
         # fall back to repr if val is not valid UTF-8

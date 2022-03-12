@@ -51,27 +51,7 @@ def mod_format(data=None, indent=0, as_list=False):
     # and PODs (unicode, bytes, numbers, booleans ...). Usually, we keep each
     # element in one line. An exception are lists with multiple elements, which
     # allow an additional indentation, being split over multiple lines.
-    output = []
-    output.append('[')
-    for key, value in data:
-        key_repr = '    (%s, ' % str_repr(key)
-        if isinstance(value, list) and len(value) > 1:
-            # Non-trivial lists are split onto separate lines.
-            output.append(key_repr + '[')
-            for item in value:
-                output.append('        %s,' % str_repr(item))
-            output.append('        ]),')
-        else:
-            output.append(key_repr + '%s),' % str_repr(value))
-    output.append(']')
-
-    if as_list:
-        return output
-    else:
-        return ''.join([
-            '{}\n'.format(line)
-            for line in output
-        ])
+    return str_repr(data) + '\n'
 
 
 def obj_contents(obj):
