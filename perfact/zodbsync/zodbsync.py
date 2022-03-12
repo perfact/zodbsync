@@ -35,13 +35,10 @@ except ImportError:
 
 
 def mod_format(data=None):
-    '''Make a printable output of the given object data. Indent the lines
-    with <indent> spaces. Return a string or a list of lines if <as_list> is
-    True.
-    Dicts are converted to sorted lists of tuples, tuples and lists recurse
-    into the subelements. The keys of the top-level dict are passed as
-    <section> to lower levels.
-    '''
+    '''Make a printable output of the given object data.'''
+    # This defines which levels of each key should be split into separate lines
+    # if they contain an iterable.
+    
     rules = {
         None: [0],
         'perms': [2, 4],
