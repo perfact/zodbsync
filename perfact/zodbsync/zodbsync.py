@@ -34,7 +34,7 @@ except ImportError:
     pass
 
 
-def mod_format(data=None, as_list=False, level=0, section=None):
+def mod_format(data=None):
     '''Make a printable output of the given object data. Indent the lines
     with <indent> spaces. Return a string or a list of lines if <as_list> is
     True.
