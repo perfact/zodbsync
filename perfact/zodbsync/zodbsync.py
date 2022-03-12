@@ -36,9 +36,9 @@ except ImportError:
 
 def mod_format(data=None):
     '''Make a printable output of the given object data.'''
+
     # This defines which levels of each key should be split into separate lines
     # if they contain an iterable.
-    
     rules = {
         None: [0],
         'perms': [2, 4],
