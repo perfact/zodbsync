@@ -41,9 +41,12 @@ def mod_format(data=None):
     # if they contain an iterable.
     rules = {
         None: [0],
+        'contents': [2],
         'perms': [2, 4],
         'props': [2, 5],
         'roles': [2],
+        'advanced': [2],
+        'settings': [2],
         'local_roles': [2, 4],
         'users': [2],
         'bindings': [2],
