@@ -164,7 +164,9 @@ def str_repr_collect(data, seprules=None, output=None, level=0, section=None,
     into the subelements. The top-level element should be a dict, its keys are
     passed as `section` into the recursion.
     `seprules` is a dictionary mapping from section name to a list of levels
-    which should be split into separate lines if they contain an iterable.
+    which should be split into separate lines if they contain an iterable, in
+    addition to the default (split the zeroth level and split the second one if
+    it is a list).
     `nl` is the newline character together with possible indentation depending
     on the number of levels that were split into separate lines on the way to
     this level.
@@ -183,7 +185,9 @@ def str_repr_collect(data, seprules=None, output=None, level=0, section=None,
         return output
 
     # start new line for each element
-    linesep = level in seprules.get(section, [])
+    linesep = (level == 0
+               or level == 2 and isinstance(data, list)
+               or level in seprules.get(section, []))
     # add separator after last element - usually only for lists that are split
     lastsep = linesep
 

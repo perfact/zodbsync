@@ -38,18 +38,11 @@ def mod_format(data=None):
     '''Make a printable output of the given object data.'''
 
     # This defines which levels of each key should be split into separate lines
-    # if they contain an iterable.
+    # if they contain an iterable, in addition to the default rule
     rules = {
-        None: [0],
-        'contents': [2],
-        'perms': [2, 4],
-        'props': [2, 5],
-        'roles': [2],
-        'advanced': [2],
-        'settings': [2],
-        'local_roles': [2, 4],
-        'users': [2],
-        'bindings': [2],
+        'perms': [4],
+        'props': [5],
+        'local_roles': [4],
     }
 
     return ''.join(str_repr_collect(data, rules)) + '\n'
