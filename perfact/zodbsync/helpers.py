@@ -157,29 +157,34 @@ def str_repr(val):
         return repr(val)
 
 
-def mod_format_lines(data, seprules=None, level=0, section=None):
-    '''Make a printable output of the given object data.
+def str_repr_collect(data, seprules=None, output=None, level=0, section=None,
+                     nl='\n'):
+    '''Collect a printable output of the given object data into a string list.
     Dicts are converted to sorted lists of tuples, tuples and lists recurse
-    into the subelements. The top-level element should be a dict. Its keys are
-    passed as `section` into the recursion. `seprules` is a dictionary mapping
-    from section name to a list of levels which should be split into separate
-    lines if they contain an iterable.
-    Returns a list of strings which can be indented together or joined with
-    newlines at the end.
+    into the subelements. The top-level element should be a dict, its keys are
+    passed as `section` into the recursion.
+    `seprules` is a dictionary mapping from section name to a list of levels
+    which should be split into separate lines if they contain an iterable.
+    `nl` is the newline character together with possible indentation depending
+    on the number of levels that were split into separate lines on the way to
+    this level.
     '''
     if seprules is None:
         seprules = {}
+    if output is None:
+        output = []
 
     # Convert dictionary to sorted list of tuples (diff-friendly!)
     if isinstance(data, dict):
         data = sorted(data.items())
 
     if not isinstance(data, (list, tuple)):
-        return [str_repr(data)]
+        output.append(str_repr(data))
+        return output
 
     # start new line for each element
     linesep = level in seprules.get(section, [])
-    # add separator after last element
+    # add separator after last element - usually only for lists that are split
     lastsep = linesep
 
     if isinstance(data, list):
@@ -190,23 +195,21 @@ def mod_format_lines(data, seprules=None, level=0, section=None):
         if len(data) == 1:
             lastsep = True
 
-    result = [opn]
+    output.append(opn)
+    incnl = nl + '    '
     for idx, item in enumerate(data):
         if level == 0:
             section = item[0]
-        lines = mod_format_lines(item, seprules, level+1, section)
-        if idx < len(data) - 1 or lastsep:
-            lines[-1] += ',' if linesep else ', '
         if linesep:
-            result.extend(['    ' + line for line in lines])
+            output.append(incnl)
+            str_repr_collect(item, seprules, output, level+1, section, incnl)
+            output.append(',')
         else:
-            result[-1] += lines[0]
-            result.extend(lines[1:])
-    if linesep:
-        result.append(cls)
-    else:
-        result[-1] += cls
-    return result
+            str_repr_collect(item, seprules, output, level+1, section, nl)
+            if idx < len(data) - 1 or lastsep:
+                output.append(', ')
+    output.append(nl+cls if linesep else cls)
+    return output
 
 
 def fix_encoding(data, encoding):  # pragma: nocover_py3

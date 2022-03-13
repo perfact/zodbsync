@@ -22,7 +22,7 @@ except ImportError:
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import mod_format_lines, to_string, literal_eval, fix_encoding, \
+from .helpers import str_repr_collect, to_string, literal_eval, fix_encoding, \
     remove_redundant_paths
 
 
@@ -49,7 +49,7 @@ def mod_format(data=None):
         'bindings': [2],
     }
 
-    return '\n'.join(mod_format_lines(data, rules)) + '\n'
+    return ''.join(str_repr_collect(data, rules)) + '\n'
 
 
 def obj_contents(obj):
