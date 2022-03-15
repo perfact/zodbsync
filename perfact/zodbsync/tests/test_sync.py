@@ -23,7 +23,6 @@ from .. import helpers
 from .. import extedit
 from .. import object_types
 from . import environment as env
-from ..commands import watch
 
 
 class DummyResponse():
@@ -906,10 +905,7 @@ class TestSync():
         self.run('playback', '/')
 
         # wait for watch to notices played back changes
-        with pytest.raises(watch.TreeOutdatedException):
-            self.watcher_step_until(watcher, lambda: True)
-        # release the lock the same way the watcher process does
-        watcher.release_lock()
+        self.watcher_step_until(watcher, watcher.exit.is_set)
 
     def test_commit_on_branch_and_exec_merge(self):
         '''

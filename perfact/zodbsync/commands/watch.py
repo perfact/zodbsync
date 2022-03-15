@@ -494,22 +494,29 @@ class Watch(SubCommand):
         changes."""
         self.unregister_signals()
         self.acquire_lock(timeout=300)
-        self.register_signals()
+        try:
+            self.register_signals()
 
-        start_txnid = _increment_txnid(self.last_visible_txn)
-        self._set_last_visible_txn()
-        self._read_changed_oids(
-            txn_start=start_txnid,
-            txn_stop=self.last_visible_txn,
-        )
-        # make sure we see a consistent snapshot, even though we later
-        # abort this transaction since we do not write anything
-        self.sync.tm.begin()
-        self._update_objects()
-        self.sync.tm.abort()
+            start_txnid = _increment_txnid(self.last_visible_txn)
+            self._set_last_visible_txn()
+            self._read_changed_oids(
+                txn_start=start_txnid,
+                txn_stop=self.last_visible_txn,
+            )
+            # make sure we see a consistent snapshot, even though we later
+            # abort this transaction since we do not write anything
+            self.sync.tm.begin()
+            self._update_objects()
+            self.sync.tm.abort()
 
-        self._store_last_visible_txn()
-        self.release_lock()
+            self._store_last_visible_txn()
+        except TreeOutdatedException:
+            self.logger.info(
+                'Exiting due to inconsistencies in filesystem'
+            )
+            self.exit.set()
+        finally:
+            self.release_lock()
 
     def run(self, interval=10):
         """ Setup and run in a loop. """
@@ -520,10 +527,6 @@ class Watch(SubCommand):
         else:
             self.spawned_setup()
         while not self.exit.is_set():
-            try:
-                self.step()
-            except TreeOutdatedException:
-                self.release_lock()
-                self.exit.set()
+            self.step()
             # a wait that is interrupted immediately if exit.set() is called
             self.exit.wait(interval)
