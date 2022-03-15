@@ -322,6 +322,7 @@ class Watch(SubCommand):
                 except OSError as err:
                     if err.errno == 2:  # no such file or directory
                         raise TreeOutdatedException()
+                    self.logger.exception('Unexpected OSError')
                     raise
                 self._update_path(child_oid, newpath)
 
