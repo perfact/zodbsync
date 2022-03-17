@@ -80,6 +80,49 @@ def test_str_repr():
         assert helpers.str_repr(orig) == compare
 
 
+def test_str_repr_collect():
+    """
+    Check recursive version of str_repr with a typical configuration for what
+    is split to occupy one line for each element, reproducing the shown
+    formatting.
+    """
+    fmt = """
+[
+    ('content', [
+        'a',
+        'b',
+    ]),
+    ('owner', (['acl_users'], 'admin')),
+    ('perms', [
+        ('View', False, [
+            'Role_1',
+            'Role_2',
+        ]),
+    ]),
+    ('props', [
+        [('id', 'columns'), ('type', 'tokens'), ('value', (
+            'a',
+            'b',
+            'c',
+        ))],
+        [('id', 'other'), ('type', 'lines'), ('value', (
+            'x',
+            'y',
+            'z',
+        ))],
+        [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
+    ]),
+]
+    """.strip()
+
+    data = dict(helpers.literal_eval(fmt))
+    rules = {
+        'perms': [4],
+        'props': [5],
+    }
+    assert fmt == ''.join(helpers.str_repr_collect(data, rules))
+
+
 def test_literal_eval():
     tests = [
         ["b'test'", b'test'],
