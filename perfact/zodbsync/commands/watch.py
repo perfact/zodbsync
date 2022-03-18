@@ -49,6 +49,12 @@ def _increment_txnid(s):
     return bytes(arr)
 
 
+class TreeOutdatedException(Exception):
+    """Exception which is raised if the internal tree structure
+    is not matching the actual Filesystem anymore"""
+    pass
+
+
 class Watch(SubCommand):
     """Periodically check for changes and record them"""
     # Connects to ZEO, builds a mirror of the tree structure of the objects,
@@ -311,7 +317,13 @@ class Watch(SubCommand):
                     )
                 )
                 os.makedirs(self.base_dir+newpath)
-                os.rename(self.base_dir+oldpath, self.base_dir+newpath)
+                try:
+                    os.rename(self.base_dir+oldpath, self.base_dir+newpath)
+                except OSError as err:
+                    if err.errno == 2:  # no such file or directory
+                        raise TreeOutdatedException()
+                    self.logger.exception('Unexpected OSError')
+                    raise
                 self._update_path(child_oid, newpath)
 
         # go through new children and check if they have old parents
@@ -483,22 +495,29 @@ class Watch(SubCommand):
         changes."""
         self.unregister_signals()
         self.acquire_lock(timeout=300)
-        self.register_signals()
+        try:
+            self.register_signals()
 
-        start_txnid = _increment_txnid(self.last_visible_txn)
-        self._set_last_visible_txn()
-        self._read_changed_oids(
-            txn_start=start_txnid,
-            txn_stop=self.last_visible_txn,
-        )
-        # make sure we see a consistent snapshot, even though we later
-        # abort this transaction since we do not write anything
-        self.sync.tm.begin()
-        self._update_objects()
-        self.sync.tm.abort()
+            start_txnid = _increment_txnid(self.last_visible_txn)
+            self._set_last_visible_txn()
+            self._read_changed_oids(
+                txn_start=start_txnid,
+                txn_stop=self.last_visible_txn,
+            )
+            # make sure we see a consistent snapshot, even though we later
+            # abort this transaction since we do not write anything
+            self.sync.tm.begin()
+            self._update_objects()
+            self.sync.tm.abort()
 
-        self._store_last_visible_txn()
-        self.release_lock()
+            self._store_last_visible_txn()
+        except TreeOutdatedException:
+            self.logger.info(
+                'Exiting due to inconsistencies in filesystem'
+            )
+            self.exit.set()
+        finally:
+            self.release_lock()
 
     def run(self, interval=10):
         """ Setup and run in a loop. """
