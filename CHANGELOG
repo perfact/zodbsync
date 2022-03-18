@@ -1,3 +1,10 @@
+4.3.1
+  * Add new config variable to force default user usage
+
+  * Avoid piping git output to pager
+
+  * Restart on filesystem diff
+
 4.3.0
   * Check for missing meta files during git operation
 
