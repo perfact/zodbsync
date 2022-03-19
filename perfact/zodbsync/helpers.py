@@ -165,6 +165,9 @@ class StrRepr:
     list of levels which should be split into separate lines if they contain an
     iterable, in addition to the default (split the zeroth level and split the
     second one if it is a list).
+    `legacy` mode turns off line splitting for iterables with less than two
+    items and puts the closing bracket on the same indentation level as the
+    items except for the top level.
     '''
     def _collect(self, data, level=0, nl='\n'):
         "Internal recursion worker"
@@ -177,6 +180,8 @@ class StrRepr:
         linesep = (level == 0
                    or level == 2 and isinstance(data, list)
                    or level in self.seprules.get(self.section, []))
+        if self.legacy and len(data) < 2:
+            linesep = False
         # add separator after last element - usually only for lists that are
         # split
         lastsep = linesep
@@ -202,13 +207,18 @@ class StrRepr:
                 self._collect(item, level+1, nl)
                 if idx < len(data) - 1 or lastsep:
                     self.output.append(', ')
-        self.output.append(nl+cls if linesep else cls)
+        if self.legacy and linesep and level > 0:
+            self.output.append(incnl+cls)
+        else:
+            self.output.append(nl+cls if linesep else cls)
 
-    def __call__(self, data, seprules=None):
+    def __call__(self, data, seprules=None, legacy=False):
         "Collect output parts recursively and return their concatenation"
         self.output = []
         self.section = None
         self.seprules = seprules or {}
+        self.legacy = legacy
+
         if isinstance(data, dict):
             data = sorted(data.items())
         self._collect(data)
