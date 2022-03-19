@@ -28,17 +28,19 @@ class Reformat(SubCommand):
 
     @SubCommand.with_lock
     def run(self):
-        start = self.head()
+        start = self.args.commit
         commits = self.gitcmd_output(
             'log', '--format=%H', '--reverse',
             '{}..HEAD'.format(start)
         ).strip().split('\n')
 
         self.gitcmd_run('reset', '--hard', start)
+        paths = []
         for root, dirs, files in os.walk(self.config['base_dir']):
             if '__meta__' in files:
-                self.reformat([os.path.join(root, '__meta__')])
-        self.gitcmd_run('commit', '-a', '-m', 'zodbsync reformat')
+                paths.append(os.path.join(root, '__meta__'))
+        if self.reformat(paths):
+            self.gitcmd_run('commit', '-a', '-m', 'zodbsync reformat')
         for commit in commits:
             cur = self.head()
             paths = list({
