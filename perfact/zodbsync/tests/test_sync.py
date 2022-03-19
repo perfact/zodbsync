@@ -1323,3 +1323,40 @@ class TestSync():
         meta = self.runner.sync.fs_read('another')
 
         assert meta['owner'] == (['acl_users'], "Somebody")
+
+    def test_reformat(self):
+        """
+        Make a couple of commits with changes to a meta file using the legacy
+        format. Then reformat them, checking that no error occurs.
+        """
+        folder = os.path.join(self.repo.path, '__root__/Test')
+        os.mkdir(folder)
+        fname = os.path.join(folder, '__meta__')
+
+        def store(data):
+            with open(fname, 'w') as f:
+                f.write(helpers.StrRepr()(data, legacy=True))
+            self.gitrun('add', '__root__/Test/__meta__')
+            self.gitrun('commit', '-m', 'Test')
+
+        store({
+            'title': 'Zope',
+            'roles': ['A'],
+            'perms': [('View', False, ['Anonymous'])],
+        })
+
+        store({
+            'title': 'Other',
+            'roles': ['A', 'B'],
+            'perms': [('View', True, ['Anonymous', 'A'])],
+        })
+
+        store({
+            'title': 'Other',
+            'props': [
+                [('id', 'columns'), ('type', 'tokens'),
+                 ('value', ('a', 'b', 'c'))],
+            ]
+        })
+
+        self.run('reformat', self.initial_commit)
