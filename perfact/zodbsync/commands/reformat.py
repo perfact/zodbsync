@@ -4,6 +4,7 @@ import os
 
 from ..subcommand import SubCommand
 from ..helpers import StrRepr, literal_eval
+from ..zodbsync import mod_format
 
 
 class Reformat(SubCommand):
@@ -35,16 +36,18 @@ class Reformat(SubCommand):
         ).strip().split('\n')
 
         self.gitcmd_run('reset', '--hard', start)
+        base = os.path.join(self.config['base_dir'])
         paths = []
-        for root, dirs, files in os.walk(self.config['base_dir']):
+        for root, dirs, files in os.walk(base):
             if '__meta__' in files:
-                paths.append(os.path.join(root, '__meta__'))
+                paths.append(os.path.join(base, root, '__meta__'))
         if self.reformat(paths):
             self.gitcmd_run('commit', '-a', '-m', 'zodbsync reformat')
         for commit in commits:
             cur = self.head()
             paths = list({
-                line for line in self.gitcmd_output(
+                os.path.join(base, line)
+                for line in self.gitcmd_output(
                     'diff', '--name-only', '--no-renames', commit + '~', commit
                 ).strip().split('\n')
                 if line
@@ -69,15 +72,10 @@ class Reformat(SubCommand):
             with open(path) as f:
                 orig = f.read()
             data = literal_eval(orig)
-            rules = {
-                'perms': [4],
-                'props': [5],
-                'local_roles': [4],
-            }
             if legacy:
                 fmt = StrRepr()(data, legacy=True)
             else:
-                fmt = StrRepr()(data, rules)
+                fmt = mod_format(data)
             if orig == fmt:
                 continue
             with open(path, 'w') as f:

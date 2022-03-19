@@ -1327,7 +1327,8 @@ class TestSync():
     def test_reformat(self):
         """
         Make a couple of commits with changes to a meta file using the legacy
-        format. Then reformat them, checking that no error occurs.
+        format. Then reformat them, checking that no error occurs and that the
+        final state uses the new formatting.
         """
         folder = os.path.join(self.repo.path, '__root__/Test')
         os.mkdir(folder)
@@ -1360,3 +1361,17 @@ class TestSync():
         })
 
         self.run('reformat', self.initial_commit)
+        with open(fname) as f:
+            fmt = f.read()
+        assert fmt.strip().split('\n') == [
+            "[",
+            "    ('props', [",
+            "        [('id', 'columns'), ('type', 'tokens'), ('value', (",
+            "            'a',",
+            "            'b',",
+            "            'c',",
+            "        ))],",
+            "    ]),",
+            "    ('title', 'Other'),",
+            "]",
+        ]
