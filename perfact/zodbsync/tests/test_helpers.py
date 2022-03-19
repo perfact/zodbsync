@@ -141,7 +141,7 @@ def test_StrReprLegacy():
         [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
         ]),
 ]
-""".strip() + '\n'
+    """.strip() + '\n'
     data = dict(helpers.literal_eval(fmt))
     assert fmt == helpers.StrRepr()(data, legacy=True)
 
