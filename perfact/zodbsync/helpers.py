@@ -157,63 +157,62 @@ def str_repr(val):
         return repr(val)
 
 
-def str_repr_collect(data, seprules=None, output=None, level=0, section=None,
-                     nl='\n'):
-    '''Collect a printable output of the given object data into a string list.
+class StrRepr:
+    '''Create a printable output of the given object data.
     Dicts are converted to sorted lists of tuples, tuples and lists recurse
-    into the subelements. The top-level element should be a dict, its keys are
-    passed as `section` into the recursion.
-    `seprules` is a dictionary mapping from section name to a list of levels
-    which should be split into separate lines if they contain an iterable, in
-    addition to the default (split the zeroth level and split the second one if
-    it is a list).
-    `nl` is the newline character together with possible indentation depending
-    on the number of levels that were split into separate lines on the way to
-    this level.
+    into their elements. The top-level element should be a dict.
+    `seprules` is a dictionary mapping from keys of the top-level dict to a
+    list of levels which should be split into separate lines if they contain an
+    iterable, in addition to the default (split the zeroth level and split the
+    second one if it is a list).
     '''
-    if seprules is None:
-        seprules = {}
-    if output is None:
-        output = []
+    def _collect(self, data, level=0, nl='\n'):
+        "Internal recursion worker"
 
-    # Convert dictionary to sorted list of tuples (diff-friendly!)
-    if isinstance(data, dict):
-        data = sorted(data.items())
+        if not isinstance(data, (list, tuple)):
+            self.output.append(str_repr(data))
+            return
 
-    if not isinstance(data, (list, tuple)):
-        output.append(str_repr(data))
-        return output
+        # start new line for each element
+        linesep = (level == 0
+                   or level == 2 and isinstance(data, list)
+                   or level in self.seprules.get(self.section, []))
+        # add separator after last element - usually only for lists that are
+        # split
+        lastsep = linesep
 
-    # start new line for each element
-    linesep = (level == 0
-               or level == 2 and isinstance(data, list)
-               or level in seprules.get(section, []))
-    # add separator after last element - usually only for lists that are split
-    lastsep = linesep
+        if isinstance(data, list):
+            opn, cls = '[', ']'
 
-    if isinstance(data, list):
-        opn, cls = '[', ']'
+        if isinstance(data, tuple):
+            opn, cls = '(', ')'
+            if len(data) == 1:
+                lastsep = True
 
-    if isinstance(data, tuple):
-        opn, cls = '(', ')'
-        if len(data) == 1:
-            lastsep = True
+        self.output.append(opn)
+        incnl = nl + '    '
+        for idx, item in enumerate(data):
+            if level == 0:
+                self.section = item[0]
+            if linesep:
+                self.output.append(incnl)
+                self._collect(item, level+1, incnl)
+                self.output.append(',')
+            else:
+                self._collect(item, level+1, nl)
+                if idx < len(data) - 1 or lastsep:
+                    self.output.append(', ')
+        self.output.append(nl+cls if linesep else cls)
 
-    output.append(opn)
-    incnl = nl + '    '
-    for idx, item in enumerate(data):
-        if level == 0:
-            section = item[0]
-        if linesep:
-            output.append(incnl)
-            str_repr_collect(item, seprules, output, level+1, section, incnl)
-            output.append(',')
-        else:
-            str_repr_collect(item, seprules, output, level+1, section, nl)
-            if idx < len(data) - 1 or lastsep:
-                output.append(', ')
-    output.append(nl+cls if linesep else cls)
-    return output
+    def __call__(self, data, seprules=None):
+        "Collect output parts recursively and return their concatenation"
+        self.output = []
+        self.section = None
+        self.seprules = seprules or {}
+        if isinstance(data, dict):
+            data = sorted(data.items())
+        self._collect(data)
+        return ''.join(self.output) + '\n'
 
 
 def fix_encoding(data, encoding):  # pragma: nocover_py3

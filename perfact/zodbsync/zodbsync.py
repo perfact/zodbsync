@@ -22,7 +22,7 @@ except ImportError:
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import str_repr_collect, to_string, literal_eval, fix_encoding, \
+from .helpers import StrRepr, to_string, literal_eval, fix_encoding, \
     remove_redundant_paths
 
 
@@ -45,7 +45,7 @@ def mod_format(data=None):
         'local_roles': [4],
     }
 
-    return ''.join(str_repr_collect(data, rules)) + '\n'
+    return StrRepr()(data, rules)
 
 
 def obj_contents(obj):
