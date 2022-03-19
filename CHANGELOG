@@ -1,8 +1,13 @@
-4.3.0+dev0
-  * Add config variable to force default user usage
-
+4.3.1+dev0
   * Change recording of meta files to split several iterables over several
     lines
+
+4.3.1
+  * Add new config variable to force default user usage
+
+  * Avoid piping git output to pager
+
+  * Restart on filesystem diff
 
 4.3.0
   * Check for missing meta files during git operation

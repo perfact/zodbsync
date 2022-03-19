@@ -58,7 +58,8 @@ class SubCommand(Namespace):
         return wrapper
 
     def gitcmd(self, *args):
-        return ['git', '-C', self.sync.base_dir] + list(args)
+        # use "--no-pager" instead of "-P" for compatibility / readability
+        return ['git', '--no-pager', '-C', self.sync.base_dir] + list(args)
 
     def gitcmd_run(self, *args):
         '''Wrapper to run a git command.'''
