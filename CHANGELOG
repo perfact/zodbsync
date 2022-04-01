@@ -1,6 +1,5 @@
-4.3.1+dev0
-  * Change recording of meta files to split several iterables over several
-    lines
+4.3.2
+  * Make meta files more diff-friendly
 
 4.3.1
   * Add new config variable to force default user usage
