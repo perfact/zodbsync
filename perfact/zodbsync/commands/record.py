@@ -74,7 +74,8 @@ class Record(SubCommand):
             smtp.quit()
 
         if self.args.autoreset:
-            reset = Reset(sync=self.sync, logger=self.logger)
+            reset = Reset(sync=self.sync, logger=self.logger,
+                          config=self.config)
             parser = argparse.ArgumentParser()
             parser.add_argument('--no-lock', action='store_true')
             reset.add_args(parser)

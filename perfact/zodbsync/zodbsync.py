@@ -22,7 +22,7 @@ except ImportError:
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import str_repr, to_string, literal_eval, fix_encoding, \
+from .helpers import StrRepr, to_string, literal_eval, fix_encoding, \
     remove_redundant_paths
 
 
@@ -34,44 +34,18 @@ except ImportError:
     pass
 
 
-def mod_format(data=None, indent=0, as_list=False):
-    '''Make a printable output of the given object data. Indent the lines
-    with <indent> spaces. Return a string or a list of lines if
-    <as_list> is True.
-    '''
+def mod_format(data=None):
+    '''Make a printable output of the given object data.'''
 
-    # Convert dictionary to sorted list of tuples (diff-friendly!)
-    if isinstance(data, dict):
-        data = [(key, value) for key, value in data.items()]
-        data.sort()
+    # This defines which levels of each key should be split into separate lines
+    # if they contain an iterable, in addition to the default rule
+    rules = {
+        'perms': [4],
+        'props': [5],
+        'local_roles': [4],
+    }
 
-    # The data is now given by a list of tuples, each of which has two elements
-    # (diff-friendly version of a dict). The first element of the tuple is a
-    # string, while the second one might be any combination of lists, tuples
-    # and PODs (unicode, bytes, numbers, booleans ...). Usually, we keep each
-    # element in one line. An exception are lists with multiple elements, which
-    # allow an additional indentation, being split over multiple lines.
-    output = []
-    output.append('[')
-    for key, value in data:
-        key_repr = '    (%s, ' % str_repr(key)
-        if isinstance(value, list) and len(value) > 1:
-            # Non-trivial lists are split onto separate lines.
-            output.append(key_repr + '[')
-            for item in value:
-                output.append('        %s,' % str_repr(item))
-            output.append('        ]),')
-        else:
-            output.append(key_repr + '%s),' % str_repr(value))
-    output.append(']')
-
-    if as_list:
-        return output
-    else:
-        return ''.join([
-            '{}\n'.format(line)
-            for line in output
-        ])
+    return StrRepr()(data, rules)
 
 
 def obj_contents(obj):

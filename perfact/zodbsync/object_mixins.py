@@ -189,11 +189,8 @@ class PropertiesObj(MixinModObj):
                 del prop['mode']
                 prop['value'] = val
 
-        props = [list(a.items()) for a in props]
+        props = [sorted(a.items()) for a in props]
 
-        # Keep the items sorted and hash-friendly
-        for item in props:
-            item.sort()
         # Sort the properties
         props.sort()
 

@@ -22,7 +22,7 @@ The package should be installed using `pip` in the same virt-env as `zope`, p.e.
     zope/bin/pip install git+https://github.com/perfact/zodbsync
 
 On PerFact systems, it should automatically be pulled by the `requirements.txt`
-of the package `perfact-dbutils-zope2` and included there. If installing on an
+of the package `perfact-dbutils-zope4` and included there. If installing on an
 older system, run
 
     sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
@@ -37,8 +37,7 @@ development/testing purposes
 Use the `config.py` as a starting point for your configuration. At the moment,
 it is not automatically installed. The canonical path for the configuration is
 `/etc/perfact/modsync/zodb.py`, so if you do not want to supply the path to
-the configuration when calling the scripts, copy the configuration file there
-(this will change in a future version).
+the configuration when calling the scripts, copy the configuration file there.
 
 The most important settings are:
 ### `conf_path` or `wsgi_conf_path`
@@ -150,6 +149,10 @@ This allows commands like the following:
     zodbsync exec "git reset --hard COMMIT"
     zodbsync exec "git revert COMMIT"
 
+### `zodbsync reset`
+
+Shorthand for `zodbsync exec "git reset --hard COMMIT"`
+
 ### `zodbsync pick`
 
 As a sepcial case of `exec`, this wraps `git cherry-pick` and takes git commits
@@ -199,6 +202,19 @@ option `--no-lock`. For example:
 
 Although this particular example can now be better achieved with `zodbsync
 exec`.
+
+### `zodbsync reformat`
+
+With version 4.3.2, the formatting of meta files was changed to become more
+diff-friendly, placing, for example, lists of roles for a specific permission
+onto one line each. When transferring commits from a system that used the old
+recording to one that uses the new one, `zodbsync reformat` can be used to
+rewrite commits of the old to the new version. Use a separate repository clone,
+check out the starting point and pick the commits that used the old formatting
+on top of it. Now execute `zodbsync reformat START`, which will add a commit
+that reformats the complete repository after `START`, followed by rewritten
+commits that correspond to the original ones, but using the new formatting.
+Finally, pick these commits onto the target system.
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
