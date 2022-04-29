@@ -1339,8 +1339,8 @@ class TestSync():
             self.gitrun('commit', '-m', 'Test')
 
         def store(data, strip=False):
-            # With strip, simulate an older version where there was no newline
-            # at the end of meta files
+            # With strip=False, simulate an older version where there was no
+            # newline at the end of meta files
             with open(fname, 'w') as f:
                 s = helpers.StrRepr()(data, legacy=True)
                 if strip:
