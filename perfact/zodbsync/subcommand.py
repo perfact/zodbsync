@@ -62,11 +62,13 @@ class SubCommand(Namespace):
         return ['git', '--no-pager', '-C', self.config['base_dir']
                 ] + list(args)
 
-    def gitcmd_run(self, *args, **kw):
+    def gitcmd_run(self, *args):
         '''Wrapper to run a git command.'''
-        opts = {'check': True}
-        opts.update(kw)
-        subprocess.run(self.gitcmd(*args), **opts)
+        subprocess.check_call(self.gitcmd(*args))
+
+    def gitcmd_try(self, *args):
+        '''Wrapper to run a git command.'''
+        subprocess.call(self.gitcmd(*args))
 
     def gitcmd_output(self, *args):
         '''Wrapper to run a git command and return the output.'''

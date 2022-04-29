@@ -1334,9 +1334,14 @@ class TestSync():
         os.mkdir(folder)
         fname = os.path.join(folder, '__meta__')
 
-        def store(data):
+        def store(data, strip=False):
+            # With strip, simulate an older version where there was no newline
+            # at the end of meta files
             with open(fname, 'w') as f:
-                f.write(helpers.StrRepr()(data, legacy=True))
+                s = helpers.StrRepr()(data, legacy=True)
+                if strip:
+                    s = s.strip()
+                f.write(s)
             self.gitrun('add', '__root__/Test/__meta__')
             self.gitrun('commit', '-m', 'Test')
 
@@ -1350,7 +1355,7 @@ class TestSync():
             'title': 'Other',
             'roles': ['A', 'B'],
             'perms': [('View', True, ['Anonymous', 'A'])],
-        })
+        }, strip=True)
 
         store({
             'title': 'Other',

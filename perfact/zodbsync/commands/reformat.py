@@ -56,14 +56,14 @@ class Reformat(SubCommand):
             if self.reformat(metas, True):
                 self.gitcmd_run('commit', '-a', '-m', 'reverse')
             self.gitcmd_run('checkout', '--no-overlay', commit, '--', *paths)
-            self.gitcmd_run('commit', '--no-edit', '-c', commit, check=False)
+            self.gitcmd_try('commit', '--no-edit', '-c', commit)
             self.reformat(metas)
             # Squash commits together with original message
             self.gitcmd_run('reset', cur)
             while paths:
                 self.gitcmd_run('add', *paths[:100])
                 del paths[:100]
-            self.gitcmd_run('commit', '--no-edit', '-c', commit, check=False)
+            self.gitcmd_try('commit', '--no-edit', '-c', commit)
 
     def reformat(self, paths, legacy=False):
         changed = False
