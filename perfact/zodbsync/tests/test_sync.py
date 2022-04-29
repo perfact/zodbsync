@@ -1334,6 +1334,10 @@ class TestSync():
         os.mkdir(folder)
         fname = os.path.join(folder, '__meta__')
 
+        def commit():
+            self.gitrun('add', '__root__/Test/__meta__')
+            self.gitrun('commit', '-m', 'Test')
+
         def store(data, strip=False):
             # With strip, simulate an older version where there was no newline
             # at the end of meta files
@@ -1342,8 +1346,7 @@ class TestSync():
                 if strip:
                     s = s.strip()
                 f.write(s)
-            self.gitrun('add', '__root__/Test/__meta__')
-            self.gitrun('commit', '-m', 'Test')
+            commit()
 
         store({
             'title': 'Zope',
@@ -1356,6 +1359,12 @@ class TestSync():
             'roles': ['A', 'B'],
             'perms': [('View', True, ['Anonymous', 'A'])],
         }, strip=True)
+
+        # Add a commit that deletes the object while it does not end in a
+        # newline. A naive cherry-pick would result in a merge conflict.
+        shutil.rmtree(folder)
+        commit()
+        os.mkdir(folder)
 
         store({
             'title': 'Other',
