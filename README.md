@@ -216,6 +216,8 @@ that reformats the complete repository after `START`, followed by rewritten
 commits that correspond to the original ones, but using the new formatting.
 Finally, pick these commits onto the target system.
 
+Hint: This requires `git` in version 2.22 or above.
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,
