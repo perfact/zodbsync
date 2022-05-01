@@ -67,7 +67,7 @@ class SubCommand(Namespace):
         subprocess.check_call(self.gitcmd(*args))
 
     def gitcmd_try(self, *args):
-        '''Wrapper to run a git command.'''
+        '''Wrapper to run a git command, ignoring return code.'''
         subprocess.call(self.gitcmd(*args))
 
     def gitcmd_output(self, *args):
