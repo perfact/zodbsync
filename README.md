@@ -155,7 +155,7 @@ Shorthand for `zodbsync exec "git reset --hard COMMIT"`
 
 ### `zodbsync pick`
 
-As a sepcial case of `exec`, this wraps `git cherry-pick` and takes git commits
+As a special case of `exec`, this wraps `git cherry-pick` and takes git commits
 to be applied as arguments.
 This is useful if some development has been done in a branch or on a remote
 system that has to be deployed to the current system. It then becomes possible
@@ -209,12 +209,37 @@ With version 4.3.2, the formatting of meta files was changed to become more
 diff-friendly, placing, for example, lists of roles for a specific permission
 onto one line each. When transferring commits from a system that used the old
 recording to one that uses the new one, `zodbsync reformat` can be used to
-rewrite commits of the old to the new version. Use a separate repository clone,
-check out the starting point and pick the commits that used the old formatting
-on top of it. Now execute `zodbsync reformat START`, which will add a commit
-that reformats the complete repository after `START`, followed by rewritten
-commits that correspond to the original ones, but using the new formatting.
-Finally, pick these commits onto the target system.
+rewrite commits of the old to the new version.
+
+Use a separate repository clone, check out the starting point and pick the
+commits that used the old formatting on top of it. Executing `reformat` will
+add a commit that reformats the complete repository after the starting point,
+followed by rewritten commits that correspond to the original ones, but using
+the new formatting. Finally, pick these commits onto the target system.
+Detailed steps:
+
+  * find the commit ID of the first commit you want to reformat,
+    this ID will be referred to as `START`
+
+  * from the source branch or system, check out the commit before `START`
+    and create a work branch
+    * `git checkout START~`
+    * `git checkout -b <work-branch>`
+
+  * pick the commits to be reformatted into the work branch
+    * `git cherry-pick -Xno-renames <commit-ids ...>`
+
+  * run `reformat`: this will create a commit between `START~` and `START`
+    containing the reformatting of the entire repo from old to new format and
+    applies the following commits as if they had been committed using the new
+    format
+    * `zodbsync reformat START~`
+
+  * if the project also contains commits made after the format change,
+    `cherry-pick` them into the work branch now
+
+  * push the work branch to the target system and `zodbsync pick` the commits
+    (except the `zodbsync reformat` commit)
 
 Hint: This requires `git` in version 2.22 or above.
 
