@@ -1,3 +1,7 @@
+4.3.4
+  * Add support for a whitespace-separated list of recipient addresses for the
+    codechange email.
+
 4.3.3
   * Make reformat robust against newline changes
 
