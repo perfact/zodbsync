@@ -73,7 +73,6 @@ class Record(SubCommand):
             msg['From'] = self.config.get('codechange_sender',
                                           'codechanges@perfact.de')
 
-
             smtp = smtplib.SMTP('localhost')
             smtp.sendmail(msg['From'], recipients, msg.as_string())
             smtp.quit()
