@@ -65,12 +65,17 @@ class Record(SubCommand):
             msg = MIMEText(status, 'plain', 'utf-8')
             msg['Subject'] = 'Commit summary on {} ({})'.format(pfsystemname,
                                                                 pfsystemid)
-            msg['To'] = codechg_mail
+
+            recipients = codechg_mail.split()
+            for recipient in recipients:
+                msg['To'] = recipient
+
             msg['From'] = self.config.get('codechange_sender',
                                           'codechanges@perfact.de')
 
+
             smtp = smtplib.SMTP('localhost')
-            smtp.sendmail(msg['From'], [codechg_mail, ], msg.as_string())
+            smtp.sendmail(msg['From'], recipients, msg.as_string())
             smtp.quit()
 
         if self.args.autoreset:
