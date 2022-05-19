@@ -32,6 +32,9 @@ development/testing purposes
 
     sudo -H /usr/share/perfact/zope4/bin/pip install git+https://github.com/perfact/zodbsync@test --upgrade
 
+Note that executing the tests requires ODBC C headers to be installed. On
+Debian-like systems, install the package `unixodbc-dev`.
+
 ## Configuration
 
 Use the `config.py` as a starting point for your configuration. At the moment,
