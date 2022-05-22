@@ -385,3 +385,18 @@ def load_config(filename, name='config'):
         for name in dir(mod)
         if not name.startswith('_')
     }
+
+
+# Helper for handling transaction IDs (which are byte strings of length 8)
+def increment_txnid(s):
+    ''' add 1 to s, but for s being a string of bytes'''
+    arr = bytearray(s)
+    pos = len(arr)-1
+    while pos >= 0:
+        if arr[pos] == 255:
+            arr[pos] = 0
+            pos -= 1
+        else:
+            arr[pos] += 1
+            break
+    return bytes(arr)

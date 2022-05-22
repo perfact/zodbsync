@@ -16,37 +16,8 @@ import subprocess
 import ZODB.FileStorage
 
 from ..subcommand import SubCommand
-from ..helpers import remove_redundant_paths
+from ..helpers import remove_redundant_paths, increment_txnid
 from ..zodbsync import mod_read
-
-
-# Helpers for handling transaction IDs (which are byte strings of length 8)
-def _decrement_txnid(s):
-    ''' subtract 1 from s, but for s being a string of bytes'''
-    arr = bytearray(s)
-    pos = len(arr)-1
-    while pos >= 0:
-        if arr[pos] == 0:
-            arr[pos] = 255
-            pos -= 1
-        else:
-            arr[pos] -= 1
-            break
-    return bytes(arr)
-
-
-def _increment_txnid(s):
-    ''' add 1 to s, but for s being a string of bytes'''
-    arr = bytearray(s)
-    pos = len(arr)-1
-    while pos >= 0:
-        if arr[pos] == 255:
-            arr[pos] = 0
-            pos -= 1
-        else:
-            arr[pos] += 1
-            break
-    return bytes(arr)
 
 
 class TreeOutdatedException(Exception):
@@ -422,7 +393,7 @@ class Watch(SubCommand):
             paths = ['/']
         else:
             self.txnid_on_disk = base64.b64decode(self.txnid_on_disk)
-            txn_start = _increment_txnid(self.txnid_on_disk)
+            txn_start = increment_txnid(self.txnid_on_disk)
 
             # obtain all object ids affected by transactions between (the one
             # in last_txn + 1) and (the currently visible one) (incl.)
@@ -498,7 +469,7 @@ class Watch(SubCommand):
         try:
             self.register_signals()
 
-            start_txnid = _increment_txnid(self.last_visible_txn)
+            start_txnid = increment_txnid(self.last_visible_txn)
             self._set_last_visible_txn()
             self._read_changed_oids(
                 txn_start=start_txnid,
