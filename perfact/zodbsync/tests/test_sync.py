@@ -1392,6 +1392,7 @@ class TestSync():
             'roles': ['A'],
             'perms': [('View', False, ['Anonymous'])],
         })
+        start = self.get_head_id()
 
         store({
             'title': 'Other',
@@ -1413,7 +1414,7 @@ class TestSync():
             ]
         })
 
-        self.run('reformat', self.initial_commit)
+        self.run('reformat', start)
         with open(fname) as f:
             fmt = f.read()
         assert fmt.strip().split('\n') == [
