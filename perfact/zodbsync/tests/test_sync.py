@@ -216,6 +216,8 @@ class TestSync():
         with self.runner.sync.tm:
             add(id='test', text='test')
         self.run('record', '/', '--commit')
+        # Additional run that does no commit since nothing changed
+        self.run('record', '/', '--commit')
         assert os.path.isdir(os.path.join(self.repo.path, '__root__/test'))
         commits = self.gitoutput('log', '--format=%s')
         assert commits == "Generic commit message.\ninit\n"
