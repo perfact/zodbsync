@@ -235,6 +235,14 @@ class TestSync():
         assert commits == "init\n"
         assert 'test' not in self.app.objectIds()
 
+    def test_record_unsupported(self):
+        """Check that reading /error_log yields an unsupported marker or an
+        error."""
+        obj = self.runner.sync.app.error_log
+        assert 'unsupported' in zodbsync.mod_read(obj)
+        with pytest.raises(AssertionError):
+            zodbsync.mod_read(obj, onerrorstop=True)
+
     def test_playback(self):
         '''
         Record everything, change /index_html, play it back and check if the
@@ -1209,6 +1217,7 @@ class TestSync():
         a type change.
         Afterwards, change back to Folder and again check that the children
         stay the same.
+        Also change the type of a folder without children.
         """
         def add(parent, fid):
             parent.manage_addProduct['OFSP'].manage_addFolder(id=fid)
@@ -1243,6 +1252,17 @@ class TestSync():
         assert self.app.Test.meta_type == 'Folder'
         assert sorted(self.app.Test.objectIds()) == ['A', 'B', 'C']
         assert self.app.Test.A._p_oid == orig_oid
+
+        with self.runner.sync.tm:
+            self.app.Test.manage_delObjects(ids=['A', 'B', 'C'])
+        self.run('record', '/')
+        with open(meta, 'w') as f:
+            f.write(zodbsync.mod_format({
+                'title': 'change',
+                'type': 'Folder (Ordered)',
+            }))
+        self.run('playback', '/Test', '--override')
+        assert self.app.Test.meta_type == 'Folder (Ordered)'
 
     def test_create_userfolder(self):
         """
