@@ -108,11 +108,22 @@ class SubCommand(Namespace):
             'rev-parse', '--abbrev-ref', 'HEAD'
         ).strip()
 
+        # probably detached head due to remote checkout ...
+        if current == 'HEAD':
+            current = self.gitcmd_output(
+                'branch', '--remote', '--contains', 'HEAD'
+            ).strip()
+
         branches = {}  # branchname -> commitid
-        output = self.gitcmd_output('show-ref', '--heads')
+        output = self.gitcmd_output('show-ref')
         for line in output.strip().split('\n'):
-            commit, refname = line.split()
-            refname = refname[len('refs/heads/'):]
+            commit, refname_raw = line.split()
+            refname_parts = refname_raw.split('/')
+            if len(refname_parts) < 3:
+                continue
+            if refname_parts[1] not in ('heads', 'remotes'):
+                continue
+            refname = '/'.join(refname_parts[2:])
             branches[refname] = commit
 
         return (current, branches)
