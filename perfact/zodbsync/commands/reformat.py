@@ -30,10 +30,11 @@ class Reformat(SubCommand):
     @SubCommand.with_lock
     def run(self):
         start = self.args.commit
-        commits = self.gitcmd_output(
+        commits_raw = self.gitcmd_output(
             'log', '--format=%H', '--reverse',
             '{}..HEAD'.format(start)
-        ).strip().split('\n')
+        )
+        commits = [c for c in commits_raw.strip().split('\n') if c]
 
         self.gitcmd_run('reset', '--hard', start)
         base = os.path.join(self.config['base_dir'])
