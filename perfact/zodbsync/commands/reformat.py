@@ -37,11 +37,11 @@ class Reformat(SubCommand):
         commits = [c for c in commits_raw.strip().split('\n') if c]
 
         self.gitcmd_run('reset', '--hard', start)
-        base = os.path.join(self.config['base_dir'])
+        base = self.config['base_dir']
         paths = []
-        for root, dirs, files in os.walk(base):
+        for root, dirs, files in os.walk(os.path.join(base, '__root__')):
             if '__meta__' in files:
-                paths.append(os.path.join(base, root, '__meta__'))
+                paths.append(os.path.join(root, '__meta__'))
         if self.reformat(paths):
             self.gitcmd_run('commit', '-a', '-m', 'zodbsync reformat')
         for commit in commits:

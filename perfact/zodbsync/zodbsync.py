@@ -17,7 +17,7 @@ import Zope2.App.startup
 import App.config
 try:
     from Zope2.Startup.run import configure_wsgi as configure_zope
-except ImportError:
+except ImportError:  # pragma: nocover_py3
     from Zope2.Startup.run import configure as configure_zope
 
 # Plugins for handling different object types
@@ -30,7 +30,7 @@ from .helpers import StrRepr, to_string, literal_eval, fix_encoding, \
 try:
     from Shared.DC.ZRDB import Connection
     Connection.Connection.connect_on_load = False
-except ImportError:
+except ImportError:  # pragma: no cover
     pass
 
 
@@ -164,7 +164,7 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     return obj
 
 
-def obj_modtime(obj):
+def obj_modtime(obj):  # pragma: no cover
     '''
     Allow access to private method of an object to read out the modtime.
     '''
@@ -285,8 +285,6 @@ class ZODBSync:
         )
 
         self.logger.info('Using user %s' % self.manager_user)
-        if not hasattr(user, 'aq_base'):
-            user = user.__of__(uf)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
 
         self.tm.begin()

@@ -55,7 +55,7 @@ class Record(SubCommand):
 
         # only send a mail if something has changed
         codechg_mail = self.config.get('codechange_mail', False)
-        if codechg_mail:
+        if codechg_mail:  # pragma: no cover
             self.logger.info('Commit was done! Sending mail...')
             pfsystemid = open('/etc/pfsystemid').read().strip()
             pfsystemname = open('/etc/pfsystemname').read().strip()

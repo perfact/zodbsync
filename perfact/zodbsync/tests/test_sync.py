@@ -3,6 +3,7 @@ import time
 import os.path
 import base64
 import six
+import json
 import subprocess
 import pickle
 import pytest
@@ -29,8 +30,20 @@ class DummyResponse():
     """
     For mocking the request in extedit test
     """
-    def __init__(self):
+    def __init__(self, app):
         self.headers = {}
+        self.app = app
+
+    def __enter__(self):
+        self.orig_request = self.app.REQUEST
+        self.app.REQUEST = helpers.Namespace(
+            _auth='dummy',
+            RESPONSE=self,
+        )
+        return self
+
+    def __exit__(self, *args):
+        self.app.REQUEST = self.orig_request
 
     def setHeader(self, key, value):
         self.headers[key] = value
@@ -203,6 +216,8 @@ class TestSync():
         with self.runner.sync.tm:
             add(id='test', text='test')
         self.run('record', '/', '--commit')
+        # Additional run that does no commit since  nothing changed
+        self.run('record', '/', '--commit')
         assert os.path.isdir(os.path.join(self.repo.path, '__root__/test'))
         commits = self.gitoutput('log', '--format=%s')
         assert commits == "Generic commit message.\ninit\n"
@@ -219,6 +234,14 @@ class TestSync():
         commits = self.gitoutput('log', '--format=%s')
         assert commits == "init\n"
         assert 'test' not in self.app.objectIds()
+
+    def test_record_unsupported(self):
+        """Check that reading /error_log yields an unsupported marker or an
+        error."""
+        obj = self.runner.sync.app.error_log
+        assert 'unsupported' in zodbsync.mod_read(obj)
+        with pytest.raises(AssertionError):
+            zodbsync.mod_read(obj, onerrorstop=True)
 
     def test_playback(self):
         '''
@@ -713,19 +736,6 @@ class TestSync():
         """
         Update /index_html using the external editor launcher
         """
-        resp = DummyResponse()
-        orig_request = self.app.REQUEST
-        self.app.REQUEST = helpers.Namespace(
-            _auth='dummy',
-            RESPONSE=resp,
-        )
-
-        # Read control file
-        content = extedit.launch(
-            self.app,
-            self.app.index_html,
-            '/index_html',
-        )
         header_lines = [
             'url: index_html',
             'path: //index_html',
@@ -733,46 +743,83 @@ class TestSync():
             'meta-type: Page Template',
             'content-type: text/html',
         ]
-        headers, orig_source = content.split('\n\n', 1)
-        assert headers == '\n'.join(header_lines)
-        assert resp.headers['Content-Type'] == 'application/x-perfact-zopeedit'
-
-        # Update to new content
         new_source = 'test'
-        if encoding:
-            orig_source, new_source = [
-                helpers.to_string(base64.b64encode(helpers.to_bytes(item)))
-                for item in [orig_source, new_source]
-            ]
-        res = extedit.launch(
-            self.app,
-            self.app.index_html,
-            '/index_html',
-            source=new_source,
-            orig_source=orig_source,
-            encoding=encoding,
-        )
-        assert 'success' in res
-        assert resp.headers['Content-Type'] == 'application/json'
-        assert self.app.index_html._text == 'test'
+        with DummyResponse(self.app) as resp:
+            # Read control file
+            content = extedit.launch(
+                self.app,
+                self.app.index_html,
+                '/index_html',
+            )
+            headers, orig_source = content.split('\n\n', 1)
+            assert headers == '\n'.join(header_lines)
+            assert resp.headers['Content-Type'] == (
+                'application/x-perfact-zopeedit'
+            )
 
-        # Try the update again, which must fail because the orig_source no
-        # longer matches
-        res = extedit.launch(
-            self.app,
-            self.app.index_html,
-            '/index_html',
-            source=new_source,
-            orig_source=orig_source,
-            encoding=encoding,
-        )
-        assert 'error' in res
+            # Update to new content
+            if encoding:
+                orig_source, new_source = [
+                    helpers.to_string(base64.b64encode(helpers.to_bytes(item)))
+                    for item in [orig_source, new_source]
+                ]
+            res = extedit.launch(
+                self.app,
+                self.app.index_html,
+                '/index_html',
+                source=new_source,
+                orig_source=orig_source,
+                encoding=encoding,
+            )
+            assert 'success' in res
+            assert resp.headers['Content-Type'] == 'application/json'
+            assert self.app.index_html._text == 'test'
 
-        # We reuse the connection between tests, so better restore this
-        self.app.REQUEST = orig_request
+            # Try the update again, which must fail because the orig_source no
+            # longer matches
+            res = extedit.launch(
+                self.app,
+                self.app.index_html,
+                '/index_html',
+                source=new_source,
+                orig_source=orig_source,
+                encoding=encoding,
+            )
+            assert 'error' in json.loads(res)
+
+            # Check for error on invalid path
+            res = extedit.launch(
+                self.app,
+                self.app,
+                '/nonexist',
+                source='',
+                orig_source='',
+            )
+            assert res == '{"error": "/nonexist not found"}'
 
     def test_extedit_base64(self):
         self.test_extedit(encoding='base64')
+
+    def test_extedit_binary(self):
+        "Test with binary file that is not valid UTF-8"
+        self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        with DummyResponse(self.app):
+            extedit.launch(
+                self.app,
+                self.app,
+                '/blob',
+                source=helpers.to_string(base64.b64encode(b'\xff')),
+                orig_source='',
+                encoding='base64',
+            )
+            assert self.app.blob.data == b'\xff'
+
+            res = extedit.launch(
+                self.app,
+                self.app.blob,
+                '/blob',
+            )
+            assert res.endswith('\n\n/w==')
 
     def meta_file_path(self, *folders):
         """
@@ -1170,6 +1217,7 @@ class TestSync():
         a type change.
         Afterwards, change back to Folder and again check that the children
         stay the same.
+        Also change the type of a folder without children.
         """
         def add(parent, fid):
             parent.manage_addProduct['OFSP'].manage_addFolder(id=fid)
@@ -1204,6 +1252,17 @@ class TestSync():
         assert self.app.Test.meta_type == 'Folder'
         assert sorted(self.app.Test.objectIds()) == ['A', 'B', 'C']
         assert self.app.Test.A._p_oid == orig_oid
+
+        with self.runner.sync.tm:
+            self.app.Test.manage_delObjects(ids=['A', 'B', 'C'])
+        self.run('record', '/')
+        with open(meta, 'w') as f:
+            f.write(zodbsync.mod_format({
+                'title': 'change',
+                'type': 'Folder (Ordered)',
+            }))
+        self.run('playback', '/Test', '--override')
+        assert self.app.Test.meta_type == 'Folder (Ordered)'
 
     def test_create_userfolder(self):
         """
@@ -1353,6 +1412,7 @@ class TestSync():
             'roles': ['A'],
             'perms': [('View', False, ['Anonymous'])],
         })
+        start = self.get_head_id()
 
         store({
             'title': 'Other',
@@ -1374,7 +1434,7 @@ class TestSync():
             ]
         })
 
-        self.run('reformat', self.initial_commit)
+        self.run('reformat', start)
         with open(fname) as f:
             fmt = f.read()
         assert fmt.strip().split('\n') == [

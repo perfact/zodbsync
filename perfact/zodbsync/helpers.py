@@ -32,10 +32,7 @@ def to_string(value, enc='utf-8'):
         return value.encode(enc)
     if isinstance(value, six.binary_type):  # pragma: nocover_py2
         return value.decode(enc)
-    try:
-        return str(value)
-    except Exception:
-        raise ValueError("could not convert '%s' to string!" % repr(value))
+    return str(value)
 
 
 def to_ustring(value, enc='utf-8'):
@@ -46,10 +43,7 @@ def to_ustring(value, enc='utf-8'):
     if isinstance(value, six.binary_type):
         return value.decode(enc, 'ignore')
 
-    try:
-        return to_ustring(str(value))
-    except Exception:
-        raise ValueError("could not convert '%s' to ustring!" % repr(value))
+    return to_ustring(str(value))
 
 
 def to_bytes(value, enc='utf-8'):
@@ -60,10 +54,7 @@ def to_bytes(value, enc='utf-8'):
         return value
     if isinstance(value, six.text_type):
         return value.encode(enc)
-    try:
-        return to_bytes(str(value))
-    except Exception:
-        raise ValueError("could not convert '%s' to bytes!" % repr(value))
+    return to_bytes(str(value))
 
 
 def remove_redundant_paths(paths):
@@ -385,3 +376,18 @@ def load_config(filename, name='config'):
         for name in dir(mod)
         if not name.startswith('_')
     }
+
+
+# Helper for handling transaction IDs (which are byte strings of length 8)
+def increment_txnid(s):
+    ''' add 1 to s, but for s being a string of bytes'''
+    arr = bytearray(s)
+    pos = len(arr)-1
+    while pos >= 0:
+        if arr[pos] == 255:
+            arr[pos] = 0
+            pos -= 1
+        else:
+            arr[pos] += 1
+            break
+    return bytes(arr)
