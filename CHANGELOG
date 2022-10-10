@@ -4,6 +4,10 @@
   * Allow reformat to work with the current state only, without commits sitting
     on top of it.
 
+  * Add some more tests and mark some code as intentionally untested.
+
+  * Remove exception converters in to_* helpers
+
 4.3.4
   * Add support for a whitespace-separated list of recipient addresses for the
     codechange email.
