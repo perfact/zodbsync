@@ -1450,7 +1450,6 @@ class TestSync():
             "]",
         ]
 
-    @pytest.mark.xfail
     def test_replace_child_by_property(self):
         """
         Test that it is possible to remove a child and add a property with the
