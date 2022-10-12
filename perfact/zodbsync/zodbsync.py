@@ -6,7 +6,6 @@ import six
 import shutil
 import time  # for periodic output
 import sys
-import functools
 
 # for using an explicit transaction manager
 import transaction
@@ -511,16 +510,24 @@ class ZODBSync:
             self.record_obj(obj=child, path=os.path.join(path, item),
                             skip_errors=skip_errors)
 
-    def playback(self, path):
+    def _playback_path(self, path):
         '''
         Play back one object from the file system to the ZODB.
-        Returns None or a dict with the following keys:
-        :add_paths: Sorted list of paths that are also to be played back. Empty
-                    unless self.recurse is set.
-        :on_return: None or callable that must be called once there is nothing
-                    else to be played back below this path.
+
+        Params:
+            :path: is the path in the ZODB, starting and ending with /
+
+        Precondition:
+            The parent of the object in question must exist. When a parent as
+            well as a child is to be removed, `playback_paths` makes sure to
+            call the deletion in the correct order.
+
+        Side effects:
+            In addition to the effect on the ZODB, it might add elements to
+            `self.playback_todo` and/or `self.playback_fixorder`.
         '''
         if self.recurse:
+            self.num_obj_current += 1
             now = time.time()
             if now - self.num_obj_last_report > 2:
                 self.logger.info(
@@ -532,6 +539,8 @@ class ZODBSync:
             # be more verbose because every path is explicitly requested
             self.logger.info('Uploading %s' % path)
 
+        # Returns None if the object does not exist in the file system, i.e. it
+        # is to be deleted.
         fs_data = self.fs_read(path)
 
         # Traverse to the object if it exists
@@ -575,6 +584,10 @@ class ZODBSync:
 
         contents = []
         if self.recurse:
+            # We remove any to-be-deleted children before updating the object
+            # itself, in case a property with the same name is to be created.
+            # The addition of new paths is not done here - playback_paths calls
+            # them later on.
             contents = self.fs_contents(path)
             srv_contents = obj_contents(obj) if obj else []
 
@@ -621,17 +634,37 @@ class ZODBSync:
                     self.logger.error(msg)
                     raise
 
-        on_return = None
+        self.num_obj_total += len(contents)
+        if hasattr(object_handlers[fs_data['type']], 'fix_order'):
+            # Store the data for later usage by `_playback_fixorder`.
+            self.fs_data[path] = fs_data
+            self.playback_fixorder.append(path)
 
-        handler = object_handlers[fs_data['type']]
-        if hasattr(handler, 'fix_order'):
-            on_return = functools.partial(handler.fix_order, obj, fs_data)
-        return {
-            'add_paths': [
-                '{}/{}/'.format(path.rstrip('/'), item) for item in contents
-            ],
-            'on_return': on_return,
-        }
+        self.playback_todo.extend([
+            '{}{}/'.format(path, item)
+            for item in reversed(contents)
+        ])
+
+    def _playback_fixorder(self, path):
+        """
+        Fix the order of the subobjects of the object found in path.
+
+        Precondition:
+            Called by `playback_paths` and is set up by `_playback_path`, which
+            also writes the object data that was read from the FS into
+            `self.fs_data`.
+
+        Side effects:
+            In addition to the effect on the ZODB, it removes the corresponding
+            entry from `self.fs_data`.
+        """
+        obj = self.app
+        for part in path.split('/'):
+            obj = getattr(obj, part) if part else obj
+
+        fs_data = self.fs_data[path]
+        object_handlers[fs_data['type']].fix_order(obj, fs_data)
+        del self.fs_data[path]
 
     def playback_paths(self, paths, recurse=True, override=False,
                        skip_errors=False, encoding=None, dryrun=False):
@@ -652,11 +685,14 @@ class ZODBSync:
             for path in paths
         })
 
-        if recurse:
-            remove_redundant_paths(paths)
-
         if not len(paths):
             return
+
+        paths = [path.rstrip('/') + '/' for path in paths]
+
+        if recurse:
+            paths = remove_redundant_paths(paths)
+
         self.num_obj_current = 0
         self.num_obj_total = len(paths)
 
@@ -665,41 +701,46 @@ class ZODBSync:
             note += ': ' + paths[0]
         txn_mgr = self.start_transaction(note=note)
 
+        # Stack of paths that are to be played back (reversed alphabetical
+        # order, we pop elements from the top)
+        self.playback_todo = []
+        todo = self.playback_todo  # local alias
+
+        # Stack of paths for which we need to fix the order after everything
+        # below that path has been handled.
+        self.playback_fixorder = []
+        fixorder = self.playback_fixorder  # local alias
+
+        # Cached read metadata for paths that are in fixorder so we
+        # don't need to read it again from disk.
+        self.fs_data = {}
+
         # Reverse order, ensure that paths end in '/' so startswith can be used
         # reliably and remove elements that are to be deleted in that reverse
         # order so properties of their parents can take their place
-        new_paths = []
         for path in reversed(paths):
-            path = path.rstrip('/') + '/'
             if not os.path.isdir(self.fs_path(path)):
-                self.playback(path)
+                # Call it immediately, it will read None from the FS and remove
+                # the object
+                self._playback_path(path)
             else:
-                new_paths.append(path)
+                todo.append(path)
 
-        paths = new_paths
-
-        # pairs of (path, callable) that are to be called when everything
-        # below the path is handled, to fix orderings in ordered folders
-        on_return = []
+        # Iterate until both stacks are empty. Whenever the topmost element in
+        # todo is no longer a subelement of the topmost element of fixorder, we
+        # handle the fixorder element, otherwise we handle the todo element.
         try:
-            while paths or on_return:
-                if on_return:
-                    # Handle next on_return handler unless there are still
-                    # paths to be handled below it.
-                    path = on_return[-1][0]
-                    if not (paths and paths[-1].startswith(path)):
-                        on_return.pop()[1]()
+            while todo or fixorder:
+                if fixorder:
+                    # Handle next object on which to fix order unless there are
+                    # still subpaths to be handled
+                    path = fixorder[-1]
+                    if not (todo and todo[-1].startswith(path)):
+                        self._playback_fixorder(fixorder.pop())
                         continue
-                self.num_obj_current += 1
-                path = paths.pop()
-                res = self.playback(path)
-                if not res:
-                    continue
-                self.num_obj_total += len(res['add_paths'])
-                paths.extend(reversed(res['add_paths']))
-                if res['on_return']:
-                    on_return.append((path, res['on_return']))
 
+                path = todo.pop()
+                self._playback_path(path)
         except Exception:
             self.logger.exception('Error with path: ' + path)
             txn_mgr.abort()
