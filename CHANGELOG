@@ -1,4 +1,4 @@
-22.1.0.dev0
+22.1.0
   * Change versioning to include Ubuntu version the current template is based on
 
   * Allow reformat to work with the current state only, without commits sitting
@@ -8,7 +8,7 @@
 
   * Remove exception converters in to_* helpers
 
-  * Allow properties and children to replace each other in the same step
+  * Allow properties and methods to replace each other in the same step
 
 4.3.4
   * Add support for a whitespace-separated list of recipient addresses for the
