@@ -8,6 +8,8 @@
 
   * Remove exception converters in to_* helpers
 
+  * Allow properties and children to replace each other in the same step
+
 4.3.4
   * Add support for a whitespace-separated list of recipient addresses for the
     codechange email.

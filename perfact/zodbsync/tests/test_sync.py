@@ -1449,3 +1449,28 @@ class TestSync():
             "    ('title', 'Other'),",
             "]",
         ]
+
+    def test_replace_child_by_property(self):
+        """
+        Test that it is possible to remove a child and add a property with the
+        same name in the same transaction, and also vice versa.
+        """
+        with self.runner.sync.tm:
+            self.app._setProperty('test', 'foo', 'string')
+
+        self.run('record', '/')
+        self.gitrun('add', '.')
+        self.gitrun('commit', '-m', 'with property')
+        c1 = self.get_head_id()
+
+        with self.runner.sync.tm:
+            self.app.manage_delProperties(ids=['test'])
+            self.app.manage_addProduct['OFSP'].manage_addFolder(id='test')
+
+        self.run('record', '/')
+        self.gitrun('add', '.')
+        self.gitrun('commit', '-m', 'with child')
+        c2 = self.get_head_id()
+
+        self.run('reset', c2)
+        self.run('reset', c1)

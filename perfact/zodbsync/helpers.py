@@ -61,7 +61,7 @@ def remove_redundant_paths(paths):
     '''
     Sort list of paths and remove items that are redundant if remaining
     paths are processed recursively, i.e., if /a/b/ as well as /a/ are
-    included, remove /a/b/. Works in-place
+    included, remove /a/b/. Works in-place and also returns the list.
     '''
     paths.sort()
     i = 0
@@ -73,6 +73,7 @@ def remove_redundant_paths(paths):
             continue
         last = current
         i += 1
+    return paths
 
 
 # replacement mapping for str_repr
