@@ -76,7 +76,7 @@ watch`.
 ### `run_after_playback`
 Path to a script that is executed after a successful (non-recursive) playback,
 including indirect calls from `reset` or `pick`. If the script exists, it is
-called and fed the list of changed objects (one per line) via stdin.
+called and fed the list of changed objects in a JSON format.
 
 ## Usage
 

@@ -30,3 +30,6 @@ commit_message = "Generic commit message."
 # email address to send commit summaries of default commits to
 #codechange_mail = "zope-devel@example.de"
 #codechange_sender = "no-reply-zodbsync-changes@example.de"
+
+# Path to script that is called for postprocessing after a playback if it exists
+# run_after_playback = '/usr/share/perfact/zope4-tools/zodbsync-postproc'

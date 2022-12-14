@@ -6,6 +6,8 @@ import six
 import shutil
 import time  # for periodic output
 import sys
+import json
+import subprocess
 
 # for using an explicit transaction manager
 import transaction
@@ -751,6 +753,12 @@ class ZODBSync:
             txn_mgr.abort()
         else:
             txn_mgr.commit()
+            postproc = self.config.get('run_after_playback', None)
+            if postproc and os.path.isfile(postproc):
+                self.logger.info('Calling postprocessing script ' + postproc)
+                proc = subprocess.Popen(postproc, stdin=subprocess.PIPE,
+                                        universal_newlines=True)
+                proc.communicate(json.dumps({'paths': paths}))
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
