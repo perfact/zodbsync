@@ -149,6 +149,8 @@ class SubCommand(Namespace):
         - check for conflicts
         - play back changed objects (diff between old and new HEAD)
         - unstash
+        - execute the script given in the config as run_after_playback if it
+          exists
         """
         @SubCommand.with_lock
         def wrapper(self, *args, **kwargs):
@@ -190,8 +192,17 @@ class SubCommand(Namespace):
 
                 if self.args.dry_run:
                     self.abort()
-                elif self.unstaged_changes:
-                    self.gitcmd_run('stash', 'pop')
+                else:
+                    if self.unstaged_changes:
+                        self.gitcmd_run('stash', 'pop')
+                    postproc = self.config.get('run_after_playback', None)
+                    if os.path.isfile(postproc):
+                        self.logger.info('Calling postprocessing script ' +
+                                         postproc)
+                        proc = subprocess.Popen(postproc,
+                                                stdin=subprocess.PIPE,
+                                                universal_newlines=True)
+                        proc.communicate('\n'.join(paths))
 
             except Exception:
                 self.logger.error('Error during operation. Resetting.')
