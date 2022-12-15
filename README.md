@@ -73,6 +73,11 @@ in the ZODB.
 The path to the location of the Data.fs file. This is needed for `zodbsync
 watch`.
 
+### `run_after_playback`
+Path to a script that is executed after a successful (non-recursive) playback,
+including indirect calls from `reset` or `pick`. If the script exists, it is
+called and fed the list of changed objects in a JSON format.
+
 ## Usage
 
 The executable `zodbsync` provides several subcommands
