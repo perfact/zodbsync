@@ -409,6 +409,8 @@ class ZPsycopgDAObj(ModObj):
             'encoding': obj.encoding,
             'tilevel': obj.tilevel,
             'zdatetime': obj.zdatetime,
+            'use_tpc': getattr(obj, 'use_tpc', False),
+            'datetime_str': getattr(obj, 'datetime_str', False),
         }
 
     @staticmethod
@@ -418,9 +420,11 @@ class ZPsycopgDAObj(ModObj):
             connection_string=data['connection_string'],
             zdatetime=data['zdatetime'],
             tilevel=data['tilevel'],
-            autocommit=data['autocommit'],
-            readonlymode=data['readonlymode'],
+            autocommit=data.get('autocommit', False),
+            readonlymode=data.get('readonlymode', False),
             encoding=data['encoding'],
+            use_tpc=data.get('use_tpc', False),
+            datetime_str=data.get('datetime_str', False),
         )
 
 
