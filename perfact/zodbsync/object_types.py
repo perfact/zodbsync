@@ -402,30 +402,38 @@ class ZPsycopgDAObj(ModObj):
     @staticmethod
     def read(obj):
         # late additions may not yet be everywhere in the Data.fs
-        return {
+        obj_dict = {
             'autocommit': getattr(obj, 'autocommit', False),
             'readonlymode': getattr(obj, 'readonlymode', False),
             'connection_string': obj.connection_string,
             'encoding': obj.encoding,
             'tilevel': obj.tilevel,
             'zdatetime': obj.zdatetime,
-            'use_tpc': getattr(obj, 'use_tpc', False),
-            'datetime_str': getattr(obj, 'datetime_str', False),
         }
+        # Place additional parameters into the object dict only if
+        # they're set
+        if getattr(obj, 'use_tpc', False):
+            obj_dict['use_tpc'] = obj.use_tpc
+        if getattr(obj, 'datetime_str', False):
+            obj_dict['datetime_str'] = obj.datetime_str
+        return obj_dict
 
     @staticmethod
     def write(obj, data):
-        obj.manage_edit(
-            title=data['title'],
-            connection_string=data['connection_string'],
-            zdatetime=data['zdatetime'],
-            tilevel=data['tilevel'],
-            autocommit=data.get('autocommit', False),
-            readonlymode=data.get('readonlymode', False),
-            encoding=data['encoding'],
-            use_tpc=data.get('use_tpc', False),
-            datetime_str=data.get('datetime_str', False),
-        )
+        parameters = {
+            'title': data['title'],
+            'connection_string': data['connection_string'],
+            'zdatetime':_data['zdatetime'],
+            'tilevel': data['tilevel'],
+            'autocommit': data.get('autocommit', False),
+            'readonlymode': data.get('readonlymode', False),
+            'encoding': data['encoding'],
+        }
+        if data.get('use_tpc', False):
+            parameters['use_tpc'] = data['use_tpc']
+        if data.get('datetime_str', False):
+            parameters['datetime_str'] = data['datetime_str']
+        obj.manage_edit(**parameters)
 
 
 class ZPyODBCDAObj(ModObj):
