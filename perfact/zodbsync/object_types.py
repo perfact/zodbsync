@@ -412,9 +412,9 @@ class ZPsycopgDAObj(ModObj):
         }
         # Place additional parameters into the object dict only if
         # they're set
-        if getattr(obj, 'use_tpc', False):
+        if hasattr(obj, 'use_tpc'):
             obj_dict['use_tpc'] = obj.use_tpc
-        if getattr(obj, 'datetime_str', False):
+        if hasattr(obj, 'datetime_str'):
             obj_dict['datetime_str'] = obj.datetime_str
         return obj_dict
 
@@ -429,10 +429,10 @@ class ZPsycopgDAObj(ModObj):
             'readonlymode': data.get('readonlymode', False),
             'encoding': data['encoding'],
         }
-        if data.get('use_tpc', False):
-            parameters['use_tpc'] = data['use_tpc']
-        if data.get('datetime_str', False):
-            parameters['datetime_str'] = data['datetime_str']
+        if hasattr(obj, 'use_tpc'):
+            parameters['use_tpc'] = data.get('use_tpc', False)
+        if hasattr(obj, 'datetime_str'):
+            parameters['datetime_str'] = data.get('datetime_str', False)
         obj.manage_edit(**parameters)
 
 
