@@ -411,10 +411,10 @@ class ZPsycopgDAObj(ModObj):
             'zdatetime': obj.zdatetime,
         }
         # Place additional parameters into the object dict only if
-        # they're set
-        if hasattr(obj, 'use_tpc'):
+        # they're set to non-default values
+        if hasattr(obj, 'use_tpc') and obj.use_tpc:
             obj_dict['use_tpc'] = obj.use_tpc
-        if hasattr(obj, 'datetime_str'):
+        if hasattr(obj, 'datetime_str') and obj.datetime_str:
             obj_dict['datetime_str'] = obj.datetime_str
         return obj_dict
 
