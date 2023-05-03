@@ -423,7 +423,7 @@ class ZPsycopgDAObj(ModObj):
         parameters = {
             'title': data['title'],
             'connection_string': data['connection_string'],
-            'zdatetime':_data['zdatetime'],
+            'zdatetime': data['zdatetime'],
             'tilevel': data['tilevel'],
             'autocommit': data.get('autocommit', False),
             'readonlymode': data.get('readonlymode', False),
