@@ -717,6 +717,18 @@ class TestSync():
 
     def test_checkout(self):
         """
+        Switch to another branch
+        """
+        self.run('checkout', '-b', 'other')
+        # This switches back to master, but with a change
+        self.test_reset()
+        self.run('checkout', 'other')
+        assert self.app.index_html.title != 'test'
+        self.run('checkout', 'master')
+        assert self.app.index_html.title == 'test'
+
+    def test_exec_checkout(self):
+        """
         Prepare two branches and switch between them.
         """
         self.gitrun('branch', 'other')
