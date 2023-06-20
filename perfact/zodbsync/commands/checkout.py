@@ -46,6 +46,6 @@ class Checkout(SubCommand):
             cmd.extend(['--track', self.args.track])
         self.gitcmd_run(*cmd)
         if self.args.reset:
-            self.gitcmd_run(['reset', '--hard', self.args.reset])
+            self.gitcmd_run('reset', '--hard', self.args.reset)
         if self.args.rebase:
-            self.gitcmd_run(['rebase', self.args.rebase])
+            self.gitcmd_run('rebase', self.args.rebase)
