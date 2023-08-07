@@ -1,6 +1,8 @@
 22.2.2
   * Add subcommand `checkout`
 
+  * Add github-workflow to execute tox
+
 22.2.1
   * Change cherry-pick options for `pick` to never do rename recognition
 
