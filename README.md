@@ -161,6 +161,10 @@ This allows commands like the following:
 
 Shorthand for `zodbsync exec "git reset --hard COMMIT"`
 
+### `zodbsync checkout`
+
+Wrapper for `git checkout` with some of its functionality.
+
 ### `zodbsync pick`
 
 As a special case of `exec`, this wraps `git cherry-pick` and takes git commits
@@ -187,7 +191,7 @@ practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts.
 
 
-### `zodbsync upload`
+### `zodbsync upload` (DEPRECATED)
 
 `upload` expects the base directory to be a git repository and provides a tool
 to upload JS and CSS libraries into the `Data.fs`. This is achieved by converting

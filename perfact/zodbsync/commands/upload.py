@@ -2,6 +2,7 @@
 
 import os
 import sys
+import warnings
 
 from ..subcommand import SubCommand
 from ..zodbsync import mod_format
@@ -36,7 +37,8 @@ META_DEFAULT = create_template('File', 'application/octet-stream')
 
 
 class Upload(SubCommand):
-    '''Upload a folder structure, e.g. a JS library, to zope Data.FS'''
+    '''[DEPRECATED] Upload a folder structure, e.g. a JS library, to zope
+    Data.FS'''
 
     @staticmethod
     def add_args(parser):
@@ -78,8 +80,12 @@ class Upload(SubCommand):
     def run(self):
         '''
         Convert source folder into zodbsync compatible struct in repodir
-        and upload it
+        and upload it.
         '''
+        warnings.warn(
+            'Static external assets should not be included in the Data.FS',
+            DeprecationWarning
+        )
         self.check_repo()
 
         # we need both filesystem and Data.fs path representation
