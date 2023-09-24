@@ -1,3 +1,8 @@
+22.2.3
+  * Simplify recording of top-level object such that permissions that are only
+    granted to Manager. This creates a one-time diff in this object, but makes
+    the recording more stable in the future if permissions are added or removed
+
 22.2.2
   * Add subcommand `checkout`
 
