@@ -73,6 +73,11 @@ in the ZODB.
 The path to the location of the Data.fs file. This is needed for `zodbsync
 watch`.
 
+### `run_after_playback`
+Path to a script that is executed after a successful (non-recursive) playback,
+including indirect calls from `reset` or `pick`. If the script exists, it is
+called and fed the list of changed objects in a JSON format.
+
 ## Usage
 
 The executable `zodbsync` provides several subcommands
@@ -156,6 +161,10 @@ This allows commands like the following:
 
 Shorthand for `zodbsync exec "git reset --hard COMMIT"`
 
+### `zodbsync checkout`
+
+Wrapper for `git checkout` with some of its functionality.
+
 ### `zodbsync pick`
 
 As a special case of `exec`, this wraps `git cherry-pick` and takes git commits
@@ -182,7 +191,7 @@ practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts.
 
 
-### `zodbsync upload`
+### `zodbsync upload` (DEPRECATED)
 
 `upload` expects the base directory to be a git repository and provides a tool
 to upload JS and CSS libraries into the `Data.fs`. This is achieved by converting
