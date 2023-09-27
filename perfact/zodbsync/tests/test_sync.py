@@ -2,7 +2,7 @@ import os
 import time
 import os.path
 import base64
-import six
+import io
 import json
 import subprocess
 import pickle
@@ -699,7 +699,7 @@ class TestSync():
         """
         watcher = self.mkrunner('watch')
         watcher.setup()
-        stream = six.BytesIO()
+        stream = io.BytesIO()
         watcher.dump_setup_data(stream=stream)
         data = pickle.loads(stream.getvalue())
         assert set(data.keys()) == {'tree', 'txn', 'add_oids'}

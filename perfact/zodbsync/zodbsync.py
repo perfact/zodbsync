@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import six
 import shutil
 import time  # for periodic output
 import sys
@@ -16,15 +15,11 @@ import AccessControl.SecurityManagement
 # For config loading and initial connection, possibly populating an empty ZODB
 import Zope2.App.startup
 import App.config
-try:
-    from Zope2.Startup.run import configure_wsgi as configure_zope
-except ImportError:  # pragma: nocover_py3
-    from Zope2.Startup.run import configure as configure_zope
+from Zope2.Startup.run import configure_wsgi
 
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import StrRepr, to_string, literal_eval, fix_encoding, \
-    remove_redundant_paths
+from .helpers import StrRepr, to_string, literal_eval, remove_redundant_paths
 
 
 # Monkey patch ZRDB not to connect to databases immediately.
@@ -233,7 +228,7 @@ class ZODBSync:
         sys.argv = sys.argv[:1]
 
         # Read and parse configuration
-        configure_zope(conf_path)
+        configure_wsgi(conf_path)
         # This initially connects to the ZODB (mostly opening a connection to a
         # running ZEO), sets up the application (which, for Zope 2, includes
         # loading any Products provided in the instance) and, if the ZODB
@@ -341,12 +336,12 @@ class ZODBSync:
         source = data.get('source', None)
 
         # Only write out sources if unicode or string
-        write_source = isinstance(source, (bytes, six.text_type))
+        write_source = isinstance(source, (bytes, str))
 
         # Build metadata
         meta = {key: value for key, value in data.items() if key != 'source'}
         fmt = mod_format(meta)
-        if isinstance(fmt, six.text_type):
+        if isinstance(fmt, str):
             fmt = fmt.encode('utf-8')
 
         # Make directory for the object if it's not already there
@@ -377,7 +372,7 @@ class ZODBSync:
             # Write bytes or utf-8 encoded text.
             data = source
             base = '__source__'
-            if isinstance(data, six.text_type):
+            if isinstance(data, str):
                 data = data.encode('utf-8')
                 base = '__source-utf8__'
 
@@ -444,10 +439,6 @@ class ZODBSync:
             if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
             meta['source'] = src
-
-        if self.encoding is not None:
-            # Translate file system data
-            meta = fix_encoding(meta, self.encoding)
 
         return meta
 
@@ -670,11 +661,10 @@ class ZODBSync:
         del self.fs_data[path]
 
     def playback_paths(self, paths, recurse=True, override=False,
-                       skip_errors=False, encoding=None, dryrun=False):
+                       skip_errors=False, dryrun=False):
         self.recurse = recurse
         self.override = override
         self.skip_errors = skip_errors
-        self.encoding = encoding
         # normalize paths - cut off filenames and the site name
         paths = {
             path.rsplit('/', 1)[0] if (
