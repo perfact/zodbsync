@@ -1,3 +1,6 @@
+unreleased
+  * Refactor scripts into entry points to be usable with zc.buildout >= 3.
+
 22.2.3
   * Simplify recording of top-level object such that permissions that are only
     granted to Manager. This creates a one-time diff in this object, but makes
