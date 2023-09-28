@@ -36,12 +36,10 @@ def test_converters():
     """
     Several tests for to_* methods
     """
-    for value in ['test', b'test', u'test']:
+    for value in ['test', b'test']:
         assert helpers.to_bytes(value) == b'test'
         assert helpers.to_string(value) == 'test'
-        assert helpers.to_ustring(value) == u'test'
     assert helpers.to_string([1]) == '[1]'
-    assert helpers.to_ustring([1]) == u'[1]'
     assert helpers.to_bytes([1]) == b'[1]'
     assert helpers.to_bytes(memoryview(b'test')) == b'test'
 

@@ -15,7 +15,7 @@ class Namespace(object):
 
 
 def to_string(value, enc='utf-8'):
-    '''This method delivers bytes in python2 and unicode in python3.'''
+    """Convert input into a string"""
     if isinstance(value, str):
         return value
     if isinstance(value, bytes):
@@ -23,19 +23,8 @@ def to_string(value, enc='utf-8'):
     return str(value)
 
 
-def to_ustring(value, enc='utf-8'):
-    '''Convert any string (bytes or unicode) into unicode.
-    '''
-    if isinstance(value, str):
-        return value
-    if isinstance(value, bytes):
-        return value.decode(enc, 'ignore')
-
-    return to_ustring(str(value))
-
-
 def to_bytes(value, enc='utf-8'):
-    '''This method delivers bytes (encoded strings).'''
+    """Convert input to bytes (encoded strings)"""
     if isinstance(value, memoryview):
         return value.tobytes()
     if isinstance(value, bytes):
