@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import argparse
 
 from perfact.zodbsync.main import Runner
@@ -9,12 +7,17 @@ try:
 except ImportError:
     pass
 
-if __name__ == '__main__':
+
+def zodbsync():
+    Runner().run()
+
+
+def zoperecord():
     parser = argparse.ArgumentParser(
         description='Record the Data.fs',
         epilog='''This script is deprecated in favor of zodbsync. Only bare
-        functionality is provided for backwards compatiblity with existing cron
-        entries.
+        functionality is provided for backwards compatibility with existing
+        cron entries.
         '''
     )
     parser.add_argument('--lasttxn', action='store_true', default=False,
@@ -44,3 +47,10 @@ if __name__ == '__main__':
         config.commit_message = msgbak
 
     runner.run()
+
+
+def zopeplayback():
+    assert False, (
+        "perfact-zopeplayback is no longer supported as executable, please use"
+        " zodbsync instead."
+    )

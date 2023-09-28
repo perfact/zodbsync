@@ -44,7 +44,8 @@ class Reformat(SubCommand):
                 paths.append(os.path.join(root, '__meta__'))
         if self.reformat(paths):
             self.gitcmd_run('commit', '-a', '-m', 'zodbsync reformat')
-        for commit in commits:
+        for idx, commit in enumerate(commits):
+            print("Processing commit {}/{}".format(idx+1, len(commits)))
             cur = self.head()
             paths = list({
                 os.path.join(base, line)
@@ -71,9 +72,21 @@ class Reformat(SubCommand):
         for path in paths:
             if not os.path.exists(path):
                 continue
-            with open(path) as f:
-                orig = f.read()
-            data = literal_eval(orig)
+            for _ in range(1000):  # Just in case we have no stdin
+                with open(path) as f:
+                    orig = f.read()
+                try:
+                    data = literal_eval(orig)
+                except Exception:
+                    # This allows the user to open the file manually, make it
+                    # valid to be parsed by literal_eval and continue the
+                    # process
+                    print("Unable to parse path", path)
+                    input("Retrying. Ctrl+C to cancel.")
+                    continue
+                break
+            else:
+                raise ValueError("Meta file could not be parsed")
             if legacy:
                 fmt = StrRepr()(data, legacy=True)
             else:

@@ -1,6 +1,0 @@
-#!/usr/bin/env python
-
-assert False, (
-    "perfact-zopeplayback is no longer supported as executable, please use"
-    " zodbsync instead."
-)

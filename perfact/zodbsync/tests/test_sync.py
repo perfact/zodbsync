@@ -94,7 +94,7 @@ class TestSync():
         self.run('record', '/')
         # Call test
         yield
-        if self.runner:
+        if getattr(self, 'runner', None):
             self.runner.sync.tm.abort()
         cmds = [
             'reset --hard',
@@ -716,6 +716,18 @@ class TestSync():
         assert title != 'test'
 
     def test_checkout(self):
+        """
+        Switch to another branch
+        """
+        self.run('checkout', '-b', 'other')
+        # This switches back to master, but with a change
+        self.test_reset()
+        self.run('checkout', 'other')
+        assert self.app.index_html.title != 'test'
+        self.run('checkout', 'master')
+        assert self.app.index_html.title == 'test'
+
+    def test_exec_checkout(self):
         """
         Prepare two branches and switch between them.
         """
@@ -1474,3 +1486,32 @@ class TestSync():
 
         self.run('reset', c2)
         self.run('reset', c1)
+
+    def test_playback_postprocess(self):
+        """
+        Add configuration option for a postprocessing script and check that
+        zodbsync reset executes it.
+        """
+        fname = "{}/postproc".format(self.zeo.path)
+        outfile = "{}.out".format(fname)
+        script = '\n'.join([
+            "#!/bin/bash",
+            "cat > {}",
+        ]).format(outfile)
+        with open(fname, 'w') as f:
+            f.write(script)
+        os.chmod(fname, 0o700)
+        with open(self.config.path) as f:
+            orig_config = f.read()
+        with open(self.config.path, 'a') as f:
+            f.write('\nrun_after_playback = "{}"\n'.format(fname))
+
+        # Avoid error regarding reusing runner with changed config
+        del self.runner
+        self.test_reset()
+        with open(outfile) as f:
+            assert json.loads(f.read()) == {"paths": ["/index_html/"]}
+
+        with open(self.config.path, 'w') as f:
+            f.write(orig_config)
+        del self.runner

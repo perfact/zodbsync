@@ -1,6 +1,31 @@
 unreleased
   * Sort dicts by their keys to get a stable representation.
 
+22.2.4
+  * Refactor scripts into entry points to be usable with zc.buildout >= 3.
+
+22.2.3
+  * Simplify recording of top-level object such that permissions that are only
+    granted to Manager. This creates a one-time diff in this object, but makes
+    the recording more stable in the future if permissions are added or removed
+
+  * Add more output to reformat and allow fixing files without retrying from
+    the start
+
+22.2.2
+  * Add subcommand `checkout`
+
+  * Add github-workflow to execute tox
+
+22.2.1
+  * Change cherry-pick options for `pick` to never do rename recognition
+
+22.2.0
+  * Add missing options for ZPsycopgDA
+
+22.1.1
+  * Add configuration option run_after_playback
+
 22.1.0
   * Change versioning to include Ubuntu version the current template is based on
 

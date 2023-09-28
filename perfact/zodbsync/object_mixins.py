@@ -93,7 +93,7 @@ class AccessControlObj(MixinModObj):
             acquire = isinstance(roles, list)
             roles = list(roles)
             roles.sort()
-            if acquire and len(roles) == 0:
+            if acquire and not len(roles) or is_root and roles == ['Manager']:
                 # Does not deviate from default
                 continue
             perms.append((perm.name, acquire, roles))
@@ -145,9 +145,7 @@ class AccessControlObj(MixinModObj):
             else:
                 # the default is to acquire without additional roles - except
                 # for the top-level object, where it is not to acquire and
-                # allow Manager (read() will usually record all permissions for
-                # the top level object, but in case there are new permissions,
-                # we need to pick a sane default)
+                # allow Manager
                 if obj.isTopLevelPrincipiaApplicationObject:
                     roles = ('Manager',)
                 else:

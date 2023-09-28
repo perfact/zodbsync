@@ -12,7 +12,7 @@ else:
 
 setuptools.setup(
     name='perfact-zodbsync',
-    version='22.1.0',
+    version='22.2.4',
     description='Zope Recorder and Playback',
     long_description=''' ''',
     author='Ján Jockusch et.al.',
@@ -20,11 +20,13 @@ setuptools.setup(
     packages=setuptools.find_packages('.'),
     package_data={
     },
-    scripts = [
-        'bin/perfact-zoperecord',
-        'bin/perfact-zopeplayback',
-        'bin/zodbsync',
-    ],
+    entry_points={
+        'console_scripts': [
+            'perfact-zoperecord=perfact.zodbsync.scripts:zoperecord',
+            'perfact-zopeplayback=perfact.zodbsync.scripts:zopeplayback',
+            'zodbsync=perfact.zodbsync.scripts:zodbsync',
+        ]
+    },
     license='GPLv2',
     platforms=['Linux',],
     install_requires=reqs,
