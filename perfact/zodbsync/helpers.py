@@ -3,6 +3,7 @@ import ast
 import operator
 import six
 
+
 if six.PY2:  # pragma: no cover
     import imp
     ast.Bytes = ast.Str
@@ -130,6 +131,16 @@ def str_repr(val):
     Python 2 and Python 3, since setting a unicode title to a value that is
     a bytes array automatically decodes the bytes array.
     '''
+    # Sort dicts by their keys to get a stable representation:
+    if isinstance(val, dict):
+        result = '{'
+        for item in sorted(val):
+            result += str_repr(item) + ': '
+            result += str_repr(val[item]) + ', '
+        if len(result) > 1:
+            result = result[:-2]
+        result += '}'
+        return result
 
     if six.PY2 and isinstance(val, bytes):  # pragma: nocover_py3
         # fall back to repr if val is not valid UTF-8
