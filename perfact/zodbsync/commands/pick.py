@@ -50,4 +50,4 @@ class Pick(SubCommand):
             self.logger.info('Checking and applying %s.' % commit)
             # capture output and discard so we don't clutter stdout
             # Python 2 has no subprocess.DEVNULL.
-            self.gitcmd_output('cherry-pick', '-Xno-renames', commit)
+            self.gitcmd_output('cherry-pick', '--strategy', 'resolve', commit)

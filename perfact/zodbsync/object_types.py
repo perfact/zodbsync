@@ -402,7 +402,7 @@ class ZPsycopgDAObj(ModObj):
     @staticmethod
     def read(obj):
         # late additions may not yet be everywhere in the Data.fs
-        return {
+        obj_dict = {
             'autocommit': getattr(obj, 'autocommit', False),
             'readonlymode': getattr(obj, 'readonlymode', False),
             'connection_string': obj.connection_string,
@@ -410,18 +410,30 @@ class ZPsycopgDAObj(ModObj):
             'tilevel': obj.tilevel,
             'zdatetime': obj.zdatetime,
         }
+        # Place additional parameters into the object dict only if
+        # they're set to non-default values
+        if hasattr(obj, 'use_tpc') and obj.use_tpc:
+            obj_dict['use_tpc'] = obj.use_tpc
+        if hasattr(obj, 'datetime_str') and obj.datetime_str:
+            obj_dict['datetime_str'] = obj.datetime_str
+        return obj_dict
 
     @staticmethod
     def write(obj, data):
-        obj.manage_edit(
-            title=data['title'],
-            connection_string=data['connection_string'],
-            zdatetime=data['zdatetime'],
-            tilevel=data['tilevel'],
-            autocommit=data['autocommit'],
-            readonlymode=data['readonlymode'],
-            encoding=data['encoding'],
-        )
+        parameters = {
+            'title': data['title'],
+            'connection_string': data['connection_string'],
+            'zdatetime': data['zdatetime'],
+            'tilevel': data['tilevel'],
+            'autocommit': data.get('autocommit', False),
+            'readonlymode': data.get('readonlymode', False),
+            'encoding': data['encoding'],
+        }
+        if hasattr(obj, 'use_tpc'):
+            parameters['use_tpc'] = data.get('use_tpc', False)
+        if hasattr(obj, 'datetime_str'):
+            parameters['datetime_str'] = data.get('datetime_str', False)
+        obj.manage_edit(**parameters)
 
 
 class ZPyODBCDAObj(ModObj):
