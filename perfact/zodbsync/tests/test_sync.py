@@ -248,8 +248,8 @@ class TestSync():
         with pytest.raises(AssertionError):
             zodbsync.mod_read(obj, onerrorstop=True)
 
-    def test_record_callable_title(self):
-        """Check that callable titles are supported on objects."""
+    def test_omit_callable_title(self):
+        """It omits title attributes which are callable."""
         app = self.app
         obj = app.manage_addProduct['PageTemplates'].manage_addPageTemplate(
             id='test_pt', title='Not-visible', text='test text')
@@ -261,15 +261,11 @@ class TestSync():
         # Normal case
         result = zodbsync.mod_read(obj)
         assert 'Not-visible' in result['title']
-        assert 'Show-me' not in result['title']
-        assert 'test text' in result['source']
 
-        # with callable
+        # with callable title
         with mock.patch.object(obj, 'title', patch_title):
             result = zodbsync.mod_read(obj)
-            assert 'Not-visible' not in result['title']
-            assert 'Show-me' in result['title']
-            assert 'test text' in result['source']
+            assert 'title' not in result
 
     def test_playback(self):
         '''
