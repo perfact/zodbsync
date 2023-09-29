@@ -18,6 +18,11 @@ try:  # pragma: no cover
 except ImportError:  # pragma: no cover
     ZOPE2 = False
 
+try:
+    from unittest import mock
+except ImportError:
+    import mock
+
 from ..main import Runner
 from .. import zodbsync
 from .. import helpers
@@ -242,6 +247,25 @@ class TestSync():
         assert 'unsupported' in zodbsync.mod_read(obj)
         with pytest.raises(AssertionError):
             zodbsync.mod_read(obj, onerrorstop=True)
+
+    def test_omit_callable_title(self):
+        """It omits title attributes which are callable."""
+        app = self.app
+        obj = app.manage_addProduct['PageTemplates'].manage_addPageTemplate(
+            id='test_pt', title='Not-visible', text='test text')
+
+        def patch_title():
+            """Callable to test callable titles."""
+            return 'Show-me'
+
+        # Normal case
+        result = zodbsync.mod_read(obj)
+        assert 'Not-visible' in result['title']
+
+        # with callable title
+        with mock.patch.object(obj, 'title', patch_title):
+            result = zodbsync.mod_read(obj)
+            assert 'title' not in result
 
     def test_playback(self):
         '''
