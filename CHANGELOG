@@ -1,5 +1,6 @@
 unreleased
   * Omit title attributes if they are callable.
+  * Drop support for Python 2
 
 22.2.4
   * Refactor scripts into entry points to be usable with zc.buildout >= 3.

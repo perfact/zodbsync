@@ -1,3 +1,0 @@
-zope.mkzeoinstance==3.9.6
-Products.ZSQLMethods==2.13.6
-mock
