@@ -104,7 +104,7 @@ class TestSync():
         cmds = [
             'reset --hard',
             'clean -dfx',
-            'checkout master',
+            'checkout main',
             'reset --hard {}'.format(self.initial_commit),
         ]
         for cmd in cmds:
@@ -113,7 +113,7 @@ class TestSync():
         for line in output.strip().split('\n'):
             commit, refname = line.split()
             refname = refname[len('refs/heads/'):]
-            if refname != 'master':
+            if refname != 'main':
                 self.gitrun('branch', '-D', refname)
 
         self.run('playback', '--skip-errors', '/')
@@ -726,7 +726,7 @@ class TestSync():
         with open(path, 'w') as f:
             f.writelines(lines)
         self.gitrun('commit', '-a', '-m', 'Change title')
-        self.gitrun('checkout', 'master')
+        self.gitrun('checkout', 'main')
         self.run('reset', 'second')
         assert self.app.index_html.title == 'test'
 
@@ -744,11 +744,11 @@ class TestSync():
         Switch to another branch
         """
         self.run('checkout', '-b', 'other')
-        # This switches back to master, but with a change
+        # This switches back to main, but with a change
         self.test_reset()
         self.run('checkout', 'other')
         assert self.app.index_html.title != 'test'
-        self.run('checkout', 'master')
+        self.run('checkout', 'main')
         assert self.app.index_html.title == 'test'
 
     def test_exec_checkout(self):
@@ -993,8 +993,8 @@ class TestSync():
     def test_commit_on_branch_and_exec_merge(self):
         '''
         change to a git feature branch and create a
-        structure there, commit it and change back to the master branch
-        on master branch check if changes from feature arent existent,
+        structure there, commit it and change back to the main branch
+        on main branch check if changes from feature arent existent,
         then merge feature branch and check if changes have been applied
         correctly
         '''
@@ -1012,8 +1012,8 @@ class TestSync():
         self.gitrun('add', '-A')
         self.gitrun('commit', '-m', 'test case 3')
 
-        # checkout to master and check that changes are not yet existent
-        self.run('exec', 'git checkout master')
+        # checkout to main and check that changes are not yet existent
+        self.run('exec', 'git checkout main')
         assert not os.path.isfile(self.meta_file_path(folder_1, s_folder_1))
         assert folder_1 not in self.app.objectIds()
 
@@ -1058,11 +1058,11 @@ class TestSync():
         with pytest.raises(subprocess.CalledProcessError):
             self.run('exec', 'cherry-pick ThisIsDefinitelyNoCommit')
 
-    def test_create_multiple_commits_on_branch_and_pick_single_on_master(self):
+    def test_create_multiple_commits_on_branch_and_pick_single_on_main(self):
         """
         create a feature branch on which
         two changes will be commited to one commit each
-        change back to the master branch and use pick
+        change back to the main branch and use pick
         to get the changes of that last commit
         make sure only the last changes are present
         """
@@ -1089,8 +1089,8 @@ class TestSync():
 
         commit = self.get_head_id()
 
-        # checkout master and check both changes aren't existent
-        self.run('exec', 'git checkout master')
+        # checkout main and check both changes aren't existent
+        self.run('exec', 'git checkout main')
         assert not os.path.isfile(self.meta_file_path(folder_1))
         assert folder_1 not in self.app.objectIds()
         assert not os.path.isfile(self.meta_file_path(folder_2))
