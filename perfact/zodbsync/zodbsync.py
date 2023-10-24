@@ -661,7 +661,7 @@ class ZODBSync:
         del self.fs_data[path]
 
     def playback_paths(self, paths, recurse=True, override=False,
-                       skip_errors=False, dryrun=False):
+                       skip_errors=False, dryrun=False, skip_postproc=False):
         self.recurse = recurse
         self.override = override
         self.skip_errors = skip_errors
@@ -689,67 +689,94 @@ class ZODBSync:
         self.num_obj_current = 0
         self.num_obj_total = len(paths)
 
-        note = 'zodbsync'
-        if len(paths) == 1:
-            note += ': ' + paths[0]
-        txn_mgr = self.start_transaction(note=note)
-
-        # Stack of paths that are to be played back (reversed alphabetical
-        # order, we pop elements from the top)
-        self.playback_todo = []
-        todo = self.playback_todo  # local alias
-
-        # Stack of paths for which we need to fix the order after everything
-        # below that path has been handled.
-        self.playback_fixorder = []
-        fixorder = self.playback_fixorder  # local alias
-
-        # Cached read metadata for paths that are in fixorder so we
-        # don't need to read it again from disk.
-        self.fs_data = {}
-
-        # Reverse order, ensure that paths end in '/' so startswith can be used
-        # reliably and remove elements that are to be deleted in that reverse
-        # order so properties of their parents can take their place
-        for path in reversed(paths):
-            if not os.path.isdir(self.fs_path(path)):
-                # Call it immediately, it will read None from the FS and remove
-                # the object
-                self._playback_path(path)
-            else:
-                todo.append(path)
-
-        # Iterate until both stacks are empty. Whenever the topmost element in
-        # todo is no longer a subelement of the topmost element of fixorder, we
-        # handle the fixorder element, otherwise we handle the todo element.
-        try:
-            while todo or fixorder:
-                if fixorder:
-                    # Handle next object on which to fix order unless there are
-                    # still subpaths to be handled
-                    path = fixorder[-1]
-                    if not (todo and todo[-1].startswith(path)):
-                        self._playback_fixorder(fixorder.pop())
-                        continue
-
-                path = todo.pop()
-                self._playback_path(path)
-        except Exception:
-            self.logger.exception('Error with path: ' + path)
-            txn_mgr.abort()
-            raise
-
-        if dryrun:
-            self.logger.info('Dry-run. Rolling back')
-            txn_mgr.abort()
+        playback_hook = self.config.get('playback_hook', None)
+        if playback_hook and os.path.isfile(playback_hook):
+            proc = subprocess.Popen(
+                playback_hook, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                universal_newlines=True)
+            out, _ = proc.communicate(json.dumps({'paths': paths}))
+            returncode = proc.returncode
+            if returncode:
+                raise AssertionError(
+                    "Error calling playback hook, returncode "
+                    "{}, [[{}]] on {}".format(
+                        returncode, playback_hook, out
+                    )
+                )
+            phases = json.loads(out)
         else:
-            txn_mgr.commit()
-            postproc = self.config.get('run_after_playback', None)
-            if postproc and os.path.isfile(postproc):
-                self.logger.info('Calling postprocessing script ' + postproc)
-                proc = subprocess.Popen(postproc, stdin=subprocess.PIPE,
-                                        universal_newlines=True)
-                proc.communicate(json.dumps({'paths': paths}))
+            phases = [{'name': 'playback', 'paths': paths}]
+
+        for ix, phase in enumerate(phases):
+            note = 'zodbsync'
+            if phase.get('name'):
+                note += '/' + phase['name']
+            else:
+                note += '/' + str(ix)
+            if len(phase['paths']) == 1:
+                note += ': ' + phase['paths'][0]
+            txn_mgr = self.start_transaction(note=note)
+
+            # Stack of paths that are to be played back (reversed
+            # alphabetical order, we pop elements from the top)
+            self.playback_todo = []
+            todo = self.playback_todo  # local alias
+
+            # Stack of paths for which we need to fix the order after
+            # everything below that path has been handled.
+            self.playback_fixorder = []
+            fixorder = self.playback_fixorder  # local alias
+
+            # Cached read metadata for paths that are in fixorder so we
+            # don't need to read it again from disk.
+            self.fs_data = {}
+
+            # Reverse order, ensure that paths end in '/' so startswith can be
+            # used reliably and remove elements that are to be deleted in that
+            # reverse order so properties of their parents can take their
+            # place
+            for path in reversed(phase['paths']):
+                if not os.path.isdir(self.fs_path(path)):
+                    # Call it immediately, it will read None from the FS and
+                    # remove the object
+                    self._playback_path(path)
+                else:
+                    todo.append(path)
+
+            # Iterate until both stacks are empty. Whenever the topmost element
+            # in todo is no longer a subelement of the topmost element of
+            # fixorder, we handle the fixorder element, otherwise we handle the
+            # todo element.
+            try:
+                while todo or fixorder:
+                    if fixorder:
+                        # Handle next object on which to fix order unless
+                        # there are still subpaths to be handled
+                        path = fixorder[-1]
+                        if not (todo and todo[-1].startswith(path)):
+                            self._playback_fixorder(fixorder.pop())
+                            continue
+
+                    path = todo.pop()
+                    self._playback_path(path)
+            except Exception:
+                self.logger.exception('Error with path: ' + path)
+                txn_mgr.abort()
+                raise
+
+            if dryrun:
+                self.logger.info('Dry-run. Rolling back')
+                txn_mgr.abort()
+            else:
+                txn_mgr.commit()
+
+        postproc = self.config.get('run_after_playback', None)
+        if not skip_postproc and postproc and os.path.isfile(postproc):
+            self.logger.info('Calling postprocessing script ' + postproc)
+            proc = subprocess.Popen(postproc, stdin=subprocess.PIPE,
+                                    universal_newlines=True)
+            proc.communicate(json.dumps({'paths': paths}))
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
