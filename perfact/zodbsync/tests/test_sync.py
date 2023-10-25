@@ -304,7 +304,7 @@ class TestSync():
         initialized repository. Returns the commit ID.
         '''
         # Add a folder, commit it
-        self.add_folder('TestFolder', 'Second commit')
+        self.add_folder(name, msg)
         commit = self.get_head_id()
 
         # Reset the commit
@@ -1537,6 +1537,52 @@ class TestSync():
         self.test_reset()
         with open(outfile) as f:
             assert json.loads(f.read()) == {"paths": ["/index_html/"]}
+
+        with open(self.config.path, 'w') as f:
+            f.write(orig_config)
+        del self.runner
+
+    def test_playback_hook(self):
+        """
+        Add configuration option for a playback hook script and check that
+        only the paths returned are played back
+        """
+        self.add_folder('NewFolder', 'First Folder')
+        commit = self.prepare_pick('NewFolder2', 'Second Folder')
+
+        playback_cmd = "{}/playback_cmd".format(self.zeo.path)
+        cmd_script = '\n'.join([
+            "#!/bin/bash"
+            "cat > {}"
+        ]).format('{}.out'.format(playback_cmd))
+        with open(playback_cmd, 'w') as f:
+            f.write(cmd_script)
+        os.chmod(cmd_script, 0o700)
+
+        fname = "{}/playback_hook".format(self.zeo.path)
+        playback_dict = [{
+            "paths": ["/NewFolder"],
+            "cmd": playback_cmd
+        }]
+
+        script = '\n'.join([
+            "#!/bin/bash",
+            "echo '{}'".format(json.dumps(playback_dict)),
+        ])
+        with open(fname, 'w') as f:
+            f.write(script)
+        os.chmod(fname, 0o700)
+        with open(self.config.path) as f:
+            orig_config = f.read()
+        with open(self.config.path, 'a') as f:
+            f.write('\nplayback_hook = "{}"\n'.format(fname))
+
+        # Avoid error regarding reusing runner with changed config
+        del self.runner
+        self.run('pick', commit)
+
+        assert 'NewFolder' in self.app.objectIds()
+        assert 'NewFolder2' not in self.app.objectIds()
 
         with open(self.config.path, 'w') as f:
             f.write(orig_config)
