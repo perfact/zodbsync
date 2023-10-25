@@ -1548,7 +1548,10 @@ class TestSync():
         only the paths returned are played back
         """
         self.add_folder('NewFolder', 'First Folder')
-        commit = self.prepare_pick('NewFolder2', 'Second Folder')
+        self.add_folder('NewFolder2', 'Second Folder')
+        commit = self.get_head_id()
+        # Reset the commit
+        self.gitrun('reset', '--hard', 'HEAD~2')
 
         playback_cmd = "{}/playback_cmd".format(self.zeo.path)
         cmd_script = '\n'.join([
@@ -1579,11 +1582,63 @@ class TestSync():
 
         # Avoid error regarding reusing runner with changed config
         del self.runner
-        self.run('pick', commit)
+        self.run('pick', 'HEAD..{}'.format(commit))
 
         assert 'NewFolder' in self.app.objectIds()
         assert 'NewFolder2' not in self.app.objectIds()
         assert os.path.isfile('{}.out'.format(playback_cmd))
+
+        with open(self.config.path, 'w') as f:
+            f.write(orig_config)
+        del self.runner
+
+    def test_playback_hook_failed(self):
+        """
+        Add configuration option for a playback hook script and check that
+        only the paths returned are played back
+        """
+        self.add_folder('NewFolder', 'First Folder')
+        self.add_folder('NewFolder2', 'Second Folder')
+        commit = self.get_head_id()
+        # Reset the commit
+        self.gitrun('reset', '--hard', 'HEAD~2')
+
+        playback_cmd = "{}/playback_cmd".format(self.zeo.path)
+        cmd_script = '\n'.join([
+            "#!/bin/bash",
+            "exit 42"
+        ])
+        with open(playback_cmd, 'w') as f:
+            f.write(cmd_script)
+        os.chmod(playback_cmd, 0o700)
+
+        fname = "{}/playback_hook".format(self.zeo.path)
+        playback_dict = [{
+            "paths": ["/NewFolder"],
+            "cmd": playback_cmd
+            }, {
+            "paths": ["/NewFolder2"],
+            },
+        ]
+        script = '\n'.join([
+            "#!/bin/bash",
+            "echo '{}'".format(json.dumps(playback_dict)),
+        ])
+        with open(fname, 'w') as f:
+            f.write(script)
+        os.chmod(fname, 0o700)
+        with open(self.config.path) as f:
+            orig_config = f.read()
+        with open(self.config.path, 'a') as f:
+            f.write('\nplayback_hook = "{}"\n'.format(fname))
+
+        # Avoid error regarding reusing runner with changed config
+        del self.runner
+        with pytest.raises(AssertionError):
+            self.run('pick', 'HEAD..{}'.format(commit))
+
+        assert 'NewFolder' not in self.app.objectIds()
+        assert 'NewFolder2' not in self.app.objectIds()
 
         with open(self.config.path, 'w') as f:
             f.write(orig_config)

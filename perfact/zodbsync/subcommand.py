@@ -196,7 +196,9 @@ class SubCommand(Namespace):
                         phase_cmd, stdin=subprocess.PIPE,
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         universal_newlines=True)
-                    out, _ = proc.communicate(json.dumps({'paths': paths}))
+                    out, _ = proc.communicate(json.dumps(
+                        {'paths': phase['paths']}
+                    ))
                     returncode = proc.returncode
 
                     if returncode:
@@ -220,6 +222,7 @@ class SubCommand(Namespace):
             self.check_repo()
 
             try:
+                self.paths = []
                 func(self, *args, **kwargs)
 
                 # Fail and roll back for any of the markers of an interrupted
@@ -238,9 +241,9 @@ class SubCommand(Namespace):
                 assert not conflicts, "Change in unstaged files, aborting"
 
                 # Make unique and sort
-                paths = sorted(set(files))
+                self.paths = sorted(set(files))
 
-                _playback_paths(self, paths)
+                _playback_paths(self, self.paths)
 
                 if self.args.dry_run:
                     self.abort()
@@ -277,6 +280,17 @@ class SubCommand(Namespace):
                         self.logger.exception("Unable to show diff")
 
                 self.abort()
+                # if we are not in dryrun we can't be sure we havent already
+                # committed some stuff to the data-fs so playback all paths
+                # abort
+                if not self.args.dry_run and self.paths:
+                    self.sync.playback_paths(
+                        paths=self.paths,
+                        recurse=False,
+                        override=True,
+                        skip_errors=True,
+                        dryrun=False,
+                    )
                 raise
 
         return wrapper
