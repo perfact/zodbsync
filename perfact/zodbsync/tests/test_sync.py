@@ -1552,12 +1552,12 @@ class TestSync():
 
         playback_cmd = "{}/playback_cmd".format(self.zeo.path)
         cmd_script = '\n'.join([
-            "#!/bin/bash"
+            "#!/bin/bash",
             "cat > {}"
         ]).format('{}.out'.format(playback_cmd))
         with open(playback_cmd, 'w') as f:
             f.write(cmd_script)
-        os.chmod(cmd_script, 0o700)
+        os.chmod(playback_cmd, 0o700)
 
         fname = "{}/playback_hook".format(self.zeo.path)
         playback_dict = [{
@@ -1583,6 +1583,7 @@ class TestSync():
 
         assert 'NewFolder' in self.app.objectIds()
         assert 'NewFolder2' not in self.app.objectIds()
+        assert os.path.isfile('{}.out'.format(playback_cmd))
 
         with open(self.config.path, 'w') as f:
             f.write(orig_config)

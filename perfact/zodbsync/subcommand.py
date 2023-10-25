@@ -5,6 +5,7 @@ import subprocess
 import os
 
 import filelock
+import json
 
 from .helpers import Namespace
 
@@ -150,6 +151,69 @@ class SubCommand(Namespace):
         - play back changed objects (diff between old and new HEAD)
         - unstash
         """
+        def _playback_paths(self, paths):
+            paths = self.sync.prepare_paths(paths)
+            dryrun = self.args.dry_run
+
+            playback_hook = self.config.get('playback_hook', None)
+            if playback_hook and os.path.isfile(playback_hook):
+                proc = subprocess.Popen(
+                    playback_hook, stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    universal_newlines=True)
+                out, _ = proc.communicate(json.dumps({'paths': paths}))
+                returncode = proc.returncode
+                if returncode:
+                    raise AssertionError(
+                        "Error calling playback hook, returncode "
+                        "{}, [[{}]] on {}".format(
+                            returncode, playback_hook, out
+                        )
+                    )
+                phases = json.loads(out)
+            else:
+                phases = [{'name': 'playback', 'paths': paths}]
+                if self.config.get('run_after_playback', None):
+                    phases[0]['cmd'] = self.config['run_after_playback']
+
+            for ix, phase in enumerate(phases):
+                phase_name = phase.get('name') or str(ix)
+                phase_cmd = phase.get('cmd')
+
+                self.sync.playback_paths(
+                    paths=phase['paths'],
+                    recurse=False,
+                    override=True,
+                    skip_errors=self.args.skip_errors,
+                    dryrun=dryrun,
+                )
+
+                if not dryrun and phase_cmd and os.path.isfile(phase_cmd):
+                    self.logger.info(
+                        'Calling command for Phase %s', phase_name
+                    )
+                    proc = subprocess.Popen(
+                        phase_cmd, stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                        universal_newlines=True)
+                    out, _ = proc.communicate(json.dumps({'paths': paths}))
+                    returncode = proc.returncode
+
+                    if returncode:
+                        self.logger.error(
+                            "Error during phase command %s, %s",
+                            returncode, out
+                        )
+                        if sys.stdin.isatty():
+                            print("Enter 'y' to continue, other to rollback")
+                            res = input()
+                            if res == 'y':
+                                continue
+
+                        raise AssertionError(
+                            "Unrecoverable error in phase command"
+                        )
+
         @SubCommand.with_lock
         def wrapper(self, *args, **kwargs):
             # Check for unstaged changes
@@ -173,20 +237,10 @@ class SubCommand(Namespace):
                 conflicts = files & set(self.unstaged_changes)
                 assert not conflicts, "Change in unstaged files, aborting"
 
-                # Strip site name from the start
-                files = [fname[len(self.sync.site):] for fname in files]
-                # Strip filename to get the object path
-                dirs = [fname.rsplit('/', 1)[0] for fname in files]
                 # Make unique and sort
-                paths = sorted(set(dirs))
+                paths = sorted(set(files))
 
-                self.sync.playback_paths(
-                    paths=paths,
-                    recurse=False,
-                    override=True,
-                    skip_errors=self.args.skip_errors,
-                    dryrun=self.args.dry_run,
-                )
+                _playback_paths(self, paths)
 
                 if self.args.dry_run:
                     self.abort()
