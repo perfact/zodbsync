@@ -215,6 +215,8 @@ class SubCommand(Namespace):
                         raise AssertionError(
                             "Unrecoverable error in phase command"
                         )
+                    else:
+                        self.logger.info(out)
 
         @SubCommand.with_lock
         def wrapper(self, *args, **kwargs):
