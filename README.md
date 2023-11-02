@@ -19,18 +19,24 @@ Viktor Dick <viktor.dick@perfact.de>
 
 The package should be installed using `pip` in the same virt-env as `zope`, p.e.
 
-    zope/bin/pip install git+https://github.com/perfact/zodbsync
+    zope/bin/pip install perfact-zodbsync
 
 On PerFact systems, it should automatically be pulled by the `requirements.txt`
-of the package `perfact-dbutils-zope4` and included there. If installing on an
-older system, run
-
-    sudo -H /opt/zope/zope2.13/bin/pip install git+https://github.com/perfact/zodbsync
+of the package `perfact-dbutils-zope4` and included there.
 
 On newer PerFact Zope4 installations, install `test` branch via, e.g. for
 development/testing purposes
 
     sudo -H /usr/share/perfact/zope4/bin/pip install git+https://github.com/perfact/zodbsync@test --upgrade
+
+If the `setuptools` version used by the Zope virtualenv is too old (for
+example, on Ubuntu 20.04 or 22.04), you need to build the package in a separate
+virtualenv using a new `setuptools` version and then install it:
+
+    virtualenv build-venv
+    build-venv/bin/pip install 'setuptools>=61.2' build
+    build-venv/bin/python -m build
+    sudo -H /usr/share/perfact/zope4/bin/pip install dist/$(ls -t dist/*.tar.gz | head -n 1)
 
 Note that executing the tests requires ODBC C headers to be installed. On
 Debian-like systems, install the package `unixodbc-dev`.
@@ -188,7 +194,8 @@ aware that there is no check that the commit range is actually a straight
 forward succession - internally, `git log` is used and therefore any commits
 that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
 practice, choosing commits that are not directly connected will result in some
-commit not being able to be picked due to conflicts.
+commit not being able to be picked due to conflicts and a rollback of the
+operation.
 
 
 ### `zodbsync upload` (DEPRECATED)
@@ -201,6 +208,10 @@ in the specified directory inside of `base_dir`.
 Example to upload bootstrap:
 
     zodbsync upload /tmp/bootstrap lib/bootstrap
+
+This subcommand is deprecated because external libraries should not be put into
+the Data.FS. Instead, it is more efficient if they are served directly from the
+file system.
 
 ### `zodbsync with-lock`
 
@@ -283,8 +294,3 @@ holds for `Z SQL Method`s which have `class_name` and `class_file` set to a no
 longer existing extension.
 
 ## To Do / Roadmap
-
-  * Specifying a path to a python script that is executed after `playback`
-    inside the same transaction will allow to store database changes in a
-    connected relational (SQL) database inside ZODB using Z SQL Methods and
-    have them executed as part of the same deployment step.
