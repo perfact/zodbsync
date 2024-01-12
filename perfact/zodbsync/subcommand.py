@@ -190,7 +190,7 @@ class SubCommand(Namespace):
 
                 if not dryrun and phase_cmd and os.path.isfile(phase_cmd):
                     self.logger.info(
-                        'Calling command for Phase %s', phase_name
+                        'Calling phase %s, command: %s', phase_name, phase_cmd
                     )
                     proc = subprocess.Popen(
                         phase_cmd, stdin=subprocess.PIPE,

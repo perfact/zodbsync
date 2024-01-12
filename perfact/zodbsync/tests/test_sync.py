@@ -1594,8 +1594,8 @@ class TestSync():
 
     def test_playback_hook_failed(self):
         """
-        Add configuration option for a playback hook script and check that
-        only the paths returned are played back
+        Add configuration option for a playback hook script with a
+        failing cmd and check that all changes are rolled back
         """
         self.add_folder('NewFolder', 'First Folder')
         self.add_folder('NewFolder2', 'Second Folder')
