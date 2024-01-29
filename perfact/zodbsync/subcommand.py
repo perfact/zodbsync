@@ -140,6 +140,75 @@ class SubCommand(Namespace):
         # The commit to compare to with regards to changed files
         self.orig_commit = self.branches[self.orig_branch]
 
+    def _playback_paths(self, paths):
+        paths = self.sync.prepare_paths(paths)
+        dryrun = self.args.dry_run
+
+        playback_hook = self.config.get('playback_hook', None)
+        if playback_hook and os.path.isfile(playback_hook):
+            proc = subprocess.Popen(
+                playback_hook, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                universal_newlines=True)
+            out, _ = proc.communicate(json.dumps({'paths': paths}))
+            returncode = proc.returncode
+            if returncode:
+                raise AssertionError(
+                    "Error calling playback hook, returncode "
+                    "{}, [[{}]] on {}".format(
+                        returncode, playback_hook, out
+                    )
+                )
+            phases = json.loads(out)
+        else:
+            phases = [{'name': 'playback', 'paths': paths}]
+            if self.config.get('run_after_playback', None):
+                phases[-1]['cmd'] = self.config['run_after_playback']
+
+        for ix, phase in enumerate(phases):
+            phase_name = phase.get('name') or str(ix)
+            phase_cmd = phase.get('cmd')
+
+            self.sync.playback_paths(
+                paths=phase['paths'],
+                recurse=False,
+                override=True,
+                skip_errors=self.args.skip_errors,
+                dryrun=dryrun,
+            )
+
+            if dryrun or not (phase_cmd and os.path.isfile(phase_cmd)):
+                continue
+
+            self.logger.info(
+                'Calling phase %s, command: %s', phase_name, phase_cmd
+            )
+            proc = subprocess.Popen(
+                phase_cmd, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                universal_newlines=True)
+            out, _ = proc.communicate(json.dumps(
+                {'paths': phase['paths']}
+            ))
+            returncode = proc.returncode
+
+            if returncode:
+                self.logger.error(
+                    "Error during phase command %s, %s",
+                    returncode, out
+                )
+                if sys.stdin.isatty():
+                    print("Enter 'y' to continue, other to rollback")
+                    res = input()
+                    if res == 'y':
+                        continue
+
+                raise AssertionError(
+                    "Unrecoverable error in phase command"
+                )
+            else:
+                self.logger.info(out)
+
     @staticmethod
     def gitexec(func):
         """
@@ -151,72 +220,6 @@ class SubCommand(Namespace):
         - play back changed objects (diff between old and new HEAD)
         - unstash
         """
-        def _playback_paths(self, paths):
-            paths = self.sync.prepare_paths(paths)
-            dryrun = self.args.dry_run
-
-            playback_hook = self.config.get('playback_hook', None)
-            if playback_hook and os.path.isfile(playback_hook):
-                proc = subprocess.Popen(
-                    playback_hook, stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    universal_newlines=True)
-                out, _ = proc.communicate(json.dumps({'paths': paths}))
-                returncode = proc.returncode
-                if returncode:
-                    raise AssertionError(
-                        "Error calling playback hook, returncode "
-                        "{}, [[{}]] on {}".format(
-                            returncode, playback_hook, out
-                        )
-                    )
-                phases = json.loads(out)
-            else:
-                phases = [{'name': 'playback', 'paths': paths}]
-                if self.config.get('run_after_playback', None):
-                    phases[0]['cmd'] = self.config['run_after_playback']
-
-            for ix, phase in enumerate(phases):
-                phase_name = phase.get('name') or str(ix)
-                phase_cmd = phase.get('cmd')
-
-                self.sync.playback_paths(
-                    paths=phase['paths'],
-                    recurse=False,
-                    override=True,
-                    skip_errors=self.args.skip_errors,
-                    dryrun=dryrun,
-                )
-
-                if not dryrun and phase_cmd and os.path.isfile(phase_cmd):
-                    self.logger.info(
-                        'Calling phase %s, command: %s', phase_name, phase_cmd
-                    )
-                    proc = subprocess.Popen(
-                        phase_cmd, stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                        universal_newlines=True)
-                    out, _ = proc.communicate(json.dumps(
-                        {'paths': phase['paths']}
-                    ))
-                    returncode = proc.returncode
-
-                    if returncode:
-                        self.logger.error(
-                            "Error during phase command %s, %s",
-                            returncode, out
-                        )
-                        if sys.stdin.isatty():
-                            print("Enter 'y' to continue, other to rollback")
-                            res = input()
-                            if res == 'y':
-                                continue
-
-                        raise AssertionError(
-                            "Unrecoverable error in phase command"
-                        )
-                    else:
-                        self.logger.info(out)
 
         @SubCommand.with_lock
         def wrapper(self, *args, **kwargs):
@@ -245,7 +248,7 @@ class SubCommand(Namespace):
                 # Make unique and sort
                 self.paths = sorted(set(files))
 
-                _playback_paths(self, self.paths)
+                self._playback_paths(self.paths)
 
                 if self.args.dry_run:
                     self.abort()
