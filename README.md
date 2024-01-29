@@ -84,6 +84,23 @@ Path to a script that is executed after a successful (non-recursive) playback,
 including indirect calls from `reset` or `pick`. If the script exists, it is
 called and fed the list of changed objects in a JSON format.
 
+### `playback_hook`
+Path to script which is called to define the phases of playback to be
+executed, Recieves a json dictionary in the form of `{"paths": [...]}`
+and should output a json dictionary in the form of
+
+```json
+[
+  {
+    "paths": [...],
+    "cmd": [...]
+  },
+  {
+    "paths": [...],
+  }
+]
+```
+
 ## Usage
 
 The executable `zodbsync` provides several subcommands
