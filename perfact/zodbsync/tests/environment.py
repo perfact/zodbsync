@@ -57,7 +57,7 @@ class Repository():
 
 
 class ZopeConfig():
-    def __init__(self, zeosock, add_tempstorage=False):
+    def __init__(self, zeosock):
         self.path = tempfile.mkdtemp()
         self.config = self.path + '/zope.conf'
         content = '''
@@ -77,19 +77,6 @@ instancehome $INSTANCE
    mount-point /
 </zodb_db>
         '''.format(zeosock=zeosock, path=self.path)
-
-        # Prevents warnings with Zope2 but is not supported with Zope 4
-        if add_tempstorage:  # pragma: no cover
-            content += """
-<zodb_db temporary>
-    # Temporary storage database (for sessions)
-    <temporarystorage>
-      name temporary storage for sessioning
-    </temporarystorage>
-    mount-point /temp_folder
-    container-class Products.TemporaryFolder.TemporaryContainer
-</zodb_db>
-            """
 
         with open(self.config, 'w') as f:
             f.write(content)

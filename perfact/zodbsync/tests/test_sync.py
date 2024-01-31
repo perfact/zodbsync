@@ -12,11 +12,6 @@ import shutil
 import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
-try:  # pragma: no cover
-    import ZServer  # noqa: F401
-    ZOPE2 = True
-except ImportError:  # pragma: no cover
-    ZOPE2 = False
 
 try:
     from unittest import mock
@@ -69,8 +64,7 @@ class TestSync():
         myenv = {}
         myenv['zeo'] = env.ZeoInstance()
         myenv['repo'] = env.Repository()
-        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath(),
-                                             add_tempstorage=ZOPE2)
+        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
         myenv['jslib'] = env.JSLib()
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
