@@ -103,10 +103,9 @@ class Runner(object):
 
         self.logger = logger
         config = load_config(args.config)
-        if self.config is not None:
-            assert config == self.config, (
-                "Re-used runner with different config"
-            )
+        if self.config is not None and config != self.config:
+            self.logger.warning("Reusing runner with different config")
+            self.sync = None
         self.config = config
 
         # Usually, each command needs a connection to the ZODB, but it might

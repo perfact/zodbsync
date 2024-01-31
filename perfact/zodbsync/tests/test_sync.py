@@ -276,9 +276,9 @@ class TestSync():
         self.run('playback', '/index_html')
         assert self.app.index_html() == content
 
-    def add_folder(self, name, msg):
+    def add_folder(self, name, msg=None):
         """
-        Add a folder to the root directory and commit it
+        Add a folder to the root directory and commit it if msg is given
         """
         folder = self.repo.path + '/__root__/' + name
         os.mkdir(folder)
@@ -288,8 +288,9 @@ class TestSync():
                 ('title', ''),
                 ('type', 'Folder'),
             ]''')
-        self.gitrun('add', '.')
-        self.gitrun('commit', '-m', msg)
+        if msg is not None:
+            self.gitrun('add', '.')
+            self.gitrun('commit', '-m', msg)
 
     def get_head_id(self):
         """Return commit ID of current HEAD."""
@@ -1519,12 +1520,9 @@ class TestSync():
             orig_config = f.read()
         with open(self.config.path, 'a') as f:
             f.write('\n' + text + '\n')
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
         yield
         with open(self.config.path, 'w') as f:
             f.write(orig_config)
-        del self.runner
 
     def test_playback_postprocess(self):
         """
@@ -1652,9 +1650,8 @@ class TestSync():
                 '{}/__root__/Test'.format(layer),
             )
             with open(path + '/00-base.py', 'w') as f:
-                f.write('path = "{}"'.format(layer))
-            with self.appendtoconf('layers = "{}"'.format(path)):
-                self.run('record', '--freeze', '/')
+                f.write('base_dir = "{}"'.format(layer))
+            self.run('record', '--freeze', '/')
         for fname in ['__meta__', '__frozen__', 'Test/__meta__']:
             assert os.path.exists(
                 '{}/__root__/{}'.format(self.repo.path, fname)
@@ -1678,11 +1675,26 @@ class TestSync():
                 '{}/__root__/Test'.format(layer),
             )
             with open(path + '/00-base.py', 'w') as f:
-                f.write('path = "{}"'.format(layer))
-            with self.appendtoconf('layers = "{}"'.format(path)):
-                self.run('record', '/')
+                f.write('base_dir = "{}"'.format(layer))
+            self.run('record', '/')
         assert not os.path.exists(
             '{}/__root__/Test'.format(self.repo.path)
         )
 
         os.remove(path + '/00-base.py')
+
+    @pytest.mark.xfail
+    def test_layer_playback(self):
+        """
+        Set up a base layer, add a path there and play it back.
+        """
+        self.add_folder('Test')
+        with tempfile.TemporaryDirectory() as layer:
+            src = '{}/__root__'.format(self.repo.path)
+            tgt = '{}/__root__'.format(layer)
+            os.mkdir(tgt)
+            os.rename(src + '/Test', tgt + '/Test')
+            with open(self.config.folder + '/layers/00-base.py', 'w') as f:
+                f.write('base_dir = "{}"'.format(layer))
+            self.run('playback', '/Test')
+        assert 'Test' in self.app.objectIds()

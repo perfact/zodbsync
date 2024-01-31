@@ -101,10 +101,12 @@ base_dir = '{repodir}'
 commit_name = "Zope Developer"
 commit_email = "zope-devel@example.de"
 commit_message = "Generic commit message."
+layers = "{root}/layers"
             '''.format(
                 zopeconf=env['zopeconfig'].config,
                 zeopath=env['zeo'].path,
                 repodir=env['repo'].path,
+                root=self.folder,
             ))
 
     def cleanup(self):
