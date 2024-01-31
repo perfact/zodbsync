@@ -251,10 +251,18 @@ class ZODBSync:
         if layerdir and os.path.isdir(layerdir):
             fnames = sorted(os.listdir(layerdir))
             for fname in fnames:
-                self.layers.append(
-                    load_config('{}/{}'.format(layerdir, fname))
-                    | {'ident': fname}
-                )
+                self.layers.append({
+                    **{
+                        'ident': fname,
+                        'frozen': True,
+                    },
+                    **load_config('{}/{}'.format(layerdir, fname))
+                })
+        # Append default top-level layer
+        self.layers.append({
+            'ident': None,
+            'base_dir': self.config['base_dir'],
+        })
 
         # Make sure the manager user exists
         if self.config.get('create_manager_user', False):
@@ -427,10 +435,24 @@ class ZODBSync:
 
     def fs_read(self, path):
         '''Read data from local file system.'''
-
-        base_dir = self.fs_path(path)
-        if not os.path.isdir(base_dir):
+        # Find object in topmost layer that has it, but respect __frozen__
+        layers = [os.path.join(layer['base_dir'], self.site)
+                  for layer in self.layers]
+        for part in path.split('/'):
+            next_layers = []
+            for layer in reversed(layers):
+                layer = os.path.join(layer, part)
+                if not os.path.isdir(layer):
+                    continue
+                next_layers.append(layer)
+                if os.path.exists(os.path.join(layer, '__frozen__')):
+                    # Masking all lower layers
+                    break
+            layers = list(reversed(next_layers))
+        if not layers:
+            # Path does not exist on any layer or is masked by __frozen__
             return None
+        base_dir = layers[-1]
         filenames = os.listdir(base_dir)
         src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
