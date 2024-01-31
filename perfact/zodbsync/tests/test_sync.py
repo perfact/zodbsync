@@ -8,6 +8,7 @@ import subprocess
 import pickle
 import pytest
 import shutil
+import tempfile
 from contextlib import contextmanager
 
 import ZEO
@@ -62,11 +63,12 @@ class TestSync():
         Fixture that is automatically used by all tests. Initializes
         environment and injects the elements of it into the class.
         '''
-        myenv = {}
-        myenv['zeo'] = env.ZeoInstance()
-        myenv['repo'] = env.Repository()
+        myenv = dict(
+            zeo=env.ZeoInstance(),
+            repo=env.Repository(),
+            jslib=env.JSLib(),
+        )
         myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
-        myenv['jslib'] = env.JSLib()
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
         # inject items into class so methods can use them
@@ -1635,12 +1637,53 @@ class TestSync():
             assert 'NewFolder' not in self.app.objectIds()
             assert 'NewFolder2' not in self.app.objectIds()
 
-    def test_layer_record(self):
+    @pytest.mark.xfail
+    def test_layer_record_freeze(self):
         """
-        Adjust config to contain an additional fixed layer and record
-        everything.
+        Create a folder, copy it into an additional fixed layer and record
+        everything with --freeze. Check that the top layer still has the object
+        and a __frozen__ marker.
         """
-        path = self.zopeconfig.path + '/layers'
-        os.mkdir(path)
-        with self.appendtoconf('layers = "{}"'.format(path)):
-            self.run('record', '/')
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        path = self.config.folder + '/layers'
+        with tempfile.TemporaryDirectory() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),
+                '{}/__root__/Test'.format(layer),
+            )
+            with open(path + '/00-base.py', 'w') as f:
+                f.write('path = "{}"'.format(layer))
+            with self.appendtoconf('layers = "{}"'.format(path)):
+                self.run('record', '--freeze', '/')
+        for fname in ['__meta__', '__frozen__']:
+            assert os.path.exists(
+                '{}/__root__/Test/{}'.format(self.repo.path, fname)
+            )
+
+        os.remove(path + '/00-base.py')
+
+    @pytest.mark.xfail
+    def test_layer_record_nofreeze(self):
+        """
+        Create a folder, copy it into an additional fixed layer and record
+        everything without --freeze. Check that the top layer no longer has the
+        folder.
+        """
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        path = self.config.folder + '/layers'
+        with tempfile.TemporaryDirectory() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),
+                '{}/__root__/Test'.format(layer),
+            )
+            with open(path + '/00-base.py', 'w') as f:
+                f.write('path = "{}"'.format(layer))
+            with self.appendtoconf('layers = "{}"'.format(path)):
+                self.run('record', '/')
+        assert not os.path.exists(
+            '{}/__root__/Test'.format(self.repo.path)
+        )
+
+        os.remove(path + '/00-base.py')

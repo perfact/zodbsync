@@ -87,7 +87,9 @@ instancehome $INSTANCE
 
 class ZODBSyncConfig():
     def __init__(self, env):
-        _, self.path = tempfile.mkstemp()
+        self.folder = tempfile.mkdtemp()
+        os.mkdir(self.folder + '/layers')
+        self.path = self.folder + '/zodb.py'
         with open(self.path, 'w') as f:
             f.write('''
 conf_path = '{zopeconf}'
@@ -106,7 +108,7 @@ commit_message = "Generic commit message."
             ))
 
     def cleanup(self):
-        os.remove(self.path)
+        shutil.rmtree(self.folder)
 
 
 class JSLib():
