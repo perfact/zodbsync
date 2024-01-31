@@ -1,6 +1,7 @@
 unreleased
   * Update README
   * Explicitly name git branch in tests
+  * Add configuration option playback_hook
 
 22.2.5
   * Omit title attributes if they are callable.

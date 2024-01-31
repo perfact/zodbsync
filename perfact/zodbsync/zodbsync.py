@@ -5,8 +5,6 @@ import os
 import shutil
 import time  # for periodic output
 import sys
-import json
-import subprocess
 
 # for using an explicit transaction manager
 import transaction
@@ -660,11 +658,7 @@ class ZODBSync:
         object_handlers[fs_data['type']].fix_order(obj, fs_data)
         del self.fs_data[path]
 
-    def playback_paths(self, paths, recurse=True, override=False,
-                       skip_errors=False, dryrun=False):
-        self.recurse = recurse
-        self.override = override
-        self.skip_errors = skip_errors
+    def prepare_paths(self, paths):
         # normalize paths - cut off filenames and the site name
         paths = {
             path.rsplit('/', 1)[0] if (
@@ -679,9 +673,17 @@ class ZODBSync:
         })
 
         if not len(paths):
-            return
+            return []
 
         paths = [path.rstrip('/') + '/' for path in paths]
+        return paths
+
+    def playback_paths(self, paths, recurse=True, override=False,
+                       skip_errors=False, dryrun=False):
+        self.recurse = recurse
+        self.override = override
+        self.skip_errors = skip_errors
+        paths = self.prepare_paths(paths)
 
         if recurse:
             paths = remove_redundant_paths(paths)
@@ -744,12 +746,6 @@ class ZODBSync:
             txn_mgr.abort()
         else:
             txn_mgr.commit()
-            postproc = self.config.get('run_after_playback', None)
-            if postproc and os.path.isfile(postproc):
-                self.logger.info('Calling postprocessing script ' + postproc)
-                proc = subprocess.Popen(postproc, stdin=subprocess.PIPE,
-                                        universal_newlines=True)
-                proc.communicate(json.dumps({'paths': paths}))
 
     def recent_changes(self, since_secs=None, txnid=None, limit=50,
                        search_limit=100):
