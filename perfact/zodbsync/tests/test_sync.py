@@ -8,6 +8,7 @@ import subprocess
 import pickle
 import pytest
 import shutil
+from contextlib import contextmanager
 
 import ZEO
 import transaction
@@ -1507,6 +1508,22 @@ class TestSync():
         self.run('reset', c2)
         self.run('reset', c1)
 
+    @contextmanager
+    def appendtoconf(self, text):
+        """
+        Append some text to the config and restore afterward
+        """
+        with open(self.config.path) as f:
+            orig_config = f.read()
+        with open(self.config.path, 'a') as f:
+            f.write('\n' + text + '\n')
+        # Avoid error regarding reusing runner with changed config
+        del self.runner
+        yield
+        with open(self.config.path, 'w') as f:
+            f.write(orig_config)
+        del self.runner
+
     def test_playback_postprocess(self):
         """
         Add configuration option for a postprocessing script and check that
@@ -1521,20 +1538,10 @@ class TestSync():
         with open(fname, 'w') as f:
             f.write(script)
         os.chmod(fname, 0o700)
-        with open(self.config.path) as f:
-            orig_config = f.read()
-        with open(self.config.path, 'a') as f:
-            f.write('\nrun_after_playback = "{}"\n'.format(fname))
-
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
-        self.test_reset()
-        with open(outfile) as f:
-            assert json.loads(f.read()) == {"paths": ["/index_html/"]}
-
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
-        del self.runner
+        with self.appendtoconf('run_after_playback = "{}"'.format(fname)):
+            self.test_reset()
+            with open(outfile) as f:
+                assert json.loads(f.read()) == {"paths": ["/index_html/"]}
 
     def test_playback_hook(self):
         """
@@ -1621,19 +1628,19 @@ class TestSync():
         with open(fname, 'w') as f:
             f.write(script)
         os.chmod(fname, 0o700)
-        with open(self.config.path) as f:
-            orig_config = f.read()
-        with open(self.config.path, 'a') as f:
-            f.write('\nplayback_hook = "{}"\n'.format(fname))
+        with self.appendtoconf('playback_hook = "{}"'.format(fname)):
+            with pytest.raises(AssertionError):
+                self.run('pick', 'HEAD..{}'.format(commit))
 
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
-        with pytest.raises(AssertionError):
-            self.run('pick', 'HEAD..{}'.format(commit))
+            assert 'NewFolder' not in self.app.objectIds()
+            assert 'NewFolder2' not in self.app.objectIds()
 
-        assert 'NewFolder' not in self.app.objectIds()
-        assert 'NewFolder2' not in self.app.objectIds()
-
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
-        del self.runner
+    def test_layer_record(self):
+        """
+        Adjust config to contain an additional fixed layer and record
+        everything.
+        """
+        path = self.zopeconfig.path + '/layers'
+        os.mkdir(path)
+        with self.appendtoconf('layers = "{}"'.format(path)):
+            self.run('record', '/')
