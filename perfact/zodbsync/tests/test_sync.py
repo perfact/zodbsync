@@ -1637,7 +1637,6 @@ class TestSync():
             assert 'NewFolder' not in self.app.objectIds()
             assert 'NewFolder2' not in self.app.objectIds()
 
-    @pytest.mark.xfail
     def test_layer_record_freeze(self):
         """
         Create a folder, copy it into an additional fixed layer and record
@@ -1656,9 +1655,9 @@ class TestSync():
                 f.write('path = "{}"'.format(layer))
             with self.appendtoconf('layers = "{}"'.format(path)):
                 self.run('record', '--freeze', '/')
-        for fname in ['__meta__', '__frozen__']:
+        for fname in ['__meta__', '__frozen__', 'Test/__meta__']:
             assert os.path.exists(
-                '{}/__root__/Test/{}'.format(self.repo.path, fname)
+                '{}/__root__/{}'.format(self.repo.path, fname)
             )
 
         os.remove(path + '/00-base.py')

@@ -18,6 +18,7 @@ from Zope2.Startup.run import configure_wsgi
 # Plugins for handling different object types
 from .object_types import object_handlers, mod_implemented_handlers
 from .helpers import StrRepr, to_string, literal_eval, remove_redundant_paths
+from .helpers import load_config
 
 
 # Monkey patch ZRDB not to connect to databases immediately.
@@ -244,6 +245,17 @@ class ZODBSync:
         root = db.open(self.tm).root
         self.app = root.Application
 
+        # Initialize layers
+        layerdir = self.config.get('layers', None)
+        self.layers = []
+        if layerdir and os.path.isdir(layerdir):
+            fnames = sorted(os.listdir(layerdir))
+            for fname in fnames:
+                self.layers.append(
+                    load_config('{}/{}'.format(layerdir, fname))
+                    | {'ident': fname}
+                )
+
         # Make sure the manager user exists
         if self.config.get('create_manager_user', False):
             self.create_manager_user()
@@ -445,7 +457,7 @@ class ZODBSync:
         filenames = os.listdir(self.fs_path(path))
         return sorted([f for f in filenames if not f.startswith('__')])
 
-    def record(self, path='/', recurse=True, skip_errors=False):
+    def record(self, path='/', recurse=True, skip_errors=False, freeze=False):
         '''Record Zope objects from the given path into the local
         filesystem.'''
         if not path:
@@ -455,6 +467,12 @@ class ZODBSync:
         for part in path.split('/'):
             if part:
                 obj = getattr(obj, part)
+        if freeze:
+            fullpath = self.fs_path(path)
+            os.makedirs(fullpath, exist_ok=True)
+            with open('{}/__frozen__'.format(fullpath), 'w'):
+                pass
+
         self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):

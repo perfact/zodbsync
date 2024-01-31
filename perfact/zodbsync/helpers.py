@@ -204,11 +204,11 @@ def prop_dict(data):
     return props
 
 
-def load_config(filename, name='config'):
+def load_config(filename):
     '''Load the module at "filename" as module "name". Return the contents
     as a dictionary. Skips contents starting with '_'.
     '''
-    loader = importlib.machinery.SourceFileLoader(name, filename)
+    loader = importlib.machinery.SourceFileLoader('config', filename)
     spec = importlib.util.spec_from_loader(loader.name, loader)
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)
