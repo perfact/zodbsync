@@ -251,6 +251,8 @@ class ZODBSync:
         if layerdir and os.path.isdir(layerdir):
             fnames = sorted(os.listdir(layerdir))
             for fname in fnames:
+                if any([fname.startswith(key) for key in '.~_']):
+                    continue
                 self.layers.append({
                     **{
                         'ident': fname,
