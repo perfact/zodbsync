@@ -336,12 +336,35 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
-    def fs_path(self, path):
+    def fs_path(self, path, for_write=True):
         '''
         Return filesystem path corresponding to the object path, which might
         start with a /.
+        If for_write is given, simply return the (possibly not existing) path
+        in the top layer. Otherwise, return the path from the relevant layer
+        and None if the object does not exist on the file system or is masked.
         '''
-        return os.path.join(self.app_dir, path.lstrip('/'))
+        if for_write:
+            return os.path.join(self.app_dir, path.lstrip('/'))
+
+        # Find object in topmost layer that has it, but respect __frozen__
+        layers = [os.path.join(layer['base_dir'], self.site)
+                  for layer in self.layers]
+        for part in path.split('/'):
+            next_layers = []
+            for layer in reversed(layers):
+                layer = os.path.join(layer, part)
+                if not os.path.isdir(layer):
+                    continue
+                next_layers.append(layer)
+                if os.path.exists(os.path.join(layer, '__frozen__')):
+                    # Masking all lower layers
+                    break
+            layers = list(reversed(next_layers))
+        if not layers:
+            # Path does not exist on any layer or is masked by __frozen__
+            return None
+        return layers[-1]
 
     def fs_write(self, path, data):
         '''
@@ -435,24 +458,9 @@ class ZODBSync:
 
     def fs_read(self, path):
         '''Read data from local file system.'''
-        # Find object in topmost layer that has it, but respect __frozen__
-        layers = [os.path.join(layer['base_dir'], self.site)
-                  for layer in self.layers]
-        for part in path.split('/'):
-            next_layers = []
-            for layer in reversed(layers):
-                layer = os.path.join(layer, part)
-                if not os.path.isdir(layer):
-                    continue
-                next_layers.append(layer)
-                if os.path.exists(os.path.join(layer, '__frozen__')):
-                    # Masking all lower layers
-                    break
-            layers = list(reversed(next_layers))
-        if not layers:
-            # Path does not exist on any layer or is masked by __frozen__
+        base_dir = self.fs_path(path, for_write=False)
+        if base_dir is None:
             return None
-        base_dir = layers[-1]
         filenames = os.listdir(base_dir)
         src_fnames = [a for a in filenames if a.startswith('__source')]
         assert len(src_fnames) <= 1, "Multiple source files in " + path
@@ -754,7 +762,7 @@ class ZODBSync:
         # reliably and remove elements that are to be deleted in that reverse
         # order so properties of their parents can take their place
         for path in reversed(paths):
-            if not os.path.isdir(self.fs_path(path)):
+            if self.fs_path(path, for_write=False) is None:
                 # Call it immediately, it will read None from the FS and remove
                 # the object
                 self._playback_path(path)
