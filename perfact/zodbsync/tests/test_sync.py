@@ -9,6 +9,8 @@ import pickle
 import pytest
 import shutil
 import tempfile
+import string
+import random
 from contextlib import contextmanager
 
 import ZEO
@@ -1638,7 +1640,10 @@ class TestSync():
             assert 'NewFolder2' not in self.app.objectIds()
 
     @contextmanager
-    def addlayer(self, name='00-base.py'):
+    def addlayer(self, seqnum='00'):
+        name = '{}-{}.py'.format(seqnum, ''.join(
+            [random.choice(string.ascii_letters) for _ in range(16)]
+        ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
             with open(path, 'w') as f:
@@ -1702,4 +1707,18 @@ class TestSync():
             os.mkdir(tgt)
             os.rename(src + '/Test', tgt + '/Test')
             self.run('playback', '--no-recurse', '/Test')
+            assert 'Test' in self.app.objectIds()
+
+    @pytest.mark.xfail
+    def test_layer_playback_recurse(self):
+        """
+        Set up a base layer, add a path there and play it back.
+        """
+        self.add_folder('Test')
+        with self.addlayer() as layer:
+            src = '{}/__root__'.format(self.repo.path)
+            tgt = '{}/__root__'.format(layer)
+            os.mkdir(tgt)
+            os.rename(src + '/Test', tgt + '/Test')
+            self.run('playback', '/Test')
             assert 'Test' in self.app.objectIds()
