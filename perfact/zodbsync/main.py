@@ -25,9 +25,7 @@ from .commands.reset import Reset
 from .commands.execute import Exec
 from .commands.reformat import Reformat
 from .commands.checkout import Checkout
-
-# Future ideas:
-# from .commands.rebase import Rebase
+from .commands.freeze import Freeze
 
 
 class Runner(object):
@@ -35,7 +33,7 @@ class Runner(object):
     Parses arguments to select the correct SubCommand subclass.
     """
     commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Exec,
-                Reformat, Checkout]
+                Reformat, Checkout, Freeze]
 
     def __init__(self):
         """

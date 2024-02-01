@@ -1664,8 +1664,8 @@ class TestSync():
 
     def test_layer_record_freeze(self):
         """
-        Create a folder, copy it into an additional fixed layer and record
-        everything with --freeze. Check that the top layer still has the object
+        Create a folder, copy it into an additional fixed layer, freeze the
+        folder and record it. Check that the top layer still has the object
         and a __frozen__ marker.
         """
         self.add_folder('Test', 'Test')
@@ -1675,7 +1675,8 @@ class TestSync():
                 '{}/__root__/Test'.format(self.repo.path),
                 '{}/__root__/Test'.format(layer),
             )
-            self.run('record', '--freeze', '/')
+            self.run('freeze', '/')
+            self.run('record', '/')
         for fname in ['__meta__', '__frozen__', 'Test/__meta__']:
             assert os.path.exists(
                 '{}/__root__/{}'.format(self.repo.path, fname)
@@ -1685,8 +1686,7 @@ class TestSync():
     def test_layer_record_nofreeze(self):
         """
         Create a folder, copy it into an additional fixed layer and record
-        everything without --freeze. Check that the top layer no longer has the
-        folder.
+        everything. Check that the top layer no longer has the folder.
         """
         self.add_folder('Test', 'Test')
         self.run('playback', '/Test')

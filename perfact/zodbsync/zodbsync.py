@@ -508,7 +508,7 @@ class ZODBSync:
         filenames = os.listdir(self.fs_path(path))
         return sorted([f for f in filenames if not f.startswith('__')])
 
-    def record(self, path='/', recurse=True, skip_errors=False, freeze=False):
+    def record(self, path='/', recurse=True, skip_errors=False):
         '''Record Zope objects from the given path into the local
         filesystem.'''
         if not path:
@@ -518,12 +518,6 @@ class ZODBSync:
         for part in path.split('/'):
             if part:
                 obj = getattr(obj, part)
-        if freeze:
-            fullpath = self.fs_path(path)
-            os.makedirs(fullpath, exist_ok=True)
-            with open('{}/__frozen__'.format(fullpath), 'w'):
-                pass
-
         self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):

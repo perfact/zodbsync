@@ -36,10 +36,6 @@ class Record(SubCommand):
             default=False
         )
         parser.add_argument(
-            '--freeze', action='store_true', default=False,
-            help="Mark given paths as frozen",
-        )
-        parser.add_argument(
             'path', type=str, nargs='*',
             help='Sub-Path in Data.fs to be recorded',
         )
@@ -122,8 +118,7 @@ class Record(SubCommand):
         for path in paths:
             try:
                 self.sync.record(path=path, recurse=recurse,
-                                 skip_errors=self.args.skip_errors,
-                                 freeze=self.args.freeze)
+                                 skip_errors=self.args.skip_errors)
             except AttributeError:
                 self.sync.logger.exception('Unable to record path ' + path)
                 pass
