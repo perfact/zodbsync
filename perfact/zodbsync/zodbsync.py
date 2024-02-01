@@ -338,17 +338,26 @@ class ZODBSync:
         ext = self.content_types.get(content_type, ext)
         return ext
 
-    def fs_path(self, path, for_write=True):
+    def fs_path(self, path):
         '''
         Return filesystem path corresponding to the object path, which might
         start with a /.
-        If for_write is given, simply return the (possibly not existing) path
-        in the top layer. Otherwise, return the path from the relevant layer
-        and None if the object does not exist on the file system or is masked.
+        Note that this is not layer-aware and will always return the path in
+        the topmost layer.
         '''
-        if for_write:
-            return os.path.join(self.app_dir, path.lstrip('/'))
+        return os.path.join(self.app_dir, path.lstrip('/'))
 
+    def fs_pathinfo(self, path):
+        """
+        Find the correct layer for the object with the given Data.FS path.
+        Return value:
+        {
+            'path': Original argument
+            'fspath': Full path on the filesystem in correct layer, None if
+                      object is not present.
+            'children': List of effective subobjects (also as full paths!)
+        }
+        """
         # Find object in topmost layer that has it, but respect __frozen__
         layers = [os.path.join(layer['base_dir'], self.site)
                   for layer in self.layers]
@@ -363,10 +372,12 @@ class ZODBSync:
                     # Masking all lower layers
                     break
             layers = list(reversed(next_layers))
-        if not layers:
-            # Path does not exist on any layer or is masked by __frozen__
-            return None
-        return layers[-1]
+        return {
+            'path': path,
+            'fspath': layers[-1] if layers else None,
+            # TODO: This is not yet layer-aware
+            'children': os.listdir(layers[-1]) if layers else [],
+        }
 
     def fs_write(self, path, data):
         '''
@@ -458,14 +469,22 @@ class ZODBSync:
                                  item)
                 shutil.rmtree(os.path.join(base_dir, item))
 
-    def fs_read(self, path):
-        '''Read data from local file system.'''
-        base_dir = self.fs_path(path, for_write=False)
-        if base_dir is None:
+    def fs_read(self, pathinfo):
+        '''
+        Read data from local file system.
+        pathinfo should be a dict as returned by fs_pathinfo, but for
+        compatibility it can also be a string (in which case we use fs_path).
+        Returns None if there is no directory at that path.
+        '''
+        if isinstance(pathinfo, str):
+            base_dir = self.fs_path(pathinfo)
+        else:
+            base_dir = pathinfo['fspath']
+        if not os.path.isdir(base_dir):
             return None
         filenames = os.listdir(base_dir)
         src_fnames = [a for a in filenames if a.startswith('__source')]
-        assert len(src_fnames) <= 1, "Multiple source files in " + path
+        assert len(src_fnames) <= 1, "Multiple source files in " + base_dir
         src_fname = src_fnames and src_fnames[0] or None
 
         meta_fname = os.path.join(base_dir, '__meta__')
@@ -552,12 +571,12 @@ class ZODBSync:
             self.record_obj(obj=child, path=os.path.join(path, item),
                             skip_errors=skip_errors)
 
-    def _playback_path(self, path):
+    def _playback_path(self, pathinfo):
         '''
         Play back one object from the file system to the ZODB.
 
         Params:
-            :path: is the path in the ZODB, starting and ending with /
+            :pathinfo: A dict as returned by fs_pathinfo
 
         Precondition:
             The parent of the object in question must exist. When a parent as
@@ -568,6 +587,7 @@ class ZODBSync:
             In addition to the effect on the ZODB, it might add elements to
             `self.playback_todo` and/or `self.playback_fixorder`.
         '''
+        path = pathinfo['path']
         if self.recurse:
             self.num_obj_current += 1
             now = time.time()
@@ -581,9 +601,8 @@ class ZODBSync:
             # be more verbose because every path is explicitly requested
             self.logger.info('Uploading %s' % path)
 
-        # Returns None if the object does not exist in the file system, i.e. it
-        # is to be deleted.
-        fs_data = self.fs_read(path)
+        # fspath is None if the object is to be deleted
+        fs_data = pathinfo['fspath'] and self.fs_read(pathinfo)
 
         # Traverse to the object if it exists
         parent_obj = None
@@ -630,7 +649,7 @@ class ZODBSync:
             # itself, in case a property with the same name is to be created.
             # The addition of new paths is not done here - playback_paths calls
             # them later on.
-            contents = self.fs_contents(path)
+            contents = pathinfo['children']
             srv_contents = obj_contents(obj) if obj else []
 
             # Find IDs in Data.fs object not present in file system
@@ -683,7 +702,7 @@ class ZODBSync:
             self.playback_fixorder.append(path)
 
         self.playback_todo.extend([
-            '{}{}/'.format(path, item)
+            self.fs_pathinfo('{}{}/'.format(path, item))
             for item in reversed(contents)
         ])
 
@@ -760,16 +779,19 @@ class ZODBSync:
         # don't need to read it again from disk.
         self.fs_data = {}
 
-        # Reverse order, ensure that paths end in '/' so startswith can be used
-        # reliably and remove elements that are to be deleted in that reverse
-        # order so properties of their parents can take their place
-        for path in reversed(paths):
-            if self.fs_path(path, for_write=False) is None:
-                # Call it immediately, it will read None from the FS and remove
-                # the object
-                self._playback_path(path)
-            else:
-                todo.append(path)
+        pathinfo = [self.fs_pathinfo(path) for path in paths]
+        # Remove all objects that are to be removed so they do not interfere
+        # with properties with the same ID that take their place
+        lastdel = None
+        for entry in pathinfo:
+            if lastdel and entry['path'].startswith(lastdel):
+                continue
+            if entry['fspath'] is not None:
+                todo.append(entry)
+                continue
+            self._playback_path(entry)
+            lastdel = entry['path']
+        todo.reverse()
 
         # Iterate until both stacks are empty. Whenever the topmost element in
         # todo is no longer a subelement of the topmost element of fixorder, we
@@ -780,14 +802,14 @@ class ZODBSync:
                     # Handle next object on which to fix order unless there are
                     # still subpaths to be handled
                     path = fixorder[-1]
-                    if not (todo and todo[-1].startswith(path)):
+                    if not (todo and todo[-1]['path'].startswith(path)):
                         self._playback_fixorder(fixorder.pop())
                         continue
 
-                path = todo.pop()
-                self._playback_path(path)
+                entry = todo.pop()
+                self._playback_path(entry)
         except Exception:
-            self.logger.exception('Error with path: ' + path)
+            self.logger.exception('Error with path: ' + entry['path'])
             txn_mgr.abort()
             raise
 

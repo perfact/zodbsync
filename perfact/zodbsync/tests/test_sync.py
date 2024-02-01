@@ -1641,6 +1641,10 @@ class TestSync():
 
     @contextmanager
     def addlayer(self, seqnum='00'):
+        """
+        Create a temp directory and add a config that uses this as additional
+        code layer.
+        """
         name = '{}-{}.py'.format(seqnum, ''.join(
             [random.choice(string.ascii_letters) for _ in range(16)]
         ))
@@ -1696,7 +1700,8 @@ class TestSync():
             '{}/__root__/Test'.format(self.repo.path)
         )
 
-    def test_layer_playback(self):
+    @pytest.mark.parametrize('recurse', [True, False])
+    def test_layer_playback(self, recurse):
         """
         Set up a base layer, add a path there and play it back.
         """
@@ -1706,19 +1711,25 @@ class TestSync():
             tgt = '{}/__root__'.format(layer)
             os.mkdir(tgt)
             os.rename(src + '/Test', tgt + '/Test')
-            self.run('playback', '--no-recurse', '/Test')
+            cmd = ['playback', '/Test']
+            if not recurse:
+                cmd.append('--no-recurse')
+            self.run(*cmd)
             assert 'Test' in self.app.objectIds()
 
     @pytest.mark.xfail
-    def test_layer_playback_recurse(self):
+    def test_layer_playback_masked(self):
         """
-        Set up a base layer, add a path there and play it back.
+        Set up a base layer with a folder, but mask it as deleted in the upper
+        layer.
         """
         self.add_folder('Test')
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
             tgt = '{}/__root__'.format(layer)
             os.mkdir(tgt)
-            os.rename(src + '/Test', tgt + '/Test')
+            shutil.copytree(src + '/Test', tgt + '/Test')
+            with open('{}/__deleted__'.format(src), 'w'):
+                pass
             self.run('playback', '/Test')
-            assert 'Test' in self.app.objectIds()
+            assert 'Test' not in self.app.objectIds()
