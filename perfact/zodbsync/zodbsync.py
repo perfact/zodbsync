@@ -350,34 +350,65 @@ class ZODBSync:
     def fs_pathinfo(self, path):
         """
         Find the correct layer for the object with the given Data.FS path.
+        Essentially, we have a table where the rows are the layers and the
+        columns are the path components of path.
+        For each entry in the table, there are four relevant combinations:
+        - contains a __frozen__ marker yes/no
+        - contains a __meta__ file yes/no
+        If the folder does not exist, this is equivalent to no __frozen__ and
+        no __meta__.
+        Any __frozen__ marker effectively removes (masks) all layers below it.
+        The topmost remaining layer that has a __meta__ file is the one we
+        want.
+        The children are collected from the subfolders of all remaining layers.
         Return value:
         {
             'path': Original argument
             'fspath': Full path on the filesystem in correct layer, None if
                       object is not present.
-            'children': List of effective subobjects (also as full paths!)
+            'children': List of effective subobjects
         }
         """
-        # Find object in topmost layer that has it, but respect __frozen__
-        layers = [os.path.join(layer['base_dir'], self.site)
-                  for layer in self.layers]
-        for part in path.split('/'):
-            next_layers = []
-            for layer in reversed(layers):
-                layer = os.path.join(layer, part)
-                if not os.path.isdir(layer):
-                    continue
-                next_layers.append(layer)
-                if os.path.exists(os.path.join(layer, '__frozen__')):
-                    # Masking all lower layers
-                    break
-            layers = list(reversed(next_layers))
-        return {
+        result = {
             'path': path,
-            'fspath': layers[-1] if layers else None,
-            # TODO: This is not yet layer-aware
-            'children': os.listdir(layers[-1]) if layers else [],
+            'fspath': None,
+            'children': [],
         }
+
+        # These are in reverse order, the topmost layer has index 0
+        layers = [
+            {'fspath': layer['base_dir'], 'children': self.site}
+            for layer in reversed(self.layers)
+        ]
+
+        for part in [self.site] + path.split('/'):
+            if not part:
+                continue
+            next_layers = []
+            for layer in layers:
+                if part not in layer['children']:
+                    # Folder does not exist, this layer is irrelevant
+                    continue
+                fspath = os.path.join(layer['fspath'], part)
+                children = os.listdir(fspath)
+                next_layers.append({'fspath': fspath, 'children': children})
+                if '__frozen__' in children:
+                    # Mask all lower layers
+                    break
+            layers = next_layers
+
+        layers_with_meta = [
+            layer for layer in layers if '__meta__' in layer['children']
+        ]
+        if layers_with_meta:
+            result['fspath'] = layers_with_meta[0]['fspath']
+            all_children = sum((layer['children'] for layer in layers),
+                               start=[])
+            result['children'] = [
+                child for child in all_children
+                if not child.startswith('__')
+            ]
+        return result
 
     def fs_write(self, path, data):
         '''
