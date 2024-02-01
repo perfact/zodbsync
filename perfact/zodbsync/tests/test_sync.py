@@ -1520,9 +1520,11 @@ class TestSync():
             orig_config = f.read()
         with open(self.config.path, 'a') as f:
             f.write('\n' + text + '\n')
-        yield
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
+        try:
+            yield
+        finally:
+            with open(self.config.path, 'w') as f:
+                f.write(orig_config)
 
     def test_playback_postprocess(self):
         """
@@ -1635,6 +1637,22 @@ class TestSync():
             assert 'NewFolder' not in self.app.objectIds()
             assert 'NewFolder2' not in self.app.objectIds()
 
+    @contextmanager
+    def addlayer(self, name='00-base.py'):
+        path = '{}/layers/{}'.format(self.config.folder, name)
+        with tempfile.TemporaryDirectory() as layer:
+            with open(path, 'w') as f:
+                f.write('base_dir = "{}"\n'.format(layer))
+            # Force re-reading config
+            if hasattr(self, 'runner'):
+                del self.runner
+            try:
+                yield layer
+            finally:
+                if hasattr(self, 'runner'):
+                    del self.runner
+                os.remove(path)
+
     def test_layer_record_freeze(self):
         """
         Create a folder, copy it into an additional fixed layer and record
@@ -1643,21 +1661,16 @@ class TestSync():
         """
         self.add_folder('Test', 'Test')
         self.run('playback', '/Test')
-        path = self.config.folder + '/layers'
-        with tempfile.TemporaryDirectory() as layer:
+        with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
                 '{}/__root__/Test'.format(layer),
             )
-            with open(path + '/00-base.py', 'w') as f:
-                f.write('base_dir = "{}"'.format(layer))
             self.run('record', '--freeze', '/')
         for fname in ['__meta__', '__frozen__', 'Test/__meta__']:
             assert os.path.exists(
                 '{}/__root__/{}'.format(self.repo.path, fname)
             )
-
-        os.remove(path + '/00-base.py')
 
     @pytest.mark.xfail
     def test_layer_record_nofreeze(self):
@@ -1668,33 +1681,25 @@ class TestSync():
         """
         self.add_folder('Test', 'Test')
         self.run('playback', '/Test')
-        path = self.config.folder + '/layers'
-        with tempfile.TemporaryDirectory() as layer:
+        with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
                 '{}/__root__/Test'.format(layer),
             )
-            with open(path + '/00-base.py', 'w') as f:
-                f.write('base_dir = "{}"'.format(layer))
             self.run('record', '/')
         assert not os.path.exists(
             '{}/__root__/Test'.format(self.repo.path)
         )
 
-        os.remove(path + '/00-base.py')
-
-    @pytest.mark.xfail
     def test_layer_playback(self):
         """
         Set up a base layer, add a path there and play it back.
         """
         self.add_folder('Test')
-        with tempfile.TemporaryDirectory() as layer:
+        with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
             tgt = '{}/__root__'.format(layer)
             os.mkdir(tgt)
             os.rename(src + '/Test', tgt + '/Test')
-            with open(self.config.folder + '/layers/00-base.py', 'w') as f:
-                f.write('base_dir = "{}"'.format(layer))
-            self.run('playback', '/Test')
-        assert 'Test' in self.app.objectIds()
+            self.run('playback', '--no-recurse', '/Test')
+            assert 'Test' in self.app.objectIds()
