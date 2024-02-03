@@ -387,15 +387,16 @@ class ZODBSync:
         ]
         if not with_meta:
             return result
-        all_children = sum(
-            [os.listdir(fspath) for fspath in fspaths],
-            start=[],
-        )
+        children = set()
+        for fspath in fspaths:
+            for entry in os.listdir(fspath):
+                if entry in children or entry.startswith('__'):
+                    continue
+                if os.path.exists(os.path.join(fspath, entry, '__meta__')):
+                    children.add(entry)
         result.update({
             'fspath': with_meta[-1],
-            'children': sorted({
-                child for child in all_children if not child.startswith('__')
-            }),
+            'children': sorted(children),
         })
         return result
 
