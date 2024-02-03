@@ -347,7 +347,7 @@ class ZODBSync:
         '''
         return os.path.join(self.app_dir, path.lstrip('/'))
 
-    def fs_pathinfo(self, path):
+    def fs_pathinfo(self, path, layers=None, checked_until=''):
         """
         Find the correct layer for the object with the given Data.FS path.
         Essentially, we have a table where the rows are the layers and the
@@ -361,25 +361,52 @@ class ZODBSync:
         The topmost remaining layer that has a __meta__ file is the one we
         want.
         The children are collected from the subfolders of all remaining layers.
-        TODO: This does not currently search for __frozen__ markers. We need to
-        find a more efficient way, maybe searching them once at the beginning.
+        Inputs:
+        :path: a path in the ZODB like /PerFact/test/
+        :layers: List of already filtered layers. If it is not set, all layers
+        from self.layers are checked. For example, if there are three layers
+        and /A/B/ is frozen on layer two, a call for /A/B/C/D/ may be called
+        with a reduced set of layers (the lowest one is masked) and only needs
+        to search for further frozen markers in /A/B/C/ and /A/B/C/D.
+        :checked_until: An ancestor path of `path` that has already been
+        checked for frozen markers. In the above example, this would have the
+        value "/A/B/".
         Return value:
         {
             'path': Original argument
             'fspath': Full path on the filesystem in correct layer, None if
                       object is not present.
             'children': List of effective subobjects
+            'layers': self.layers or a sublist of it if something is masked.
         }
         """
+        layers = reversed(self.layers)
+        ancestor = ''
+        # TODO: Make this more efficient by using the given params. But first
+        # write a test!
+        for part in path.split('/'):
+            if not part:
+                continue
+            remaining_layers = []
+            for layer in layers:
+                check = os.path.join(layer['base_dir'], self.site, ancestor)
+                if not os.path.isdir(check):
+                    continue
+                remaining_layers.append(layer)
+                if os.path.exists(os.path.join(check, '__frozen__')):
+                    break
+            layers = remaining_layers
+
         result = {
             'path': path,
             'fspath': None,
             'children': [],
+            'layers': layers,
         }
         path = path.lstrip('/')
         fspaths = list(filter(os.path.isdir, [
             os.path.join(layer['base_dir'], self.site, path)
-            for layer in self.layers
+            for layer in layers
         ]))
         with_meta = [
             fspath for fspath in fspaths
