@@ -361,6 +361,8 @@ class ZODBSync:
         The topmost remaining layer that has a __meta__ file is the one we
         want.
         The children are collected from the subfolders of all remaining layers.
+        TODO: This does not currently search for __frozen__ markers. We need to
+        find a more efficient way, maybe searching them once at the beginning.
         Return value:
         {
             'path': Original argument
@@ -374,40 +376,27 @@ class ZODBSync:
             'fspath': None,
             'children': [],
         }
-
-        # These are in reverse order, the topmost layer has index 0
-        layers = [
-            {'fspath': layer['base_dir'], 'children': self.site}
-            for layer in reversed(self.layers)
+        path = path.lstrip('/')
+        fspaths = list(filter(os.path.isdir, [
+            os.path.join(layer['base_dir'], self.site, path)
+            for layer in self.layers
+        ]))
+        with_meta = [
+            fspath for fspath in fspaths
+            if os.path.exists(os.path.join(fspath, '__meta__'))
         ]
-
-        for part in [self.site] + path.split('/'):
-            if not part:
-                continue
-            next_layers = []
-            for layer in layers:
-                if part not in layer['children']:
-                    # Folder does not exist, this layer is irrelevant
-                    continue
-                fspath = os.path.join(layer['fspath'], part)
-                children = os.listdir(fspath)
-                next_layers.append({'fspath': fspath, 'children': children})
-                if '__frozen__' in children:
-                    # Mask all lower layers
-                    break
-            layers = next_layers
-
-        layers_with_meta = [
-            layer for layer in layers if '__meta__' in layer['children']
-        ]
-        if layers_with_meta:
-            result['fspath'] = layers_with_meta[0]['fspath']
-            all_children = sum((layer['children'] for layer in layers),
-                               start=[])
-            result['children'] = [
-                child for child in all_children
-                if not child.startswith('__')
-            ]
+        if not with_meta:
+            return result
+        all_children = sum(
+            [os.listdir(fspath) for fspath in fspaths],
+            start=[],
+        )
+        result.update({
+            'fspath': with_meta[-1],
+            'children': sorted({
+                child for child in all_children if not child.startswith('__')
+            }),
+        })
         return result
 
     def fs_write(self, path, data):
