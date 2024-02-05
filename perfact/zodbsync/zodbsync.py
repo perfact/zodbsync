@@ -434,79 +434,69 @@ class ZODBSync:
         Write object data out to a file with the given path.
         '''
 
-        base_dir = self.fs_path(path)
-        # Read the basic information
-        data = dict(data)
-        source = data.get('source', None)
+        pathinfo = self.fs_pathinfo(path)
+        # If no folder exists that holds the current version, create it in the
+        # topmost folder.
+        base_dir = pathinfo['fspath'] or self.fs_path(path)
+        # Make directory for the object if it's not already there
+        if not os.path.isdir(base_dir):
+            self.logger.debug("Will create new directory %s" % path)
+            os.makedirs(base_dir)
+        old_data = self.fs_read(pathinfo, parse=False) or {'meta': None}
+        if old_data['meta']:
+            # Comparison only up to trailing whitespaces
+            old_data['meta'] = old_data['meta'].strip()
 
-        # Only write out sources if unicode or string
-        write_source = isinstance(source, (bytes, str))
-
-        # Build metadata
+        # Build object
         meta = {key: value for key, value in data.items() if key != 'source'}
         fmt = mod_format(meta)
         if isinstance(fmt, str):
             fmt = fmt.encode('utf-8')
+        source = data.get('source', None)
 
-        # Make directory for the object if it's not already there
-        try:
-            os.stat(base_dir)
-        except OSError:
-            self.logger.debug("Will create new directory %s" % path)
-            os.makedirs(base_dir)
-
-        # Metadata
-        data_fname = os.path.join(base_dir, '__meta__')
-        # Check if data has changed!
-        try:
-            with open(data_fname, 'rb') as f:
-                old_data = f.read()
-        except IOError:
-            old_data = None
-
-        if old_data is None or old_data.strip() != fmt.strip():
-            self.logger.debug("Will write %d bytes of metadata" % len(fmt))
-            with open(data_fname, 'wb') as f:
-                f.write(fmt)
-
-        # Write source
+        new_data = {'meta': fmt.strip()}
+        # Only write out sources if unicode or string
+        write_source = isinstance(source, (bytes, str))
+        src_fname = None
         if write_source:
-            # Check if the source has changed!
-
             # Write bytes or utf-8 encoded text.
-            data = source
             base = '__source__'
-            if isinstance(data, str):
-                data = data.encode('utf-8')
+            if isinstance(source, str):
+                source = source.encode('utf-8')
                 base = '__source-utf8__'
 
-            path = path.rstrip('/')
             ext = self.source_ext_from_meta(
                 meta=meta,
-                obj_id=os.path.basename(path)
+                obj_id=path.rstrip('/').rsplit('/', 1)[-1],
             )
-            src_fname = os.path.join(base_dir, '%s.%s' % (base, ext))
-        else:
-            src_fname = ''
+            src_fname = '{}.{}'.format(base, ext)
+            src_path = os.path.join(base_dir, src_fname)
+            new_data['src_fnames'] = [src_fname]
+            new_data['source'] = source
+
+        if old_data == new_data:
+            # No change
+            return
+
+        # Path in top layer, might be different than the one where we read the
+        # content
+        write_base = os.path.join(self.app_dir, path.lstrip('/'))
+        os.makedirs(write_base, exist_ok=True)
+
+        self.logger.debug("Will write %d bytes of metadata" % len(fmt))
+        with open(os.path.join(write_base, '__meta__'), 'wb') as f:
+            f.write(fmt)
 
         # Check if there are stray __source* files and remove them first.
-        source_files = [s for s in os.listdir(base_dir)
+        source_files = [s for s in os.listdir(write_base)
                         if s.startswith('__source') and s != src_fname]
         for source_file in source_files:
-            os.remove(os.path.join(base_dir, source_file))
+            os.remove(os.path.join(write_base, source_file))
 
         if write_source:
-            # Check if content has changed!
-            try:
-                with open(src_fname, 'rb') as f:
-                    old_data = f.read()
-            except IOError:
-                old_data = None
-
-            if old_data != data:
-                self.logger.debug("Will write %d bytes of source" % len(data))
-                with open(src_fname, 'wb') as f:
-                    f.write(data)
+            self.logger.debug("Will write %d bytes of source" % len(source))
+            with open(src_path, 'wb') as f:
+                f.write(source)
 
     def fs_prune(self, path, contents):
         '''
@@ -519,39 +509,57 @@ class ZODBSync:
                                  item)
                 shutil.rmtree(os.path.join(base_dir, item))
 
-    def fs_read(self, pathinfo):
+    def fs_read(self, pathinfo, parse=True):
         '''
         Read data from local file system.
         pathinfo should be a dict as returned by fs_pathinfo, but for
         compatibility it can also be a string (in which case we use fs_path).
         Returns None if there is no directory at that path.
+        If :parse: is set, returns a dictionary with the parsed data from the
+        meta file and an additional "source" key. It is then an error if there
+        is no meta file or if there are multiple source files.
+        Otherwise, returns a dictionary with
+        - the content of the meta file
+        - the content of the first source file, if there is one
+        - the list of source files
         '''
         if isinstance(pathinfo, str):
             base_dir = self.fs_path(pathinfo)
         else:
             base_dir = pathinfo['fspath']
-        if not os.path.isdir(base_dir):
+        if base_dir is None or not os.path.isdir(base_dir):
             return None
+
+        result = {'meta': None}
         filenames = os.listdir(base_dir)
-        src_fnames = [a for a in filenames if a.startswith('__source')]
-        assert len(src_fnames) <= 1, "Multiple source files in " + base_dir
-        src_fname = src_fnames and src_fnames[0] or None
 
         meta_fname = os.path.join(base_dir, '__meta__')
-        assert os.path.isfile(meta_fname), 'Missing meta file: %s' % meta_fname
+        if '__meta__' in filenames:
+            with open(meta_fname, 'rb') as f:
+                result['meta'] = f.read()
+        else:
+            assert not parse, 'Missing meta file: %s' % meta_fname
 
-        with open(meta_fname, 'rb') as f:
-            meta_str = f.read()
-        meta = dict(literal_eval(meta_str))
+        src_fnames = sorted([a for a in filenames if a.startswith('__source')])
+        assert parse or len(src_fnames) <= 1, (
+            "Multiple source files in " + base_dir
+        )
+        src_fname = src_fnames and src_fnames[0] or None
 
         if src_fname:
             with open(os.path.join(base_dir, src_fname), 'rb') as f:
                 src = f.read()
             if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
-            meta['source'] = src
 
-        return meta
+        if parse:
+            result = dict(literal_eval(result['meta']))
+        if src_fname:
+            result['source'] = src
+            if not parse:
+                result['src_fnames'] = src_fnames
+
+        return result
 
     def fs_contents(self, path):
         '''Read the current contents from the local file system.'''
