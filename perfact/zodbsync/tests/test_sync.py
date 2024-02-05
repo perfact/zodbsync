@@ -1779,3 +1779,23 @@ class TestSync():
         assert self.app.Test3.objectIds() == ['Sub1', 'Sub2', 'Sub3']
         assert self.app.Test2.title == 'overwritten'
         assert self.app.Test3.title == ''
+
+    @pytest.mark.xfail
+    def test_layer_record(self):
+        """
+        Add an object and move it to the lower layer. Record again. The object
+        must not be added to the top layer since it is already present in the
+        lower layer.
+        """
+        self.add_folder('Test')
+        self.run('playback', '/Test')
+        with self.addlayer() as layer:
+            root = [
+                os.path.join(layer, '__root__'),
+                os.path.join(self.repo.path, '__root__'),
+            ]
+            os.mkdir(root[0])
+            os.rename(os.path.join(root[1], 'Test'),
+                      os.path.join(root[0], 'Test'))
+            self.run('record', '/Test')
+            assert not os.path.isdir(os.path.join(root[1], 'Test'))
