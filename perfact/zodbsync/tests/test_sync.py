@@ -1340,18 +1340,22 @@ class TestSync():
         fsmtime2 = os.stat(path).st_mtime
         assert fsmtime1 == fsmtime2
 
-    @pytest.mark.xfail
     def test_no_meta_file(self):
         """
-        Check that a missing meta file is detected and we run into an error
-        TODO: Check how this should behave in the future with layers
+        Check that a missing meta file regards the object as deleted.
         """
 
         broken_obj = os.path.join(self.repo.path, '__root__', 'foo')
         os.mkdir(broken_obj)
 
-        with pytest.raises(AssertionError):
-            self.run('playback', '/foo')
+        self.run('playback', '/foo')
+        assert 'foo' not in self.app.objectIds()
+
+        self.add_folder('Test')
+        self.run('playback', '/Test')
+        os.remove(os.path.join(self.repo.path, '__root__/Test/__meta__'))
+        self.run('playback', '/Test')
+        assert 'Test' not in self.app.objectIds()
 
     def test_force_default_owner(self):
         """
