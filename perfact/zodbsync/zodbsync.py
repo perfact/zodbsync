@@ -476,7 +476,7 @@ class ZODBSync:
 
         if old_data == new_data:
             # No change
-            return
+            return pathinfo
 
         # Path in top layer, might be different than the one where we read the
         # content
@@ -497,16 +497,21 @@ class ZODBSync:
             self.logger.debug("Will write %d bytes of source" % len(source))
             with open(src_path, 'wb') as f:
                 f.write(source)
+        return pathinfo
 
-    def fs_prune(self, path, contents):
+    def fs_prune(self, pathinfo, contents):
         '''
-        Remove all subfolders from path that are not in contents
+        Remove all subfolders from path that are not in contents.
+        Removes the folder from the top-level directory, but if the effective
+        folder that defines the object (in a multi-layer setup) still would
+        provide it, recreate the directory and add a __frozen__ file.
         '''
-        base_dir = self.fs_path(path)
-        for item in self.fs_contents(path):
+        base_dir = self.fs_path(pathinfo['path'])
+        for item in pathinfo['children']:
             if item not in contents:
                 self.logger.info("Removing old item %s from filesystem" %
                                  item)
+                # TODO: This is not yet correct
                 shutil.rmtree(os.path.join(base_dir, item))
 
     def fs_read(self, pathinfo, parse=True):
@@ -596,13 +601,13 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        self.fs_write(path, data)
+        pathinfo = self.fs_write(path, data)
 
         if not recurse:
             return
 
         contents = obj_contents(obj) if ('unsupported' not in data) else []
-        self.fs_prune(path, contents)
+        self.fs_prune(pathinfo, contents)
 
         # Update statistics
         self.num_obj_total += len(contents)

@@ -1784,7 +1784,6 @@ class TestSync():
         assert self.app.Test2.title == 'overwritten'
         assert self.app.Test3.title == ''
 
-    @pytest.mark.xfail
     def test_layer_record(self):
         """
         Add an object and move it to the lower layer. Record again. The object
@@ -1793,6 +1792,7 @@ class TestSync():
         """
         self.add_folder('Test')
         self.run('playback', '/Test')
+        self.run('record', '/Test')
         with self.addlayer() as layer:
             root = [
                 os.path.join(layer, '__root__'),
