@@ -381,15 +381,17 @@ class ZODBSync:
         }
         """
         layers = reversed(self.layers)
-        ancestor = ''
-        # TODO: Make this more efficient by using the given params. But first
-        # write a test!
+        # TODO: Make this more efficient by using the given params.
+        parents = [self.site]
         for part in path.split('/'):
             if not part:
                 continue
+            parents.append(os.path.join(parents[-1], part))
+
+        for parent in parents:
             remaining_layers = []
             for layer in layers:
-                check = os.path.join(layer['base_dir'], self.site, ancestor)
+                check = os.path.join(layer['base_dir'], parent)
                 if not os.path.isdir(check):
                     continue
                 remaining_layers.append(layer)
@@ -422,7 +424,7 @@ class ZODBSync:
                 if os.path.exists(os.path.join(fspath, entry, '__meta__')):
                     children.add(entry)
         result.update({
-            'fspath': with_meta[-1],
+            'fspath': with_meta[0],
             'children': sorted(children),
         })
         return result

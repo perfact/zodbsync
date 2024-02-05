@@ -278,11 +278,11 @@ class TestSync():
         self.run('playback', '/index_html')
         assert self.app.index_html() == content
 
-    def add_folder(self, name, msg=None):
+    def add_folder(self, name, msg=None, parent=''):
         """
         Add a folder to the root directory and commit it if msg is given
         """
-        folder = self.repo.path + '/__root__/' + name
+        folder = os.path.join(self.repo.path, '__root__', parent, name)
         os.mkdir(folder)
         with open(folder + '/__meta__', 'w') as f:
             f.write('''[
@@ -1719,8 +1719,7 @@ class TestSync():
             self.run(*cmd)
             assert 'Test' in self.app.objectIds()
 
-    @pytest.mark.xfail
-    def test_layer_playback_masked(self):
+    def test_layer_playback_frozen_deleted(self):
         """
         Set up a base layer with a folder, but mask it as deleted in the upper
         layer.
@@ -1731,7 +1730,52 @@ class TestSync():
             tgt = '{}/__root__'.format(layer)
             os.mkdir(tgt)
             shutil.copytree(src + '/Test', tgt + '/Test')
-            with open('{}/__deleted__'.format(src), 'w'):
+            with open('{}/__frozen__'.format(src), 'w'):
                 pass
+            os.remove(src + '/Test/__meta__')
             self.run('playback', '/Test')
             assert 'Test' not in self.app.objectIds()
+
+    def test_layer_playback_combined(self):
+        """
+        Set up a complex hierarchy with two layers and one path being frozen
+        and providing different subobjects, one path being merged while also
+        changing the object itself and one path being merged without changing
+        the object itself.
+        """
+        for folder in ['Test1', 'Test2', 'Test3']:
+            self.add_folder(folder)
+            for sub in ['Sub1', 'Sub2']:
+                self.add_folder(sub, parent=folder)
+        with self.addlayer() as layer:
+            root = os.path.join(self.repo.path, '__root__')
+            # Move current structure into lower layer
+            os.rename(root, os.path.join(layer, '__root__'))
+            # Create a sparse structure in top layer
+            os.mkdir(root)
+            files = [
+                'Test1/__frozen__',
+                'Test1/__meta__',
+                'Test1/Sub3/__meta__',
+                'Test2/__meta__',
+                'Test2/Sub3/__meta__',
+                'Test3/Sub3/__meta__',
+            ]
+            meta = ('''[
+                ('props', []),
+                ('title', 'overwritten'),
+                ('type', 'Folder'),
+            ]''')
+            for file in files:
+                dirname, fname = file.rsplit('/', 1)
+                os.makedirs(os.path.join(root, dirname), exist_ok=True)
+                with open(os.path.join(root, file), 'w') as f:
+                    if fname == '__meta__':
+                        f.write(meta)
+
+            self.run('playback', '/')
+        assert self.app.Test1.objectIds() == ['Sub3']
+        assert self.app.Test2.objectIds() == ['Sub1', 'Sub2', 'Sub3']
+        assert self.app.Test3.objectIds() == ['Sub1', 'Sub2', 'Sub3']
+        assert self.app.Test2.title == 'overwritten'
+        assert self.app.Test3.title == ''
