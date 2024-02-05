@@ -353,13 +353,17 @@ class ZODBSync:
         Essentially, we have a table where the rows are the layers and the
         columns are the path components of path.
         For each entry in the table, there are four relevant combinations:
-        - contains a __frozen__ marker yes/no
+        - contains a __frozen__ or __deleted__ marker yes/no
         - contains a __meta__ file yes/no
         If the folder does not exist, this is equivalent to no __frozen__ and
         no __meta__.
         Any __frozen__ marker effectively removes (masks) all layers below it.
         The topmost remaining layer that has a __meta__ file is the one we
         want.
+        __deleted__ has the same consequence as __frozen__ here. Only when
+        recording objects and possibly compressing the layers is there a
+        difference (if an object reappears and was only marked with
+        __deleted__, a compression is possible).
         The children are collected from the subfolders of all remaining layers.
         Inputs:
         :path: a path in the ZODB like /PerFact/test/
@@ -395,7 +399,8 @@ class ZODBSync:
                 if not os.path.isdir(check):
                     continue
                 remaining_layers.append(layer)
-                if os.path.exists(os.path.join(check, '__frozen__')):
+                if any([os.path.exists(os.path.join(check, marker))
+                        for marker in ['__frozen__', '__deleted__']]):
                     break
             layers = remaining_layers
 
@@ -509,10 +514,16 @@ class ZODBSync:
         base_dir = self.fs_path(pathinfo['path'])
         for item in pathinfo['children']:
             if item not in contents:
-                self.logger.info("Removing old item %s from filesystem" %
-                                 item)
-                # TODO: This is not yet correct
-                shutil.rmtree(os.path.join(base_dir, item))
+                self.logger.info("Removing old item %s from filesystem" % item)
+                tgt = os.path.join(base_dir, item)
+                if os.path.isdir(tgt):
+                    shutil.rmtree(tgt)
+                if len(pathinfo['layers']) > 1:
+                    # Mask the path as deleted because it is also present in a
+                    # lower layer
+                    os.mkdir(tgt)
+                    with open(os.path.join(tgt, '__deleted__'), 'wb'):
+                        pass
 
     def fs_read(self, pathinfo, parse=True):
         '''

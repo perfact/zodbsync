@@ -1803,3 +1803,21 @@ class TestSync():
                       os.path.join(root[0], 'Test'))
             self.run('record', '/Test')
             assert not os.path.isdir(os.path.join(root[1], 'Test'))
+
+    def test_layer_record_deletion(self):
+        """
+        Have an object with subobjects defined in the lower layer, but not in
+        the Data.FS. Record it. The top-level layer needs to recreate the
+        folder and mark it as deleted.
+        """
+        self.add_folder('Test')
+        self.add_folder('Sub', parent='Test')
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, '__root__')
+            tgtroot = os.path.join(layer, '__root__')
+            os.mkdir(tgtroot)
+            os.rename(os.path.join(srcroot, 'Test'),
+                      os.path.join(tgtroot, 'Test'))
+            self.run('record', '/')
+            assert os.path.isdir(os.path.join(srcroot, 'Test'))
+            assert os.path.exists(os.path.join(srcroot, 'Test/__deleted__'))
