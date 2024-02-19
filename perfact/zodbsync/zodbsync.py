@@ -479,29 +479,42 @@ class ZODBSync:
             new_data['src_fnames'] = [src_fname]
             new_data['source'] = source
 
-        if old_data == new_data:
-            # No change
-            return pathinfo
+        if old_data != new_data:
+            # Path in top layer, might be different than the one where we read
+            # the content
+            write_base = os.path.join(self.app_dir, path.lstrip('/'))
+            os.makedirs(write_base, exist_ok=True)
 
-        # Path in top layer, might be different than the one where we read the
-        # content
-        write_base = os.path.join(self.app_dir, path.lstrip('/'))
-        os.makedirs(write_base, exist_ok=True)
+            self.logger.debug("Will write %d bytes of metadata" % len(fmt))
+            with open(os.path.join(write_base, '__meta__'), 'wb') as f:
+                f.write(fmt)
 
-        self.logger.debug("Will write %d bytes of metadata" % len(fmt))
-        with open(os.path.join(write_base, '__meta__'), 'wb') as f:
-            f.write(fmt)
+            # Check if there are stray __source* files and remove them first.
+            source_files = [s for s in os.listdir(write_base)
+                            if s.startswith('__source') and s != src_fname]
+            for source_file in source_files:
+                os.remove(os.path.join(write_base, source_file))
 
-        # Check if there are stray __source* files and remove them first.
-        source_files = [s for s in os.listdir(write_base)
-                        if s.startswith('__source') and s != src_fname]
-        for source_file in source_files:
-            os.remove(os.path.join(write_base, source_file))
+            if write_source:
+                self.logger.debug(
+                    "Will write %d bytes of source" % len(source)
+                )
+                with open(src_path, 'wb') as f:
+                    f.write(source)
+        # Compress if possible: Compare each non-frozen layer with the layer
+        # below it. If the object is the same, clear it.
+        layers = pathinfo['layers']
+        for above, below in zip(layers, layers[1:]):
+            if above.get('frozen', False):
+                break
+            fspath_below = os.path.join(
+                below['base_dir'], self.site, path.lstrip('/')
+            )
+            data_below = self.fs_read({'fspath': fspath_below}, parse=False)
+            if new_data != data_below:
+                break
+            # TODO: Do the actual compression
 
-        if write_source:
-            self.logger.debug("Will write %d bytes of source" % len(source))
-            with open(src_path, 'wb') as f:
-                f.write(source)
         return pathinfo
 
     def fs_prune(self, pathinfo, contents):
