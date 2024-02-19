@@ -1706,6 +1706,50 @@ class TestSync():
             '{}/__root__/Test'.format(self.repo.path)
         )
 
+    @pytest.mark.xfail
+    def test_layer_record_compress_simple(self):
+        """
+        Test record compression: Create a folder on custom layer,
+        then add a new base layer with the same content. Change
+        the object to make it fit new base layer, expect object to
+        vanish from custom layer after record.
+        """
+
+        # in our custom layer we create a folder with title 'Foobar'
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        self.app.Test.title = 'Foobar'
+        self.run('record', '/')
+
+        # ... then we add a new base layer
+        with self.addlayer() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),  # custom layer!
+                '{}/__root__/Test'.format(layer),           # new base layer!
+            )
+            # now create the standard Test folder titled 'Something
+            meta = ('''[
+                ('props', []),
+                ('title', 'Something'),
+                ('type', 'Folder'),
+            ]''')
+            with open(os.path.join(layer, '__root__/Test/__meta__'), 'w') as f:
+                f.write(meta)
+            self.run('playback', '/')
+
+            # still 'Foobar' - custom layer wins
+            assert self.app.Test.title == 'Foobar'
+
+            # now really switch to 'Something' via app
+            self.app.Test.title = 'Something'
+
+            # ... and record. should remove customized
+            # Test folder aka compress
+            self.run('record', '/')
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, '__root__/Test')
+            )
+
     @pytest.mark.parametrize('recurse', [True, False])
     def test_layer_playback(self, recurse):
         """
