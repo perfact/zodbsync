@@ -310,4 +310,9 @@ containing broken `External Method`s are recorded and played back. The same
 holds for `Z SQL Method`s which have `class_name` and `class_file` set to a no
 longer existing extension.
 
+Since `22.2.5` a higher version of `tox` ( > 3.4.0 ) is required in order to
+build the test environment from `pyproject.toml` instead of `setup.py`. Do
+NOT get fooled by errors like `ERROR: No setup.py file found.`, just upgrade
+`tox` to latest version and retry.
+
 ## To Do / Roadmap
