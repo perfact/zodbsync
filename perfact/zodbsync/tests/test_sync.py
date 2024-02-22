@@ -1898,3 +1898,32 @@ class TestSync():
             assert os.path.exists(
                 os.path.join(self.repo.path, '__root__/Test/__meta__')
             )
+
+    @pytest.mark.xfail
+    def test_layer_watch_rename(self, conn):
+        """
+        Rename an object in the Data.FS that is recorded in a lower layer.
+        Check that the watcher does the right thing, marking the original
+        object as deleted and creating the new object.
+        """
+        with self.addlayer() as layer:
+            os.rename(
+                os.path.join(self.repo.path, '__root__/index_html'),
+                os.path.join(layer, '__root__/index_html'),
+            )
+            watcher = self.mkrunner('watch')
+            watcher.setup()
+
+            with conn.tm:
+                uf = conn.app.acl_users
+                user = uf.getUser('perfact').__of__(uf)
+                newSecurityManager(None, user)
+                conn.app.manage_renameObject('index_html', 'something')
+
+            watcher.step()
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/index_html/__deleted__'
+            ))
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/something/__meta__'
+            ))
