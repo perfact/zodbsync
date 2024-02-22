@@ -549,6 +549,7 @@ class ZODBSync:
         folder that defines the object (in a multi-layer setup) still would
         provide it, recreate the directory and add a __frozen__ file.
         '''
+        relpath = os.path.join(self.site, pathinfo['path'].lstrip('/'))
         base_dir = self.fs_path(pathinfo['path'])
         for item in pathinfo['children']:
             if item not in contents:
@@ -556,15 +557,14 @@ class ZODBSync:
                 tgt = os.path.join(base_dir, item)
                 if os.path.isdir(tgt):
                     shutil.rmtree(tgt)
-                if len(pathinfo['layers']) > 1:
-                    # Mask the path as deleted because it is also present in a
-                    # lower layer
-                    # TODO: This is wrong. pathinfo['layers'] only returns the
-                    # non-masked layers, does not mean they have a copy of this
-                    # object.
-                    os.mkdir(tgt)
-                    with open(os.path.join(tgt, '__deleted__'), 'wb'):
-                        pass
+                meta = os.path.join(relpath, item, '__meta__')
+                for layer in pathinfo['layers'][1:]:
+                    if os.path.exists(os.path.join(layer['base_dir'], meta)):
+                        # Mask the path as deleted because it is also present
+                        # in a lower layer
+                        os.mkdir(tgt)
+                        with open(os.path.join(tgt, '__deleted__'), 'wb'):
+                            pass
 
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"

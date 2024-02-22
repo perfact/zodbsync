@@ -1659,6 +1659,7 @@ class TestSync():
         with tempfile.TemporaryDirectory() as layer:
             with open(path, 'w') as f:
                 f.write('base_dir = "{}"\n'.format(layer))
+            os.mkdir(os.path.join(layer, '__root__'))
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
@@ -1757,7 +1758,6 @@ class TestSync():
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
             tgt = '{}/__root__'.format(layer)
-            os.mkdir(tgt)
             os.rename(src + '/Test', tgt + '/Test')
             cmd = ['playback', '/Test']
             if not recurse:
@@ -1774,7 +1774,6 @@ class TestSync():
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
             tgt = '{}/__root__'.format(layer)
-            os.mkdir(tgt)
             shutil.copytree(src + '/Test', tgt + '/Test')
             with open('{}/__frozen__'.format(src), 'w'):
                 pass
@@ -1798,7 +1797,6 @@ class TestSync():
             # Move current structure into lower layer
             os.rename(root, os.path.join(layer, '__root__'))
             # Create a sparse structure in top layer
-            os.mkdir(root)
             files = [
                 'Test1/__frozen__',
                 'Test1/__meta__',
@@ -1840,7 +1838,6 @@ class TestSync():
                 os.path.join(layer, '__root__'),
                 os.path.join(self.repo.path, '__root__'),
             ]
-            os.mkdir(root[0])
             os.rename(os.path.join(root[1], 'Test'),
                       os.path.join(root[0], 'Test'))
             self.run('record', '/Test')
@@ -1857,9 +1854,26 @@ class TestSync():
         with self.addlayer() as layer:
             srcroot = os.path.join(self.repo.path, '__root__')
             tgtroot = os.path.join(layer, '__root__')
-            os.mkdir(tgtroot)
             os.rename(os.path.join(srcroot, 'Test'),
                       os.path.join(tgtroot, 'Test'))
             self.run('record', '/')
             assert os.path.isdir(os.path.join(srcroot, 'Test'))
             assert os.path.exists(os.path.join(srcroot, 'Test/__deleted__'))
+
+    def test_layer_record_prune(self):
+        """
+        Use a setup with two layers. Add a folder and record it to the custom
+        layer. Remove the folder and record again - check that the subfolder is
+        actually deleted and not marked with __deleted__.
+        """
+        self.app.manage_addFolder(id='Test')
+        self.run('record', '/')
+        with self.addlayer() as layer:
+            os.rename(
+                os.path.join(self.repo.path, '__root__/__meta__'),
+                os.path.join(layer, '__root__/__meta__'),
+            )
+            self.run('record', '/')
+        assert not os.path.isdir(
+            os.path.join(self.repo.path, '__root__/Test')
+        )
