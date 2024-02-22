@@ -285,11 +285,10 @@ class TestSync():
         folder = os.path.join(self.repo.path, '__root__', parent, name)
         os.mkdir(folder)
         with open(folder + '/__meta__', 'w') as f:
-            f.write('''[
-                ('props', []),
-                ('title', ''),
-                ('type', 'Folder'),
-            ]''')
+            f.write(zodbsync.mod_format({
+                'title': '',
+                'type': 'Folder'
+            }))
         if msg is not None:
             self.gitrun('add', '.')
             self.gitrun('commit', '-m', msg)
@@ -1688,7 +1687,6 @@ class TestSync():
                 '{}/__root__/{}'.format(self.repo.path, fname)
             )
 
-    @pytest.mark.xfail
     def test_layer_record_nofreeze(self):
         """
         Create a folder, copy it into an additional fixed layer and record
@@ -1706,7 +1704,6 @@ class TestSync():
             '{}/__root__/Test'.format(self.repo.path)
         )
 
-    @pytest.mark.xfail
     def test_layer_record_compress_simple(self):
         """
         Test record compression: Create a folder on custom layer,
@@ -1728,11 +1725,10 @@ class TestSync():
                 '{}/__root__/Test'.format(layer),           # new base layer!
             )
             # now create the standard Test folder titled 'Something
-            meta = ('''[
-                ('props', []),
-                ('title', 'Something'),
-                ('type', 'Folder'),
-            ]''')
+            meta = zodbsync.mod_format({
+                'title': 'Something',
+                'type': 'Folder'
+            })
             with open(os.path.join(layer, '__root__/Test/__meta__'), 'w') as f:
                 f.write(meta)
             self.run('playback', '/')

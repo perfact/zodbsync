@@ -525,21 +525,36 @@ class ZODBSync:
                     with open(os.path.join(tgt, '__deleted__'), 'wb'):
                         pass
 
-    # def fs_compress(self, paths):
-    #     # Compress if possible: Compare each non-frozen layer with the layer
-    #     # below it. If the object is the same, clear it.
-    #     layers = pathinfo['layers']
-    #     for above, below in zip(layers, layers[1:]):
-    #         if above.get('frozen', False):
-    #             break
-    #         fspath_below = os.path.join(
-    #             below['base_dir'], self.site, path.lstrip('/')
-    #         )
-    #         data_below = self.fs_read({'fspath': fspath_below}, parse=False)
-    #         if new_data != data_below:
-    #             break
-    #         # TODO: Do the actual compression
-    #     pass
+    def fs_compress(self, paths):
+        """
+        Compress if possible: Compare each non-frozen layer with the layer
+        below it. If the object is the same, clear it.
+        """
+        for path in sorted(paths, reverse=True):
+            pathinfo = self.fs_pathinfo(path)
+            data = self.fs_read(pathinfo, parse=False)
+            layers = pathinfo['layers']
+            for above, below in zip(layers, layers[1:]):
+                if above.get('frozen', False):
+                    break
+                fspath_below = os.path.join(
+                    below['base_dir'], self.site, path.lstrip('/')
+                )
+                data_below = self.fs_read({'fspath': fspath_below},
+                                          parse=False)
+                if data != data_below:
+                    break
+                # Remove meta file and all source files
+                clear = os.path.join(above['base_dir'], self.site,
+                                     path.lstrip('/'))
+                if 'meta' in data:
+                    os.remove(os.path.join(clear, '__meta__'))
+                for src in data.get('src_fnames', []):
+                    os.remove(os.path.join(clear, src))
+                # Remove empty directories
+                while not os.listdir(clear):
+                    os.rmdir(clear)
+                    clear = os.path.dirname(clear)
 
     def fs_read(self, pathinfo, parse=True):
         '''
@@ -573,7 +588,7 @@ class ZODBSync:
             assert not parse, 'Missing meta file: %s' % meta_fname
 
         src_fnames = sorted([a for a in filenames if a.startswith('__source')])
-        assert parse or len(src_fnames) <= 1, (
+        assert not parse or len(src_fnames) <= 1, (
             "Multiple source files in " + base_dir
         )
         src_fname = src_fnames and src_fnames[0] or None
@@ -604,6 +619,7 @@ class ZODBSync:
         # If /a/b as well as /a are to be recorded recursively, drop /a/b
         if recurse:
             remove_redundant_paths(paths)
+        processed_paths = []
         for path in paths:
             obj = self.app
             try:
@@ -614,8 +630,10 @@ class ZODBSync:
             except AttributeError:
                 self.logger.exception('Unable to record path ' + path)
                 continue
-            self.record_obj(obj, path, recurse=recurse,
-                            skip_errors=skip_errors)
+            processed_paths.extend(self.record_obj(
+                obj, path, recurse=recurse, skip_errors=skip_errors
+            ))
+        self.fs_compress(processed_paths)
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''
@@ -638,7 +656,7 @@ class ZODBSync:
         pathinfo = self.fs_write(path, data)
 
         if not recurse:
-            return
+            return [path]
 
         contents = obj_contents(obj) if ('unsupported' not in data) else []
         self.fs_prune(pathinfo, contents)
@@ -655,12 +673,17 @@ class ZODBSync:
                              )
             self.num_obj_last_report = now
 
+        result = [path]
         for item in contents:
             self.num_obj_current += 1
 
             child = getattr(obj, item)
-            self.record_obj(obj=child, path=os.path.join(path, item),
-                            skip_errors=skip_errors)
+            result.extend(self.record_obj(
+                obj=child,
+                path=os.path.join(path, item),
+                skip_errors=skip_errors,
+            ))
+        return result
 
     def _playback_path(self, pathinfo):
         '''
