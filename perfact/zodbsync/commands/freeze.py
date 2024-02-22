@@ -20,5 +20,4 @@ class Freeze(SubCommand):
             os.makedirs(fullpath, exist_ok=True)
             with open('{}/__frozen__'.format(fullpath), 'w'):
                 pass
-        for path in self.args.path:
-            self.sync.record(path=path, recurse=True)
+        self.sync.record(paths=self.args.path, recurse=True)

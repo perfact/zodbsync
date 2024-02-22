@@ -501,19 +501,6 @@ class ZODBSync:
                 )
                 with open(src_path, 'wb') as f:
                     f.write(source)
-        # Compress if possible: Compare each non-frozen layer with the layer
-        # below it. If the object is the same, clear it.
-        layers = pathinfo['layers']
-        for above, below in zip(layers, layers[1:]):
-            if above.get('frozen', False):
-                break
-            fspath_below = os.path.join(
-                below['base_dir'], self.site, path.lstrip('/')
-            )
-            data_below = self.fs_read({'fspath': fspath_below}, parse=False)
-            if new_data != data_below:
-                break
-            # TODO: Do the actual compression
 
         return pathinfo
 
@@ -537,6 +524,22 @@ class ZODBSync:
                     os.mkdir(tgt)
                     with open(os.path.join(tgt, '__deleted__'), 'wb'):
                         pass
+
+    # def fs_compress(self, paths):
+    #     # Compress if possible: Compare each non-frozen layer with the layer
+    #     # below it. If the object is the same, clear it.
+    #     layers = pathinfo['layers']
+    #     for above, below in zip(layers, layers[1:]):
+    #         if above.get('frozen', False):
+    #             break
+    #         fspath_below = os.path.join(
+    #             below['base_dir'], self.site, path.lstrip('/')
+    #         )
+    #         data_below = self.fs_read({'fspath': fspath_below}, parse=False)
+    #         if new_data != data_below:
+    #             break
+    #         # TODO: Do the actual compression
+    #     pass
 
     def fs_read(self, pathinfo, parse=True):
         '''
@@ -595,17 +598,24 @@ class ZODBSync:
         filenames = os.listdir(self.fs_path(path))
         return sorted([f for f in filenames if not f.startswith('__')])
 
-    def record(self, path='/', recurse=True, skip_errors=False):
-        '''Record Zope objects from the given path into the local
+    def record(self, paths, recurse=True, skip_errors=False):
+        '''Record Zope objects from the given paths into the local
         filesystem.'''
-        if not path:
-            path = '/'
-        obj = self.app
-        # traverse into the object of interest
-        for part in path.split('/'):
-            if part:
-                obj = getattr(obj, part)
-        self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
+        # If /a/b as well as /a are to be recorded recursively, drop /a/b
+        if recurse:
+            remove_redundant_paths(paths)
+        for path in paths:
+            obj = self.app
+            try:
+                # traverse into the object of interest
+                for part in path.split('/'):
+                    if part:
+                        obj = getattr(obj, part)
+            except AttributeError:
+                self.logger.exception('Unable to record path ' + path)
+                continue
+            self.record_obj(obj, path, recurse=recurse,
+                            skip_errors=skip_errors)
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''

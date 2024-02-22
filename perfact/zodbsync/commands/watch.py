@@ -419,10 +419,7 @@ class Watch(SubCommand):
                 )
                 self.changed_oids.difference_update(next_oids)
 
-        remove_redundant_paths(paths)
-        for path in paths:
-            self.logger.info('Recording %s' % path)
-            self.sync.record(path)
+        self.sync.record(paths)
 
         self.sync.tm.abort()
 
