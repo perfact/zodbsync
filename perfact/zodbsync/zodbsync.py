@@ -265,6 +265,8 @@ class ZODBSync:
             'ident': None,
             'base_dir': self.config['base_dir'],
         })
+        # Reverse order - index zero is the topmost custom layer
+        self.layers = list(reversed(self.layers))
 
         # Make sure the manager user exists
         if self.config.get('create_manager_user', False):
@@ -382,9 +384,12 @@ class ZODBSync:
                       object is not present.
             'children': List of effective subobjects
             'layers': self.layers or a sublist of it if something is masked.
+            'layeridx': Index in 'layers' where the object's currently defining
+                        representation is found.
         }
         """
-        layers = reversed(self.layers)
+        if layers is None:
+            layers = self.layers
         # TODO: Make this more efficient by using the given params.
         parents = [self.site]
         for part in path.split('/'):
@@ -399,8 +404,8 @@ class ZODBSync:
                 if not os.path.isdir(check):
                     continue
                 remaining_layers.append(layer)
-                if any([os.path.exists(os.path.join(check, marker))
-                        for marker in ['__frozen__', '__deleted__']]):
+                if any([item in ['__frozen__', '__deleted__']
+                        for item in os.listdir(check)]):
                     break
             layers = remaining_layers
 
@@ -409,29 +414,26 @@ class ZODBSync:
             'fspath': None,
             'children': [],
             'layers': layers,
+            'layeridx': None,
         }
         path = path.lstrip('/')
-        fspaths = list(filter(os.path.isdir, [
-            os.path.join(layer['base_dir'], self.site, path)
-            for layer in layers
-        ]))
-        with_meta = [
-            fspath for fspath in fspaths
-            if os.path.exists(os.path.join(fspath, '__meta__'))
-        ]
-        if not with_meta:
-            return result
         children = set()
-        for fspath in fspaths:
+        for idx, layer in enumerate(layers):
+            fspath = os.path.join(layer['base_dir'], self.site, path)
+            if not os.path.isdir(fspath):
+                continue
+            meta = os.path.join(fspath, '__meta__')
+            if result['fspath'] is None and os.path.exists(meta):
+                result['fspath'] = fspath
+                result['layeridx'] = idx
+
             for entry in os.listdir(fspath):
                 if entry in children or entry.startswith('__'):
                     continue
                 if os.path.exists(os.path.join(fspath, entry, '__meta__')):
                     children.add(entry)
-        result.update({
-            'fspath': with_meta[0],
-            'children': sorted(children),
-        })
+
+        result['children'] = sorted(children)
         return result
 
     def fs_write(self, path, data):
@@ -447,8 +449,9 @@ class ZODBSync:
         if not os.path.isdir(base_dir):
             self.logger.debug("Will create new directory %s" % path)
             os.makedirs(base_dir)
-        old_data = self.fs_read(pathinfo, parse=False) or {'meta': None}
-        if old_data['meta']:
+        old_data = self.fs_read(pathinfo['fspath'], parse=False)
+
+        if old_data and old_data.get('meta'):
             # Comparison only up to trailing whitespaces
             old_data['meta'] = old_data['meta'].strip()
 
@@ -502,6 +505,41 @@ class ZODBSync:
                 with open(src_path, 'wb') as f:
                     f.write(source)
 
+            # We wrote the object to the topmost layer, so the index where the
+            # current representation can be found is zero.
+            pathinfo['layeridx'] = 0
+
+        # Compress if possible: Compare object with its representation on disk
+        # if the current layer is ignored. If it is the same, remove it in the
+        # current layer. Continue with the next layer that holds the object
+        # unless it is frozen.
+        frozen = False
+        for idx, layer in enumerate(pathinfo['layers']):
+            if frozen:
+                break
+            frozen = frozen or layer.get('frozen', False)
+            if idx <= pathinfo['layeridx']:
+                continue
+
+            fspath = os.path.join(layer['base_dir'], self.site,
+                                  path.lstrip('/'))
+            data = self.fs_read(fspath, parse=False)
+            if not data or not data.get('meta'):
+                # No representation on this layer
+                continue
+            if data != new_data:
+                break
+            # Remove meta file and all source files
+            base = os.path.join(
+                pathinfo['layers'][pathinfo['layeridx']]['base_dir'],
+                self.site, path.lstrip('/')
+            )
+            os.remove(os.path.join(base, '__meta__'))
+            for src in data.get('src_fnames', []):
+                os.remove(os.path.join(base, src))
+            # Next comparison point
+            pathinfo['layeridx'] = idx
+
         return pathinfo
 
     def fs_prune(self, pathinfo, contents):
@@ -521,46 +559,27 @@ class ZODBSync:
                 if len(pathinfo['layers']) > 1:
                     # Mask the path as deleted because it is also present in a
                     # lower layer
+                    # TODO: This is wrong. pathinfo['layers'] only returns the
+                    # non-masked layers, does not mean they have a copy of this
+                    # object.
                     os.mkdir(tgt)
                     with open(os.path.join(tgt, '__deleted__'), 'wb'):
                         pass
 
-    def fs_compress(self, paths):
-        """
-        Compress if possible: Compare each non-frozen layer with the layer
-        below it. If the object is the same, clear it.
-        """
-        for path in sorted(paths, reverse=True):
-            pathinfo = self.fs_pathinfo(path)
-            data = self.fs_read(pathinfo, parse=False)
-            layers = pathinfo['layers']
-            for above, below in zip(layers, layers[1:]):
-                if above.get('frozen', False):
-                    break
-                fspath_below = os.path.join(
-                    below['base_dir'], self.site, path.lstrip('/')
-                )
-                data_below = self.fs_read({'fspath': fspath_below},
-                                          parse=False)
-                if data != data_below:
-                    break
-                # Remove meta file and all source files
-                clear = os.path.join(above['base_dir'], self.site,
-                                     path.lstrip('/'))
-                if 'meta' in data:
-                    os.remove(os.path.join(clear, '__meta__'))
-                for src in data.get('src_fnames', []):
-                    os.remove(os.path.join(clear, src))
-                # Remove empty directories
-                while not os.listdir(clear):
-                    os.rmdir(clear)
-                    clear = os.path.dirname(clear)
+    def fs_prune_empty_dirs(self):
+        "Remove all empty directories"
+        for layer in self.layers:
+            if layer.get('frozen', False):
+                continue
+            start = os.path.join(layer['base_dir'], self.site)
+            for root, _, _ in os.walk(start, topdown=False):
+                if not os.listdir(root):
+                    os.rmdir(root)
 
-    def fs_read(self, pathinfo, parse=True):
+    def fs_read(self, fspath, parse=True):
         '''
         Read data from local file system.
-        pathinfo should be a dict as returned by fs_pathinfo, but for
-        compatibility it can also be a string (in which case we use fs_path).
+        :fspath: is the full filesystem path of the directory.
         Returns None if there is no directory at that path.
         If :parse: is set, returns a dictionary with the parsed data from the
         meta file and an additional "source" key. It is then an error if there
@@ -570,33 +589,29 @@ class ZODBSync:
         - the content of the first source file, if there is one
         - the list of source files
         '''
-        if isinstance(pathinfo, str):
-            base_dir = self.fs_path(pathinfo)
-        else:
-            base_dir = pathinfo['fspath']
-        if base_dir is None or not os.path.isdir(base_dir):
+        if fspath is None or not os.path.isdir(fspath):
             return None
 
         result = {'meta': None}
-        filenames = os.listdir(base_dir)
+        filenames = os.listdir(fspath)
 
-        meta_fname = os.path.join(base_dir, '__meta__')
+        meta_fname = os.path.join(fspath, '__meta__')
         if '__meta__' in filenames:
             with open(meta_fname, 'rb') as f:
-                result['meta'] = f.read()
+                result['meta'] = f.read().strip()
         else:
             assert not parse, 'Missing meta file: %s' % meta_fname
 
         src_fnames = sorted([a for a in filenames if a.startswith('__source')])
         assert not parse or len(src_fnames) <= 1, (
-            "Multiple source files in " + base_dir
+            "Multiple source files in " + fspath
         )
         src_fname = src_fnames and src_fnames[0] or None
 
         if src_fname:
-            with open(os.path.join(base_dir, src_fname), 'rb') as f:
+            with open(os.path.join(fspath, src_fname), 'rb') as f:
                 src = f.read()
-            if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
+            if parse and src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
 
         if parse:
@@ -619,7 +634,6 @@ class ZODBSync:
         # If /a/b as well as /a are to be recorded recursively, drop /a/b
         if recurse:
             remove_redundant_paths(paths)
-        processed_paths = []
         for path in paths:
             obj = self.app
             try:
@@ -630,10 +644,9 @@ class ZODBSync:
             except AttributeError:
                 self.logger.exception('Unable to record path ' + path)
                 continue
-            processed_paths.extend(self.record_obj(
-                obj, path, recurse=recurse, skip_errors=skip_errors
-            ))
-        self.fs_compress(processed_paths)
+            self.record_obj(obj, path, recurse=recurse,
+                            skip_errors=skip_errors)
+        self.fs_prune_empty_dirs()
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''
@@ -656,7 +669,7 @@ class ZODBSync:
         pathinfo = self.fs_write(path, data)
 
         if not recurse:
-            return [path]
+            return
 
         contents = obj_contents(obj) if ('unsupported' not in data) else []
         self.fs_prune(pathinfo, contents)
@@ -673,17 +686,15 @@ class ZODBSync:
                              )
             self.num_obj_last_report = now
 
-        result = [path]
         for item in contents:
             self.num_obj_current += 1
 
             child = getattr(obj, item)
-            result.extend(self.record_obj(
+            self.record_obj(
                 obj=child,
                 path=os.path.join(path, item),
                 skip_errors=skip_errors,
-            ))
-        return result
+            )
 
     def _playback_path(self, pathinfo):
         '''
@@ -716,7 +727,7 @@ class ZODBSync:
             self.logger.info('Uploading %s' % path)
 
         # fspath is None if the object is to be deleted
-        fs_data = pathinfo['fspath'] and self.fs_read(pathinfo)
+        fs_data = pathinfo['fspath'] and self.fs_read(pathinfo['fspath'])
 
         # Traverse to the object if it exists
         parent_obj = None

@@ -1388,7 +1388,8 @@ class TestSync():
 
         self.run('record', '/')
 
-        meta = self.runner.sync.fs_read('another')
+        meta = self.runner.sync.fs_read(os.path.join(self.repo.path,
+                                                     '__root__/another'))
 
         assert 'owner' not in meta
 
@@ -1422,7 +1423,8 @@ class TestSync():
 
         self.run('record', '/')
 
-        meta = self.runner.sync.fs_read('another')
+        meta = self.runner.sync.fs_read(os.path.join(self.repo.path,
+                                                     '__root__/another'))
 
         assert meta['owner'] == (['acl_users'], "Somebody")
 
