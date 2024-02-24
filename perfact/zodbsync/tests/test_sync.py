@@ -1930,7 +1930,6 @@ class TestSync():
                 self.repo.path, '__root__/something/__meta__'
             ))
 
-    @pytest.mark.xfail
     def test_layer_recreate_deleted(self):
         """
         Delete an object from the custom layer s.t. it obtains a __deleted__

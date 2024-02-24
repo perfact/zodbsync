@@ -440,19 +440,24 @@ class ZODBSync:
         '''
         Write object data out to a file with the given path.
         '''
-        # TODO: If the path is recreated, the current __deleted__ marker will
-        # result in fs_pathinfo returning only the custom layer, which will
-        # prevent compression.
         pathinfo = self.fs_pathinfo(path)
         # If no folder exists that holds the current version, create it in the
         # topmost folder.
         base_dir = pathinfo['fspath'] or self.fs_path(path)
+
+        delpath = os.path.join(base_dir, '__deleted__')
+        if os.path.exists(delpath):
+            os.remove(delpath)
+            # The above pathinfo call may have cut off layers below this, but
+            # since the object is to be resurrected, we need to recompute it.
+            # Maybe there is a more efficient way?
+            pathinfo = self.fs_pathinfo(path)
+            base_dir = pathinfo['fspath'] or base_dir
+
         # Make directory for the object if it's not already there
         if not os.path.isdir(base_dir):
             self.logger.debug("Will create new directory %s" % path)
             os.makedirs(base_dir)
-        if os.path.exists(os.path.join(base_dir, '__deleted__')):
-            os.remove(os.path.join(base_dir, '__deleted__'))
         old_data = self.fs_read(pathinfo['fspath'], parse=False)
 
         if old_data and old_data.get('meta'):
