@@ -1929,3 +1929,26 @@ class TestSync():
             assert os.path.exists(os.path.join(
                 self.repo.path, '__root__/something/__meta__'
             ))
+
+    @pytest.mark.xfail
+    def test_layer_recreate_deleted(self):
+        """
+        Delete an object from the custom layer s.t. it obtains a __deleted__
+        marker. Recreate it and make sure that it is no longer present in the
+        custom layer since it is the same as below.
+        """
+        with self.addlayer() as layer:
+            self.run('record', '/')  # Needed to update self.app
+            self.app.manage_addFolder(id='Test')
+            self.run('record', '/Test')
+            root = os.path.join(self.repo.path, '__root__')
+            os.rename(
+                os.path.join(root, 'Test'),
+                os.path.join(layer, '__root__/Test'),
+            )
+            self.app.manage_delObjects(ids=['Test'])
+            self.run('record', '/')
+            assert os.path.exists(os.path.join(root, 'Test/__deleted__'))
+            self.app.manage_addFolder(id='Test')
+            self.run('record', '/Test')
+            assert not os.path.isdir(os.path.join(root, 'Test'))

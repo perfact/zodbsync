@@ -101,7 +101,6 @@ class Watch(SubCommand):
             self.last_report = now
 
         self.object_tree[oid] = {
-            'oid': oid,
             'parent': parent_oid,
             'children': children,
             'path': path,
