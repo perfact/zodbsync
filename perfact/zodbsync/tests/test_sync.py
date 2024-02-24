@@ -954,9 +954,9 @@ class TestSync():
 
     def test_watch_structure_changes_and_playback_deleted_folder(self, conn):
         """
-        create structure while 'watch' command is running,
-        remove a folder, then play those changes back and check,
-        whether the step function correctly "crashes"
+        Create structure while 'watch' command is running, remove a folder,
+        then play those changes back and check that the watcher handles this
+        without crashing.
         """
 
         # start watch daemon
@@ -983,11 +983,14 @@ class TestSync():
         # remove folder s_folder_1
         shutil.rmtree(path)
 
+        txn = watcher.last_visible_txn
         # playback changes and check if those are existent in zodb
         self.run('playback', '/')
 
         # wait for watch to notices played back changes
-        self.watcher_step_until(watcher, watcher.exit.is_set)
+        self.watcher_step_until(watcher,
+                                lambda: watcher.last_visible_txn != txn)
+        assert not os.path.isdir(path)
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
@@ -1899,7 +1902,6 @@ class TestSync():
                 os.path.join(self.repo.path, '__root__/Test/__meta__')
             )
 
-    @pytest.mark.xfail
     def test_layer_watch_rename(self, conn):
         """
         Rename an object in the Data.FS that is recorded in a lower layer.
