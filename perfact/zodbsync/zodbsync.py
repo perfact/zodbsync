@@ -567,11 +567,14 @@ class ZODBSync:
                 if os.path.isdir(tgt):
                     shutil.rmtree(tgt)
                 meta = os.path.join(relpath, item, '__meta__')
-                for layer in pathinfo['layers'][1:]:
+                for layer in pathinfo['layers']:
+                    if layer['base_dir'] == self.base_dir:
+                        # Omit topmost (custom) layer)
+                        continue
                     if os.path.exists(os.path.join(layer['base_dir'], meta)):
                         # Mask the path as deleted because it is also present
                         # in a lower layer
-                        os.mkdir(tgt)
+                        os.makedirs(tgt, exist_ok=True)
                         with open(os.path.join(tgt, '__deleted__'), 'wb'):
                             pass
 

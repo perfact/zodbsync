@@ -1951,3 +1951,26 @@ class TestSync():
             self.app.manage_addFolder(id='Test')
             self.run('record', '/Test')
             assert not os.path.isdir(os.path.join(root, 'Test'))
+
+    def test_layer_remove_subfolder(self):
+        """
+        Set up a folder with a subfolder, both only defined in the lower layer.
+        Remove the subfolder. Check that both folders are created in the custom
+        folder, without __meta__ but in order to correctly place the
+        __deleted__ marker.
+        """
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            self.app.manage_addFolder(id='Test')
+            self.app.Test.manage_addFolder(id='Sub')
+            self.run('record', '/')
+            root = os.path.join(self.repo.path, '__root__')
+            os.rename(
+                os.path.join(root, 'Test'),
+                os.path.join(layer, '__root__/Test'),
+            )
+            self.app.Test.manage_delObjects(ids=['Sub'])
+            self.run('record', '/')
+            assert not os.path.exists(os.path.join(root, 'Test/__meta__'))
+            assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
+            assert os.path.exists(os.path.join(root, 'Test/Sub/__deleted__'))
