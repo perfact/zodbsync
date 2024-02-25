@@ -220,6 +220,8 @@ class Watch(SubCommand):
                 self._update_children(oid=oid)
                 self.changed_oids.remove(oid)
 
+        self.sync.fs_prune_empty_dirs()
+
     def _update_children(self, oid):
         '''
         Check the current children of an object and compare with the stored
