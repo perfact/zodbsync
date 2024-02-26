@@ -252,7 +252,7 @@ def hashdir(root):
         files = sorted(entry.path for entry in entries if entry.is_file())
         dirs = sorted(entry.path for entry in entries if entry.is_dir())
         if files:
-            h = hashlib.sha512()
+            h = hashlib.sha1()
             for file in files:
                 h.update(file.encode('utf-8') + b'\n')
             h.update(b'\n')
