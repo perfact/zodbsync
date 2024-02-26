@@ -2,8 +2,6 @@
 import ast
 import operator
 import importlib
-import hashlib
-import os
 
 
 class Namespace(object):
@@ -235,34 +233,3 @@ def increment_txnid(s):
             arr[pos] += 1
             break
     return bytes(arr)
-
-
-def hashdir(root):
-    """
-    Create a sorted list of hashes for each folder below path.
-    This is used when changing the contents of a layer to recognize which
-    objects are to be played back.
-    For each folder that contains files, it creates a sha512sum over:
-    - The sorted list of files
-    - The concatenation of the file contents
-    This is a coroutine that yields tuples of relative paths and the checksum.
-    """
-    def process(path):
-        entries = list(os.scandir(path))
-        files = sorted(entry.path for entry in entries if entry.is_file())
-        dirs = sorted(entry.path for entry in entries if entry.is_dir())
-        if files:
-            h = hashlib.sha1()
-            for file in files:
-                h.update(file.encode('utf-8') + b'\n')
-            h.update(b'\n')
-            for fname in files:
-                with open(fname, 'rb') as f:
-                    while data := f.read(1024*1024):
-                        h.update(data)
-            yield (path[len(root):], h.hexdigest())
-
-        for d in dirs:
-            yield from process(d)
-
-    yield from process(root)

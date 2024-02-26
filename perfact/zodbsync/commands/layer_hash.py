@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
 import os
+import hashlib
 
 from ..subcommand import SubCommand
-from ..helpers import hashdir
 
 
 class LayerHash(SubCommand):
@@ -19,8 +19,34 @@ class LayerHash(SubCommand):
         )
 
     def run(self):
-        path = self.args.path
-        with open(os.path.join(path, '.checksums'), 'w') as f:
-            root = os.path.join(path, '__root__')
-            for path, checksum in hashdir(root):
-                print(checksum, path, file=f)
+        """
+        Create a sorted list of hashes for each folder below <path>/__root__.
+        This is used when changing the contents of a layer to recognize which
+        objects are to be played back.
+        For each folder that contains files, it creates a sha1sum over:
+        - The sorted list of files
+        - The concatenation of the file contents
+        The output is written to <path>/.checksums.
+        """
+        root = os.path.join(self.args.path, '__root__')
+        todo = [root]
+        with open(os.path.join(self.args.path, '.checksums'), 'w') as fd:
+            while todo:
+                path = todo.pop()
+                entries = list(os.scandir(path))
+                todo.extend(sorted((entry.path for entry in entries
+                                    if entry.is_dir()), reverse=True))
+                files = sorted(entry.path for entry in entries
+                               if entry.is_file())
+                if not files:
+                    continue
+
+                h = hashlib.sha1()
+                for file in files:
+                    h.update(file.encode('utf-8') + b'\n')
+                h.update(b'\n')
+                for fname in files:
+                    with open(fname, 'rb') as f:
+                        while data := f.read(1024*1024):
+                            h.update(data)
+                print(h.hexdigest(), path[len(root):] or '/', file=fd)
