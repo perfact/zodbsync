@@ -253,9 +253,12 @@ class ZODBSync:
             for fname in fnames:
                 if any([fname.startswith(key) for key in '.~_']):
                     continue
+                ident = fname
+                if ident.endswith('.py'):
+                    ident = ident[:-3]
                 self.layers.append({
                     **{
-                        'ident': fname,
+                        'ident': ident,
                         'frozen': True,
                     },
                     **load_config('{}/{}'.format(layerdir, fname))

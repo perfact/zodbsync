@@ -4,7 +4,6 @@ import os
 import shutil
 
 from ..subcommand import SubCommand
-from ..helpers import hashdir
 
 
 class LayerInit(SubCommand):
@@ -24,8 +23,6 @@ class LayerInit(SubCommand):
             ident = layer['ident']
             if not ident:
                 continue
-            if ident.endswith('.py'):
-                ident = ident[:-3]
             src = os.path.join(layer['base_dir'], '.checksums')
             if os.path.exists(src):
                 shutil.copy(src, os.path.join(tgt, ident))
