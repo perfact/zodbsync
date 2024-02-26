@@ -5,6 +5,7 @@ import os
 import shutil
 import time  # for periodic output
 import sys
+import logging
 
 # for using an explicit transaction manager
 import transaction
@@ -122,6 +123,15 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
             obj = getattr(parent, obj_id, None)
     else:
         obj = root
+
+    if obj is not None and not hasattr(obj, 'meta_type'):
+        logging.getLogger('ZODBSync').warning(
+            'Removing property with colliding ID! ({} in {})'.format(
+                obj_id, parent
+            )
+        )
+        parent.manage_delProperties(ids=[obj_id])
+        obj = None
 
     temp_obj = None
     # ID exists? Check for type
