@@ -1936,9 +1936,10 @@ class TestSync():
         marker. Recreate it and make sure that it is no longer present in the
         custom layer since it is the same as below.
         """
-        with self.addlayer() as layer:
-            self.run('record', '/')  # Needed to update self.app
+        with self.runner.sync.tm:
             self.app.manage_addFolder(id='Test')
+
+        with self.addlayer() as layer:
             self.run('record', '/Test')
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
@@ -1959,10 +1960,11 @@ class TestSync():
         folder, without __meta__ but in order to correctly place the
         __deleted__ marker.
         """
-        with self.addlayer() as layer:
-            self.run('record', '/')
+        with self.runner.sync.tm:
             self.app.manage_addFolder(id='Test')
             self.app.Test.manage_addFolder(id='Sub')
+
+        with self.addlayer() as layer:
             self.run('record', '/')
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
@@ -1974,3 +1976,30 @@ class TestSync():
             assert not os.path.exists(os.path.join(root, 'Test/__meta__'))
             assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
             assert os.path.exists(os.path.join(root, 'Test/Sub/__deleted__'))
+
+    def test_layer_update(self):
+        """
+        Set up a layer, initialize its checksum file and register it. Change
+        something in the layer, recompute the checksum file and use
+        layer-update to play back the changed object.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            ident = self.runner.sync.layers[-1]['ident']
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            self.run('layer-hash', layer)
+            self.run('layer-init')
+            with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
+                f.write(zodbsync.mod_format({
+                    'title': 'Changed',
+                    'type': 'Folder'
+                }))
+            self.run('layer-hash', layer)
+            self.run('layer-update', ident)
+            assert self.app.Test.title == 'Changed'

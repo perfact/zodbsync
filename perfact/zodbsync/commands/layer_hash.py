@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import os
+
 from ..subcommand import SubCommand
 from ..helpers import hashdir
 
@@ -13,9 +15,12 @@ class LayerHash(SubCommand):
     @staticmethod
     def add_args(parser):
         parser.add_argument(
-            'path', type=str, help="Root folder of layer"
+            'path', type=str, help="Base dir of layer"
         )
 
     def run(self):
-        for path, checksum in hashdir(self.args.path.rstrip('/')):
-            print(checksum, path)
+        path = self.args.path
+        with open(os.path.join(path, '.checksums'), 'w') as f:
+            root = os.path.join(path, '__root__')
+            for path, checksum in hashdir(root):
+                print(checksum, path, file=f)

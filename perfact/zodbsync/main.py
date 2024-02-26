@@ -28,6 +28,7 @@ from .commands.checkout import Checkout
 from .commands.freeze import Freeze
 from .commands.layer_hash import LayerHash
 from .commands.layer_init import LayerInit
+from .commands.layer_update import LayerUpdate
 
 
 class Runner(object):
@@ -35,7 +36,7 @@ class Runner(object):
     Parses arguments to select the correct SubCommand subclass.
     """
     commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Exec,
-                Reformat, Checkout, Freeze, LayerHash, LayerInit]
+                Reformat, Checkout, Freeze, LayerHash, LayerInit, LayerUpdate]
 
     def __init__(self):
         """
