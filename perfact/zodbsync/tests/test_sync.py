@@ -117,19 +117,30 @@ class TestSync():
 
         self.run('playback', '--skip-errors', '/')
 
+    @contextmanager
+    def newconn(self):
+        "Add secondary connection"
+        tm = transaction.TransactionManager()
+        db = ZEO.DB(self.zeo.sockpath())
+        conn = db.open(tm)
+        app = conn.root.Application
+        with tm:
+            # Log in, manage_renameObject checks permissions
+            userfolder = app.acl_users
+            user = userfolder.getUser('perfact').__of__(userfolder)
+            newSecurityManager(None, user)
+
+        yield helpers.Namespace({'tm': tm, 'app': app})
+        tm.abort()
+        conn.close()
+
     @pytest.fixture(scope='function')
     def conn(self, request):
         """
         Fixture that provides a secondary connection to the same ZEO
         """
-        tm = transaction.TransactionManager()
-        db = ZEO.DB(self.zeo.sockpath())
-        conn = db.open(tm)
-        app = conn.root.Application
-
-        yield helpers.Namespace({'tm': tm, 'app': app})
-        tm.abort()
-        conn.close()
+        with self.newconn() as conn:
+            yield conn
 
     def mkrunner(self, *cmd):
         '''
@@ -660,13 +671,6 @@ class TestSync():
             add(id='test1', text='test1')
         self.watcher_step_until(watcher,
                                 lambda: os.path.isdir(root + 'test1'))
-
-        # Not sure how to apply this specifically to the secondary connection
-        # and why it is only needed for the rename and not the adding, but it
-        # seems to do the job
-        userfolder = conn.app.acl_users
-        user = userfolder.getUser('perfact').__of__(userfolder)
-        newSecurityManager(None, user)
 
         with conn.tm:
             rename('test1', 'test2')
@@ -1881,7 +1885,7 @@ class TestSync():
             os.path.join(self.repo.path, '__root__/Test')
         )
 
-    def test_layer_watch_rename(self, conn):
+    def test_layer_watch_rename(self):
         """
         Rename an object in the Data.FS that is recorded in a lower layer.
         Check that the watcher does the right thing, marking the original
@@ -1895,12 +1899,12 @@ class TestSync():
             watcher = self.mkrunner('watch')
             watcher.setup()
 
-            with conn.tm:
-                uf = conn.app.acl_users
-                user = uf.getUser('perfact').__of__(uf)
-                newSecurityManager(None, user)
-                conn.app.manage_renameObject('index_html', 'something')
-
+            # Somehow, we need to initialize the connection here and can not
+            # use the fixture, otherwise we are not logged in (probably some
+            # interference with addlayer resetting the original connection)
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.manage_renameObject('index_html', 'something')
             watcher.step()
             assert os.path.exists(os.path.join(
                 self.repo.path, '__root__/index_html/__deleted__'
