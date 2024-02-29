@@ -569,27 +569,32 @@ class ZODBSync:
         Remove all subfolders from path that are not in contents.
         Removes the folder from the top-level directory, but if the effective
         folder that defines the object (in a multi-layer setup) still would
-        provide it, recreate the directory and add a __frozen__ file.
+        provide it, recreate the directory and add a __deleted__ file.
         '''
         relpath = os.path.join(self.site, pathinfo['path'].lstrip('/'))
         base_dir = self.fs_path(pathinfo['path'])
         for item in pathinfo['children']:
-            if item not in contents:
-                self.logger.info("Removing old item %s from filesystem" % item)
-                tgt = os.path.join(base_dir, item)
-                if os.path.isdir(tgt):
-                    shutil.rmtree(tgt)
-                meta = os.path.join(relpath, item, '__meta__')
-                for layer in pathinfo['layers']:
-                    if layer['base_dir'] == self.base_dir:
-                        # Omit topmost (custom) layer)
-                        continue
-                    if os.path.exists(os.path.join(layer['base_dir'], meta)):
-                        # Mask the path as deleted because it is also present
-                        # in a lower layer
-                        os.makedirs(tgt, exist_ok=True)
-                        with open(os.path.join(tgt, '__deleted__'), 'wb'):
-                            pass
+            if item in contents:
+                continue
+            self.logger.info("Removing old item %s from filesystem" % item)
+            tgt = os.path.join(base_dir, item)
+            if os.path.isdir(tgt):
+                shutil.rmtree(tgt)
+            meta = os.path.join(relpath, item, '__meta__')
+            for layer in pathinfo['layers']:
+                # These are layers where the original object is defined. We
+                # need to check if the subobject is also defined there.
+                if layer['base_dir'] == self.base_dir:
+                    # Omit topmost (custom) layer
+                    continue
+                if not os.path.exists(os.path.join(layer['base_dir'], meta)):
+                    continue
+                # Mask the path as deleted because it is also present
+                # in a lower layer
+                os.makedirs(tgt, exist_ok=True)
+                with open(os.path.join(tgt, '__deleted__'), 'wb'):
+                    pass
+                break
 
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
