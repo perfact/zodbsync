@@ -452,11 +452,7 @@ class ZODBSync:
         if not os.path.isdir(base_dir):
             self.logger.debug("Will create new directory %s" % path)
             os.makedirs(base_dir)
-        old_data = self.fs_read(pathinfo['fspath'], parse=False)
-
-        if old_data and old_data.get('meta'):
-            # Comparison only up to trailing whitespaces
-            old_data['meta'] = old_data['meta'].strip()
+        old_data = self.fs_read(pathinfo['fspath'])
 
         # Build object
         meta = {key: value for key, value in data.items() if key != 'source'}
@@ -527,7 +523,7 @@ class ZODBSync:
 
             fspath = os.path.join(layer['base_dir'], self.site,
                                   path.lstrip('/'))
-            data = self.fs_read(fspath, parse=False)
+            data = self.fs_read(fspath)
             if not data or not data.get('meta'):
                 # No representation on this layer
                 continue
@@ -588,52 +584,58 @@ class ZODBSync:
                 if not os.listdir(root):
                     os.rmdir(root)
 
-    def fs_read(self, fspath, parse=True):
+    def fs_read(self, fspath):
         '''
         Read data from local file system.
         :fspath: is the full filesystem path of the directory.
-        Returns None if there is no directory at that path.
-        If :parse: is set, returns a dictionary with the parsed data from the
-        meta file and an additional "source" key. It is then an error if there
-        is no meta file or if there are multiple source files.
-        Otherwise, returns a dictionary with
-        - the content of the meta file
-        - the content of the first source file, if there is one
-        - the list of source files
-        TODO: split into two functions where the second uses the output of the
-        first.
+        Returns a dictionary with
+        - the stripped content of the meta file (if there is one)
+        - the list of source files if there are any
+        - the content of the source file if there is exactly one
         '''
         if fspath is None or not os.path.isdir(fspath):
-            return None
+            return {}
 
-        result = {'meta': None}
         filenames = os.listdir(fspath)
+        if '__meta__' not in filenames:
+            return {}
 
+        result = {}
         meta_fname = os.path.join(fspath, '__meta__')
-        if '__meta__' in filenames:
-            with open(meta_fname, 'rb') as f:
-                result['meta'] = f.read().strip()
-        else:
-            assert not parse, 'Missing meta file: %s' % meta_fname
+        with open(meta_fname, 'rb') as f:
+            result['meta'] = f.read().strip()
 
         src_fnames = sorted([a for a in filenames if a.startswith('__source')])
-        assert not parse or len(src_fnames) <= 1, (
+        if src_fnames:
+            result['src_fnames'] = src_fnames
+
+        if len(src_fnames) == 1:
+            with open(os.path.join(fspath, src_fnames[0]), 'rb') as f:
+                result['source'] = f.read()
+        return result
+
+    def fs_parse(self, fspath, data=None):
+        '''
+        Parse data obtained from fs_read.
+        Returns a dictionary with the parsed data from the
+        meta file and an additional "source" key.
+        Raises an error if there is no meta file or multiple source files
+        '''
+        if data is None:
+            data = self.fs_read(fspath)
+
+        assert 'meta' in data, 'Missing meta file: ' + fspath
+        src_fnames = data.get('src_fnames', [])
+        assert len(src_fnames) <= 1, (
             "Multiple source files in " + fspath
         )
-        src_fname = src_fnames and src_fnames[0] or None
-
-        if src_fname:
-            with open(os.path.join(fspath, src_fname), 'rb') as f:
-                src = f.read()
-            if parse and src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
+        result = dict(literal_eval(data['meta']))
+        if src_fnames:
+            src_fname = src_fnames[0]
+            src = data['source']
+            if src_fname.rsplit('.', 1)[0].endswith('-utf8__'):
                 src = src.decode('utf-8')
-
-        if parse:
-            result = dict(literal_eval(result['meta']))
-        if src_fname:
             result['source'] = src
-            if not parse:
-                result['src_fnames'] = src_fnames
 
         return result
 
@@ -736,7 +738,7 @@ class ZODBSync:
             self.logger.info('Uploading %s' % path)
 
         # fspath is None if the object is to be deleted
-        fs_data = pathinfo['fspath'] and self.fs_read(pathinfo['fspath'])
+        fs_data = pathinfo['fspath'] and self.fs_parse(pathinfo['fspath'])
 
         # Traverse to the object if it exists
         parent_obj = None
