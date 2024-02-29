@@ -1913,6 +1913,43 @@ class TestSync():
                 self.repo.path, '__root__/something/__meta__'
             ))
 
+    @pytest.mark.xfail
+    def test_layer_watch_paste(self):
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test1')
+            self.app.manage_addFolder(id='Test2')
+            self.app.Test1.manage_addFolder(id='Sub')
+        self.run('record', '/')
+        with self.addlayer() as layer:
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            watcher = self.mkrunner('watch')
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    cp = conn.app.Test1.manage_cutObjects(['Sub'])
+                    conn.app.Test2._pasteObjects(cp)
+            watcher.step()
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/Test1/Sub/__deleted__'
+            ))
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/Test2/Sub/__meta__'
+            ))
+            with self.newconn() as conn:
+                with conn.tm:
+                    cp = conn.app.Test2.manage_cutObjects(['Sub'])
+                    conn.app.Test1._pasteObjects(cp)
+            assert not os.path.isdir(os.path.join(
+                self.repo.path, '__root__/Test1'
+            ))
+            assert not os.path.isdir(os.path.join(
+                self.repo.path, '__root__/Test2'
+            ))
+
     def test_layer_recreate_deleted(self):
         """
         Delete an object from the custom layer s.t. it obtains a __deleted__
