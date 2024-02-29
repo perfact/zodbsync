@@ -1881,27 +1881,6 @@ class TestSync():
             os.path.join(self.repo.path, '__root__/Test')
         )
 
-    def test_layer_frozen_nocompress(self):
-        """
-        Setup with three layers. An object is defined on the lowest layer, but
-        the middle layer masks it with __frozen__. However, it should exist -
-        so it must be restored in the top layer.
-        """
-        with self.runner.sync.tm:
-            self.app.manage_addFolder(id='Test')
-        self.run('record', '/')
-        with self.addlayer() as layer1, self.addlayer(seqnum='10') as layer2:
-            os.rename(
-                os.path.join(self.repo.path, '__root__/Test'),
-                os.path.join(layer1, '__root__/Test'),
-            )
-            with open(os.path.join(layer2, '__root__/__frozen__'), 'wb'):
-                pass
-            self.run('record', '/')
-            assert os.path.exists(
-                os.path.join(self.repo.path, '__root__/Test/__meta__')
-            )
-
     def test_layer_watch_rename(self, conn):
         """
         Rename an object in the Data.FS that is recorded in a lower layer.

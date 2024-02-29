@@ -362,65 +362,48 @@ class ZODBSync:
         '''
         return os.path.join(self.app_dir, path.lstrip('/'))
 
-    def fs_pathinfo(self, path, layers=None, checked_until=''):
+    def fs_pathinfo(self, path):
         """
         Find the correct layer for the object with the given Data.FS path.
-        Essentially, we have a table where the rows are the layers and the
-        columns are the path components of path.
-        For each entry in the table, there are four relevant combinations:
-        - contains a __frozen__ or __deleted__ marker yes/no
-        - contains a __meta__ file yes/no
-        If the folder does not exist, this is equivalent to no __frozen__ and
-        no __meta__.
-        Any __frozen__ marker effectively removes (masks) all layers below it.
-        The topmost remaining layer that has a __meta__ file is the one we
-        want.
+        The top (custom) layer may have __deleted__ or __frozen__ markers for
+        any of the parents of path which disable looking into lower layers.
+        We then find the topmost layer that has a __meta__ file for path.
+
         __deleted__ has the same consequence as __frozen__ here. Only when
         recording objects and possibly compressing the layers is there a
         difference (if an object reappears and was only marked with
         __deleted__, a compression is possible).
+
         The children are collected from the subfolders of all remaining layers.
-        Inputs:
+
+        Input:
         :path: a path in the ZODB like /PerFact/test/
-        :layers: List of already filtered layers. If it is not set, all layers
-        from self.layers are checked. For example, if there are three layers
-        and /A/B/ is frozen on layer two, a call for /A/B/C/D/ may be called
-        with a reduced set of layers (the lowest one is masked) and only needs
-        to search for further frozen markers in /A/B/C/ and /A/B/C/D.
-        :checked_until: An ancestor path of `path` that has already been
-        checked for frozen markers. In the above example, this would have the
-        value "/A/B/".
+
         Return value:
         {
             'path': Original argument
             'fspath': Full path on the filesystem in correct layer, None if
                       object is not present.
             'children': List of effective subobjects
-            'layers': self.layers or a sublist of it if something is masked.
+            'layers': self.layers or only the topmost layer if lower layers are
+                      masked.
             'layeridx': Index in 'layers' where the object's currently defining
                         representation is found.
         }
         """
-        if layers is None:
-            layers = self.layers
-        # TODO: Make this more efficient by using the given params.
-        parents = [self.site]
-        for part in path.split('/'):
+        layers = self.layers
+        check = self.base_dir
+        markers = ['__frozen__', '__deleted__']
+        for part in [self.site] + path.split('/'):
             if not part:
                 continue
-            parents.append(os.path.join(parents[-1], part))
-
-        for parent in parents:
-            remaining_layers = []
-            for layer in layers:
-                check = os.path.join(layer['base_dir'], parent)
-                if not os.path.isdir(check):
-                    continue
-                remaining_layers.append(layer)
-                if any([item in ['__frozen__', '__deleted__']
-                        for item in os.listdir(check)]):
-                    break
-            layers = remaining_layers
+            check = os.path.join(check, part)
+            if not os.path.isdir(check):
+                break
+            if any([item in markers for item in os.listdir(check)]):
+                # Only keep custom layer
+                layers = layers[:1]
+                break
 
         result = {
             'path': path,
@@ -451,21 +434,19 @@ class ZODBSync:
 
     def fs_write(self, path, data):
         '''
-        Write object data out to a file with the given path.
+        Write object data out to a folder with the given path.
         '''
-        pathinfo = self.fs_pathinfo(path)
-        # If no folder exists that holds the current version, create it in the
-        # topmost folder.
-        base_dir = pathinfo['fspath'] or self.fs_path(path)
-
+        # If the custom layer has a __deleted__ marker for this object, remove
+        # it.
+        base_dir = self.fs_path(path)
         delpath = os.path.join(base_dir, '__deleted__')
         if os.path.exists(delpath):
             os.remove(delpath)
-            # The above pathinfo call may have cut off layers below this, but
-            # since the object is to be resurrected, we need to recompute it.
-            # Maybe there is a more efficient way?
-            pathinfo = self.fs_pathinfo(path)
-            base_dir = pathinfo['fspath'] or base_dir
+
+        # Find layer that holds the current version of the object, falling back
+        # to the custom layer
+        pathinfo = self.fs_pathinfo(path)
+        base_dir = pathinfo['fspath'] or base_dir
 
         # Make directory for the object if it's not already there
         if not os.path.isdir(base_dir):
@@ -531,14 +512,15 @@ class ZODBSync:
             # current representation can be found is zero.
             pathinfo['layeridx'] = 0
 
+        # Compress if possible.
         # Compress if possible: Compare object with its representation on disk
         # if the current layer is ignored. If it is the same, remove it in the
         # current layer. Continue with the next layer that holds the object
         # unless it is frozen.
-        frozen = False
+        frozen = False  # Set to True on first frozen layer
         for idx, layer in enumerate(pathinfo['layers']):
-            if frozen:
-                break
+            # This is now the layer that we compare the current layer to in
+            # order to check if we can compress it.
             frozen = frozen or layer.get('frozen', False)
             if idx <= pathinfo['layeridx']:
                 continue
@@ -550,6 +532,7 @@ class ZODBSync:
                 # No representation on this layer
                 continue
             if data != new_data:
+                # No compression
                 break
             # Remove meta file and all source files
             base = os.path.join(
@@ -561,6 +544,9 @@ class ZODBSync:
                 os.remove(os.path.join(base, src))
             # Next comparison point
             pathinfo['layeridx'] = idx
+            if frozen:
+                # The current layer is now frozen, so no further compression
+                break
 
         return pathinfo
 
@@ -581,12 +567,8 @@ class ZODBSync:
             if os.path.isdir(tgt):
                 shutil.rmtree(tgt)
             meta = os.path.join(relpath, item, '__meta__')
-            for layer in pathinfo['layers']:
-                # These are layers where the original object is defined. We
-                # need to check if the subobject is also defined there.
-                if layer['base_dir'] == self.base_dir:
-                    # Omit topmost (custom) layer
-                    continue
+            # Omit topmost (custom) layer
+            for layer in pathinfo['layers'][1:]:
                 if not os.path.exists(os.path.join(layer['base_dir'], meta)):
                     continue
                 # Mask the path as deleted because it is also present
@@ -618,6 +600,8 @@ class ZODBSync:
         - the content of the meta file
         - the content of the first source file, if there is one
         - the list of source files
+        TODO: split into two functions where the second uses the output of the
+        first.
         '''
         if fspath is None or not os.path.isdir(fspath):
             return None
@@ -652,11 +636,6 @@ class ZODBSync:
                 result['src_fnames'] = src_fnames
 
         return result
-
-    def fs_contents(self, path):
-        '''Read the current contents from the local file system.'''
-        filenames = os.listdir(self.fs_path(path))
-        return sorted([f for f in filenames if not f.startswith('__')])
 
     def record(self, paths, recurse=True, skip_errors=False):
         '''Record Zope objects from the given paths into the local
