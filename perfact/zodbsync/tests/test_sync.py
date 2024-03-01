@@ -1915,6 +1915,12 @@ class TestSync():
 
     @pytest.mark.xfail
     def test_layer_watch_paste(self):
+        """
+        Set up two folders, where one has a subfolder, both in the lower layer.
+        Cut the subfolder and paste it into the other folder, checking the
+        result. Then cut it again and paste it into its original place and
+        check that.
+        """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id='Test1')
             self.app.manage_addFolder(id='Test2')
