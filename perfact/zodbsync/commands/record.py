@@ -6,7 +6,6 @@ import argparse
 from email.mime.text import MIMEText
 
 from ..subcommand import SubCommand
-from ..helpers import remove_redundant_paths
 from .reset import Reset
 
 
@@ -111,17 +110,8 @@ class Record(SubCommand):
             else:
                 paths.extend(res['paths'])
 
-        # If /a/b as well as /a are to be recorded recursively, drop a/b
-        if recurse:
-            remove_redundant_paths(paths)
-
-        for path in paths:
-            try:
-                self.sync.record(path=path, recurse=recurse,
-                                 skip_errors=self.args.skip_errors)
-            except AttributeError:
-                self.sync.logger.exception('Unable to record path ' + path)
-                pass
+        self.sync.record(paths=paths, recurse=recurse,
+                         skip_errors=self.args.skip_errors)
 
         if self.args.commit:
             self.commit()

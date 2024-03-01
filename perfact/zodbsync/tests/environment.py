@@ -57,7 +57,7 @@ class Repository():
 
 
 class ZopeConfig():
-    def __init__(self, zeosock, add_tempstorage=False):
+    def __init__(self, zeosock):
         self.path = tempfile.mkdtemp()
         self.config = self.path + '/zope.conf'
         content = '''
@@ -78,19 +78,6 @@ instancehome $INSTANCE
 </zodb_db>
         '''.format(zeosock=zeosock, path=self.path)
 
-        # Prevents warnings with Zope2 but is not supported with Zope 4
-        if add_tempstorage:  # pragma: no cover
-            content += """
-<zodb_db temporary>
-    # Temporary storage database (for sessions)
-    <temporarystorage>
-      name temporary storage for sessioning
-    </temporarystorage>
-    mount-point /temp_folder
-    container-class Products.TemporaryFolder.TemporaryContainer
-</zodb_db>
-            """
-
         with open(self.config, 'w') as f:
             f.write(content)
 
@@ -100,7 +87,9 @@ instancehome $INSTANCE
 
 class ZODBSyncConfig():
     def __init__(self, env):
-        _, self.path = tempfile.mkstemp()
+        self.folder = tempfile.mkdtemp()
+        os.mkdir(self.folder + '/layers')
+        self.path = self.folder + '/zodb.py'
         with open(self.path, 'w') as f:
             f.write('''
 conf_path = '{zopeconf}'
@@ -112,14 +101,16 @@ base_dir = '{repodir}'
 commit_name = "Zope Developer"
 commit_email = "zope-devel@example.de"
 commit_message = "Generic commit message."
+layers = "{root}/layers"
             '''.format(
                 zopeconf=env['zopeconfig'].config,
                 zeopath=env['zeo'].path,
                 repodir=env['repo'].path,
+                root=self.folder,
             ))
 
     def cleanup(self):
-        os.remove(self.path)
+        shutil.rmtree(self.folder)
 
 
 class JSLib():

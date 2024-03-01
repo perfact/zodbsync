@@ -8,15 +8,14 @@ import subprocess
 import pickle
 import pytest
 import shutil
+import tempfile
+import string
+import random
+from contextlib import contextmanager
 
 import ZEO
 import transaction
 from AccessControl.SecurityManagement import newSecurityManager
-try:  # pragma: no cover
-    import ZServer  # noqa: F401
-    ZOPE2 = True
-except ImportError:  # pragma: no cover
-    ZOPE2 = False
 
 try:
     from unittest import mock
@@ -66,12 +65,12 @@ class TestSync():
         Fixture that is automatically used by all tests. Initializes
         environment and injects the elements of it into the class.
         '''
-        myenv = {}
-        myenv['zeo'] = env.ZeoInstance()
-        myenv['repo'] = env.Repository()
-        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath(),
-                                             add_tempstorage=ZOPE2)
-        myenv['jslib'] = env.JSLib()
+        myenv = dict(
+            zeo=env.ZeoInstance(),
+            repo=env.Repository(),
+            jslib=env.JSLib(),
+        )
+        myenv['zopeconfig'] = env.ZopeConfig(zeosock=myenv['zeo'].sockpath())
         myenv['config'] = env.ZODBSyncConfig(env=myenv)
 
         # inject items into class so methods can use them
@@ -118,19 +117,30 @@ class TestSync():
 
         self.run('playback', '--skip-errors', '/')
 
+    @contextmanager
+    def newconn(self):
+        "Add secondary connection"
+        tm = transaction.TransactionManager()
+        db = ZEO.DB(self.zeo.sockpath())
+        conn = db.open(tm)
+        app = conn.root.Application
+        with tm:
+            # Log in, manage_renameObject checks permissions
+            userfolder = app.acl_users
+            user = userfolder.getUser('perfact').__of__(userfolder)
+            newSecurityManager(None, user)
+
+        yield helpers.Namespace({'tm': tm, 'app': app})
+        tm.abort()
+        conn.close()
+
     @pytest.fixture(scope='function')
     def conn(self, request):
         """
         Fixture that provides a secondary connection to the same ZEO
         """
-        tm = transaction.TransactionManager()
-        db = ZEO.DB(self.zeo.sockpath())
-        conn = db.open(tm)
-        app = conn.root.Application
-
-        yield helpers.Namespace({'tm': tm, 'app': app})
-        tm.abort()
-        conn.close()
+        with self.newconn() as conn:
+            yield conn
 
     def mkrunner(self, *cmd):
         '''
@@ -279,20 +289,20 @@ class TestSync():
         self.run('playback', '/index_html')
         assert self.app.index_html() == content
 
-    def add_folder(self, name, msg):
+    def add_folder(self, name, msg=None, parent=''):
         """
-        Add a folder to the root directory and commit it
+        Add a folder to the root directory and commit it if msg is given
         """
-        folder = self.repo.path + '/__root__/' + name
+        folder = os.path.join(self.repo.path, '__root__', parent, name)
         os.mkdir(folder)
         with open(folder + '/__meta__', 'w') as f:
-            f.write('''[
-                ('props', []),
-                ('title', ''),
-                ('type', 'Folder'),
-            ]''')
-        self.gitrun('add', '.')
-        self.gitrun('commit', '-m', msg)
+            f.write(zodbsync.mod_format({
+                'title': '',
+                'type': 'Folder'
+            }))
+        if msg is not None:
+            self.gitrun('add', '.')
+            self.gitrun('commit', '-m', msg)
 
     def get_head_id(self):
         """Return commit ID of current HEAD."""
@@ -662,13 +672,6 @@ class TestSync():
         self.watcher_step_until(watcher,
                                 lambda: os.path.isdir(root + 'test1'))
 
-        # Not sure how to apply this specifically to the secondary connection
-        # and why it is only needed for the rename and not the adding, but it
-        # seems to do the job
-        userfolder = conn.app.acl_users
-        user = userfolder.getUser('perfact').__of__(userfolder)
-        newSecurityManager(None, user)
-
         with conn.tm:
             rename('test1', 'test2')
         self.watcher_step_until(watcher, lambda: os.path.isdir(root + 'test2'))
@@ -955,9 +958,9 @@ class TestSync():
 
     def test_watch_structure_changes_and_playback_deleted_folder(self, conn):
         """
-        create structure while 'watch' command is running,
-        remove a folder, then play those changes back and check,
-        whether the step function correctly "crashes"
+        Create structure while 'watch' command is running, remove a folder,
+        then play those changes back and check that the watcher handles this
+        without crashing.
         """
 
         # start watch daemon
@@ -988,7 +991,7 @@ class TestSync():
         self.run('playback', '/')
 
         # wait for watch to notices played back changes
-        self.watcher_step_until(watcher, watcher.exit.is_set)
+        self.watcher_step_until(watcher, lambda: not os.path.isdir(path))
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
@@ -1342,14 +1345,20 @@ class TestSync():
 
     def test_no_meta_file(self):
         """
-        Check that a missing meta file is detected and we run into an error
+        Check that a missing meta file regards the object as deleted.
         """
 
         broken_obj = os.path.join(self.repo.path, '__root__', 'foo')
         os.mkdir(broken_obj)
 
-        with pytest.raises(AssertionError):
-            self.run('playback', '/foo')
+        self.run('playback', '/foo')
+        assert 'foo' not in self.app.objectIds()
+
+        self.add_folder('Test')
+        self.run('playback', '/Test')
+        os.remove(os.path.join(self.repo.path, '__root__/Test/__meta__'))
+        self.run('playback', '/Test')
+        assert 'Test' not in self.app.objectIds()
 
     def test_force_default_owner(self):
         """
@@ -1383,7 +1392,8 @@ class TestSync():
 
         self.run('record', '/')
 
-        meta = self.runner.sync.fs_read('another')
+        meta = self.runner.sync.fs_parse(os.path.join(self.repo.path,
+                                                      '__root__/another'))
 
         assert 'owner' not in meta
 
@@ -1417,7 +1427,8 @@ class TestSync():
 
         self.run('record', '/')
 
-        meta = self.runner.sync.fs_read('another')
+        meta = self.runner.sync.fs_parse(os.path.join(self.repo.path,
+                                                      '__root__/another'))
 
         assert meta['owner'] == (['acl_users'], "Somebody")
 
@@ -1513,6 +1524,21 @@ class TestSync():
         self.run('reset', c2)
         self.run('reset', c1)
 
+    @contextmanager
+    def appendtoconf(self, text):
+        """
+        Append some text to the config and restore afterward
+        """
+        with open(self.config.path) as f:
+            orig_config = f.read()
+        with open(self.config.path, 'a') as f:
+            f.write('\n' + text + '\n')
+        try:
+            yield
+        finally:
+            with open(self.config.path, 'w') as f:
+                f.write(orig_config)
+
     def test_playback_postprocess(self):
         """
         Add configuration option for a postprocessing script and check that
@@ -1527,20 +1553,10 @@ class TestSync():
         with open(fname, 'w') as f:
             f.write(script)
         os.chmod(fname, 0o700)
-        with open(self.config.path) as f:
-            orig_config = f.read()
-        with open(self.config.path, 'a') as f:
-            f.write('\nrun_after_playback = "{}"\n'.format(fname))
-
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
-        self.test_reset()
-        with open(outfile) as f:
-            assert json.loads(f.read()) == {"paths": ["/index_html/"]}
-
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
-        del self.runner
+        with self.appendtoconf('run_after_playback = "{}"'.format(fname)):
+            self.test_reset()
+            with open(outfile) as f:
+                assert json.loads(f.read()) == {"paths": ["/index_html/"]}
 
     def test_playback_hook(self):
         """
@@ -1627,19 +1643,383 @@ class TestSync():
         with open(fname, 'w') as f:
             f.write(script)
         os.chmod(fname, 0o700)
-        with open(self.config.path) as f:
-            orig_config = f.read()
-        with open(self.config.path, 'a') as f:
-            f.write('\nplayback_hook = "{}"\n'.format(fname))
+        with self.appendtoconf('playback_hook = "{}"'.format(fname)):
+            with pytest.raises(AssertionError):
+                self.run('pick', 'HEAD..{}'.format(commit))
 
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
-        with pytest.raises(AssertionError):
-            self.run('pick', 'HEAD..{}'.format(commit))
+            assert 'NewFolder' not in self.app.objectIds()
+            assert 'NewFolder2' not in self.app.objectIds()
 
-        assert 'NewFolder' not in self.app.objectIds()
-        assert 'NewFolder2' not in self.app.objectIds()
+    @contextmanager
+    def addlayer(self, seqnum='00'):
+        """
+        Create a temp directory and add a config that uses this as additional
+        code layer.
+        """
+        name = '{}-{}.py'.format(seqnum, ''.join(
+            [random.choice(string.ascii_letters) for _ in range(16)]
+        ))
+        path = '{}/layers/{}'.format(self.config.folder, name)
+        with tempfile.TemporaryDirectory() as layer:
+            with open(path, 'w') as f:
+                f.write('base_dir = "{}"\n'.format(layer))
+            os.mkdir(os.path.join(layer, '__root__'))
+            # Force re-reading config
+            if hasattr(self, 'runner'):
+                del self.runner
+            try:
+                yield layer
+            finally:
+                if hasattr(self, 'runner'):
+                    del self.runner
+                os.remove(path)
 
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
-        del self.runner
+    def test_layer_record_freeze(self):
+        """
+        Create a folder, copy it into an additional fixed layer, freeze the
+        folder and record it. Check that the top layer still has the object
+        and a __frozen__ marker.
+        """
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        with self.addlayer() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),
+                '{}/__root__/Test'.format(layer),
+            )
+            self.run('freeze', '/')
+            self.run('record', '/')
+        for fname in ['__meta__', '__frozen__', 'Test/__meta__']:
+            assert os.path.exists(
+                '{}/__root__/{}'.format(self.repo.path, fname)
+            )
+
+    def test_layer_record_nofreeze(self):
+        """
+        Create a folder, copy it into an additional fixed layer and record
+        everything. Check that the top layer no longer has the folder.
+        """
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        with self.addlayer() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),
+                '{}/__root__/Test'.format(layer),
+            )
+            self.run('record', '/')
+        assert not os.path.exists(
+            '{}/__root__/Test'.format(self.repo.path)
+        )
+
+    def test_layer_record_compress_simple(self):
+        """
+        Test record compression: Create a folder on custom layer,
+        then add a new base layer with the same content. Change
+        the object to make it fit new base layer, expect object to
+        vanish from custom layer after record.
+        """
+
+        # in our custom layer we create a folder with title 'Foobar'
+        self.add_folder('Test', 'Test')
+        self.run('playback', '/Test')
+        self.app.Test.title = 'Foobar'
+        self.run('record', '/')
+
+        # ... then we add a new base layer
+        with self.addlayer() as layer:
+            shutil.copytree(
+                '{}/__root__/Test'.format(self.repo.path),  # custom layer!
+                '{}/__root__/Test'.format(layer),           # new base layer!
+            )
+            # now create the standard Test folder titled 'Something
+            meta = zodbsync.mod_format({
+                'title': 'Something',
+                'type': 'Folder'
+            })
+            with open(os.path.join(layer, '__root__/Test/__meta__'), 'w') as f:
+                f.write(meta)
+            self.run('playback', '/')
+
+            # still 'Foobar' - custom layer wins
+            assert self.app.Test.title == 'Foobar'
+
+            # now really switch to 'Something' via app
+            self.app.Test.title = 'Something'
+
+            # ... and record. should remove customized
+            # Test folder aka compress
+            self.run('record', '/')
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, '__root__/Test')
+            )
+
+    @pytest.mark.parametrize('recurse', [True, False])
+    def test_layer_playback(self, recurse):
+        """
+        Set up a base layer, add a path there and play it back.
+        """
+        self.add_folder('Test')
+        with self.addlayer() as layer:
+            src = '{}/__root__'.format(self.repo.path)
+            tgt = '{}/__root__'.format(layer)
+            os.rename(src + '/Test', tgt + '/Test')
+            cmd = ['playback', '/Test']
+            if not recurse:
+                cmd.append('--no-recurse')
+            self.run(*cmd)
+            assert 'Test' in self.app.objectIds()
+
+    def test_layer_playback_frozen_deleted(self):
+        """
+        Set up a base layer with a folder, but mask it as deleted in the upper
+        layer.
+        """
+        self.add_folder('Test')
+        with self.addlayer() as layer:
+            src = '{}/__root__'.format(self.repo.path)
+            tgt = '{}/__root__'.format(layer)
+            shutil.copytree(src + '/Test', tgt + '/Test')
+            with open('{}/__frozen__'.format(src), 'w'):
+                pass
+            os.remove(src + '/Test/__meta__')
+            self.run('playback', '/Test')
+            assert 'Test' not in self.app.objectIds()
+
+    def test_layer_playback_combined(self):
+        """
+        Set up a complex hierarchy with two layers and one path being frozen
+        and providing different subobjects, one path being merged while also
+        changing the object itself and one path being merged without changing
+        the object itself.
+        """
+        for folder in ['Test1', 'Test2', 'Test3']:
+            self.add_folder(folder)
+            for sub in ['Sub1', 'Sub2']:
+                self.add_folder(sub, parent=folder)
+        with self.addlayer() as layer:
+            root = os.path.join(self.repo.path, '__root__')
+            # Move current structure into lower layer
+            os.rename(root, os.path.join(layer, '__root__'))
+            # Create a sparse structure in top layer
+            files = [
+                'Test1/__frozen__',
+                'Test1/__meta__',
+                'Test1/Sub3/__meta__',
+                'Test2/__meta__',
+                'Test2/Sub3/__meta__',
+                'Test3/Sub3/__meta__',
+            ]
+            meta = ('''[
+                ('props', []),
+                ('title', 'overwritten'),
+                ('type', 'Folder'),
+            ]''')
+            for file in files:
+                dirname, fname = file.rsplit('/', 1)
+                os.makedirs(os.path.join(root, dirname), exist_ok=True)
+                with open(os.path.join(root, file), 'w') as f:
+                    if fname == '__meta__':
+                        f.write(meta)
+
+            self.run('playback', '/')
+        assert self.app.Test1.objectIds() == ['Sub3']
+        assert self.app.Test2.objectIds() == ['Sub1', 'Sub2', 'Sub3']
+        assert self.app.Test3.objectIds() == ['Sub1', 'Sub2', 'Sub3']
+        assert self.app.Test2.title == 'overwritten'
+        assert self.app.Test3.title == ''
+
+    def test_layer_record(self):
+        """
+        Add an object and move it to the lower layer. Record again. The object
+        must not be added to the top layer since it is already present in the
+        lower layer.
+        """
+        self.add_folder('Test')
+        self.run('playback', '/Test')
+        self.run('record', '/Test')
+        with self.addlayer() as layer:
+            root = [
+                os.path.join(layer, '__root__'),
+                os.path.join(self.repo.path, '__root__'),
+            ]
+            os.rename(os.path.join(root[1], 'Test'),
+                      os.path.join(root[0], 'Test'))
+            self.run('record', '/Test')
+            assert not os.path.isdir(os.path.join(root[1], 'Test'))
+
+    def test_layer_record_deletion(self):
+        """
+        Have an object with subobjects defined in the lower layer, but not in
+        the Data.FS. Record it. The top-level layer needs to recreate the
+        folder and mark it as deleted.
+        """
+        self.add_folder('Test')
+        self.add_folder('Sub', parent='Test')
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, '__root__')
+            tgtroot = os.path.join(layer, '__root__')
+            os.rename(os.path.join(srcroot, 'Test'),
+                      os.path.join(tgtroot, 'Test'))
+            self.run('record', '/')
+            assert os.path.isdir(os.path.join(srcroot, 'Test'))
+            assert os.path.exists(os.path.join(srcroot, 'Test/__deleted__'))
+
+    def test_layer_record_prune(self):
+        """
+        Use a setup with two layers. Add a folder and record it to the custom
+        layer. Remove the folder and record again - check that the subfolder is
+        actually deleted and not marked with __deleted__.
+        """
+        self.app.manage_addFolder(id='Test')
+        self.run('record', '/')
+        with self.addlayer() as layer:
+            os.rename(
+                os.path.join(self.repo.path, '__root__/__meta__'),
+                os.path.join(layer, '__root__/__meta__'),
+            )
+            self.run('record', '/')
+        assert not os.path.isdir(
+            os.path.join(self.repo.path, '__root__/Test')
+        )
+
+    def test_layer_watch_rename(self):
+        """
+        Rename an object in the Data.FS that is recorded in a lower layer.
+        Check that the watcher does the right thing, marking the original
+        object as deleted and creating the new object.
+        """
+        with self.addlayer() as layer:
+            os.rename(
+                os.path.join(self.repo.path, '__root__/index_html'),
+                os.path.join(layer, '__root__/index_html'),
+            )
+            watcher = self.mkrunner('watch')
+            watcher.setup()
+
+            # Somehow, we need to initialize the connection here and can not
+            # use the fixture, otherwise we are not logged in (probably some
+            # interference with addlayer resetting the original connection)
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.manage_renameObject('index_html', 'something')
+            watcher.step()
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/index_html/__deleted__'
+            ))
+            assert os.path.exists(os.path.join(
+                self.repo.path, '__root__/something/__meta__'
+            ))
+
+    def test_layer_watch_paste(self):
+        """
+        Set up two folders, where one has a subfolder, both in the lower layer.
+        Cut the subfolder and paste it into the other folder, checking the
+        result. Then cut it again and paste it into its original place and
+        check that.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test1')
+            self.app.manage_addFolder(id='Test2')
+            self.app.Test1.manage_addFolder(id='Sub')
+        self.run('record', '/')
+        with self.addlayer() as layer:
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            watcher = self.mkrunner('watch')
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    cp = conn.app.Test1.manage_cutObjects(['Sub'])
+                    conn.app.Test2._pasteObjects(cp)
+            paths = [os.path.join(self.repo.path, '__root__', path)
+                     for path in ['Test1/Sub/__deleted__',
+                                  'Test2/Sub/__meta__']]
+            self.watcher_step_until(watcher,
+                                    lambda: all(map(os.path.exists, paths)))
+            with self.newconn() as conn:
+                with conn.tm:
+                    cp = conn.app.Test2.manage_cutObjects(['Sub'])
+                    conn.app.Test1._pasteObjects(cp)
+
+            paths = [os.path.join(self.repo.path, '__root__', path)
+                     for path in ['Test1', 'Test2']]
+            # Both folders must be removed
+            self.watcher_step_until(watcher,
+                                    lambda: not any(map(os.path.isdir, paths)))
+
+    def test_layer_recreate_deleted(self):
+        """
+        Delete an object from the custom layer s.t. it obtains a __deleted__
+        marker. Recreate it and make sure that it is no longer present in the
+        custom layer since it is the same as below.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+
+        with self.addlayer() as layer:
+            self.run('record', '/Test')
+            root = os.path.join(self.repo.path, '__root__')
+            os.rename(
+                os.path.join(root, 'Test'),
+                os.path.join(layer, '__root__/Test'),
+            )
+            self.app.manage_delObjects(ids=['Test'])
+            self.run('record', '/')
+            assert os.path.exists(os.path.join(root, 'Test/__deleted__'))
+            self.app.manage_addFolder(id='Test')
+            self.run('record', '/Test')
+            assert not os.path.isdir(os.path.join(root, 'Test'))
+
+    def test_layer_remove_subfolder(self):
+        """
+        Set up a folder with a subfolder, both only defined in the lower layer.
+        Remove the subfolder. Check that both folders are created in the custom
+        folder, without __meta__ but in order to correctly place the
+        __deleted__ marker.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+            self.app.Test.manage_addFolder(id='Sub')
+
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            root = os.path.join(self.repo.path, '__root__')
+            os.rename(
+                os.path.join(root, 'Test'),
+                os.path.join(layer, '__root__/Test'),
+            )
+            self.app.Test.manage_delObjects(ids=['Sub'])
+            self.run('record', '/')
+            assert not os.path.exists(os.path.join(root, 'Test/__meta__'))
+            assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
+            assert os.path.exists(os.path.join(root, 'Test/Sub/__deleted__'))
+
+    def test_layer_update(self):
+        """
+        Set up a layer, initialize its checksum file and register it. Change
+        something in the layer, recompute the checksum file and use
+        layer-update to play back the changed object.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            ident = self.runner.sync.layers[-1]['ident']
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            self.run('layer-hash', layer)
+            self.run('layer-init')
+            with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
+                f.write(zodbsync.mod_format({
+                    'title': 'Changed',
+                    'type': 'Folder'
+                }))
+            self.run('layer-hash', layer)
+            self.run('layer-update', ident)
+            assert self.app.Test.title == 'Changed'

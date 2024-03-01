@@ -25,9 +25,10 @@ from .commands.reset import Reset
 from .commands.execute import Exec
 from .commands.reformat import Reformat
 from .commands.checkout import Checkout
-
-# Future ideas:
-# from .commands.rebase import Rebase
+from .commands.freeze import Freeze
+from .commands.layer_hash import LayerHash
+from .commands.layer_init import LayerInit
+from .commands.layer_update import LayerUpdate
 
 
 class Runner(object):
@@ -35,7 +36,7 @@ class Runner(object):
     Parses arguments to select the correct SubCommand subclass.
     """
     commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Exec,
-                Reformat, Checkout]
+                Reformat, Checkout, Freeze, LayerHash, LayerInit, LayerUpdate]
 
     def __init__(self):
         """
@@ -102,19 +103,19 @@ class Runner(object):
             logger.propagate = False
 
         self.logger = logger
-        config = load_config(args.config)
-        if self.config is not None:
-            assert config == self.config, (
-                "Re-used runner with different config"
-            )
-        self.config = config
+        if getattr(args.command, 'use_config', True):
+            config = load_config(args.config)
+            if self.config is not None and config != self.config:
+                self.logger.warning("Reusing runner with different config")
+                self.sync = None
+            self.config = config
 
         # Usually, each command needs a connection to the ZODB, but it might
         # explicitly disable it.
         if self.sync is None and getattr(args.command, 'connect', True):
             self.sync = ZODBSync(config=self.config, logger=logger)
 
-        if not args.no_lock:
+        if self.config and not args.no_lock:
             self.lock = filelock.FileLock(
                 os.path.join(self.config['base_dir'], '.zodbsync.lock')
             )

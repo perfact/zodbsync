@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 
 import base64
-import binascii
 import signal
 import time
 import threading
-import os
 import sys
-import shutil
 import pickle
 import subprocess
 
@@ -16,7 +13,7 @@ import subprocess
 import ZODB.FileStorage
 
 from ..subcommand import SubCommand
-from ..helpers import remove_redundant_paths, increment_txnid
+from ..helpers import increment_txnid
 from ..zodbsync import mod_read
 
 
@@ -104,7 +101,6 @@ class Watch(SubCommand):
             self.last_report = now
 
         self.object_tree[oid] = {
-            'oid': oid,
             'parent': parent_oid,
             'children': children,
             'path': path,
@@ -168,15 +164,15 @@ class Watch(SubCommand):
                 self.changed_oids.add(oid)
                 pos = pos + dlen
 
-    def _update_path(self, oid, path):
-        '''
-        If an element has been moved, this is called to update the path for the
-        subtree
-        '''
-        node = self.object_tree[oid]
-        node['path'] = path
-        for child_oid, child_id in node['children'].items():
-            self._update_path(oid=child_oid, path=path+child_id+'/')
+    def _remove_subtree(self, oid):
+        """
+        Remove a subtree from self.object_tree
+        """
+        todo = [oid]
+        while todo:
+            oid = todo.pop()
+            todo.extend(self.object_tree[oid]['children'])
+            del self.object_tree[oid]
 
     def _record_object(self, oid):
         '''
@@ -199,20 +195,10 @@ class Watch(SubCommand):
         accordingly.
         '''
 
-        # Any child that is no longer wanted by a parent (i.e., no longer found
-        # in its objectItems()), is stored in adoption_list. If no new
-        # parent is found by the end of the routine, they are removed :-(.
-        # If someone adopts a child (has a new child that was already part of
-        # our object tree), it is immediately removed from its former parent
-        # and from the adoption list if present.
-
         if not len(self.changed_oids):
             return
         self.logger.info('Found %s changed objects' % len(self.changed_oids))
         self.logger.debug('OIDs: ' + str(sorted(self.changed_oids)))
-
-        self.adoption_list = set()
-        shutil.rmtree(self.base_dir+'/../__orphans__/', ignore_errors=True)
 
         while len(self.changed_oids):
             # not all oids are part of our object tree yet, so we have to
@@ -226,36 +212,21 @@ class Watch(SubCommand):
                 # earlier transactions, but they might no longer exist
                 break
             for oid in next_oids:
+                if oid not in self.object_tree:
+                    # Might have vanished from the tree in an earlier iteration
+                    # because the parent was moved or renamed.
+                    continue
                 self._record_object(oid=oid)
                 self._update_children(oid=oid)
+                self.changed_oids.remove(oid)
 
-            self.changed_oids.difference_update(next_oids)
-
-        remove_paths = []
-        while len(self.adoption_list):
-            oid = self.adoption_list.pop()
-            node = self.object_tree[oid]
-            del self.object_tree[oid]
-
-            # recursively remove children from tree
-            self.adoption_list.update(node['children'])
-            parent_oid = node['parent']
-            if (parent_oid in self.object_tree
-                    and oid in self.object_tree[parent_oid]['children']):
-                del self.object_tree[parent_oid]['children'][oid]
-            remove_paths.append(node['path'])
-
-        remove_redundant_paths(remove_paths)
-        for path in remove_paths:
-            self.logger.info('Removing %s' % path)
-            shutil.rmtree(self.base_dir+path)
+        self.sync.fs_prune_empty_dirs()
 
     def _update_children(self, oid):
         '''
         Check the current children of an object and compare with the stored
-        children. Rename children that changed their name, adopt new children
-        that previously had different parents, create new children, and set
-        obsolete children up for adoption.
+        children. Remove any superfluous children (oid not found or wrong id)
+        and record any new children recursively.
         '''
         obj = self.app._p_jar[oid]
         node = self.object_tree[oid]
@@ -266,74 +237,36 @@ class Watch(SubCommand):
                 continue
             newchildren[bytes(child_obj._p_oid)] = child_id
 
-        # go through old children and check if they are still there
+        # Go through old children and check if some are to be deleted
         for child_oid, child_id in list(node['children'].items()):
-            if (child_oid not in newchildren
-                    or child_id != newchildren[child_oid]):
-                # Put up for adoption. The new parent might show up later or it
-                # might be the same but the child was renamed.  However, we
-                # need to move the folder away immediately in case another
-                # object takes its place
-                self.adoption_list.add(child_oid)
-                del node['children'][child_oid]
-                self.object_tree[child_oid]['parent'] = None
-                oldpath = self.object_tree[child_oid]['path']
-                newpath = ('/../__orphans__/' +
-                           binascii.hexlify(child_oid).decode('ascii')
-                           )
-                self.logger.info(
-                    'Moving %s => %s' % (
-                        oldpath,
-                        newpath
-                    )
-                )
-                os.makedirs(self.base_dir+newpath)
-                try:
-                    os.rename(self.base_dir+oldpath, self.base_dir+newpath)
-                except OSError as err:
-                    if err.errno == 2:  # no such file or directory
-                        raise TreeOutdatedException()
-                    self.logger.exception('Unexpected OSError')
-                    raise
-                self._update_path(child_oid, newpath)
+            if newchildren.get(child_oid) == child_id:
+                continue
+            self._remove_subtree(child_oid)
+            del node['children'][child_oid]
 
-        # go through new children and check if they have old parents
+        pathinfo = self.sync.fs_pathinfo(node['path'])
+        self.sync.fs_prune(pathinfo, newchildren.values())
+
+        # Add new children to changed_oids so they will also be recorded
         for child_oid, child_id in list(newchildren.items()):
             if child_oid in node['children']:
                 continue
             newpath = node['path']+child_id+'/'
 
             if child_oid in self.object_tree:
-                # the parent changed
-                child = self.object_tree[child_oid]
-                self.logger.info(
-                    'Moving %s => %s' % (
-                        child['path'],
-                        newpath,
-                    )
-                )
-                os.rename(
-                    self.base_dir+child['path'],
-                    self.base_dir+newpath
-                )
-                if (child['parent'] is not None
-                        and child['parent'] in self.object_tree):
-                    children = self.object_tree[child['parent']]['children']
-                    del children[child_oid]
-                child['parent'] = oid
-                self._update_path(child_oid, node['path']+child_id+'/')
-                if child_oid in self.adoption_list:
-                    self.adoption_list.remove(child_oid)
-            else:
-                # A new child not yet known in our tree. Usually, it will
-                # already be in changed_oids and the following is a no-op -
-                # except if an object hierarchy was resurrected by an Undo.
-                self.changed_oids.add(child_oid)
-                self.object_tree[child_oid] = {
-                    'parent': oid,
-                    'children': {},
-                    'path': newpath,
-                }
+                # The parent changed. Remove from there. Since the old parent
+                # will also be changed, the call to fs_prune there will take
+                # care of removing everything on the FS.
+                old_parent = self.object_tree[child_oid]['parent']
+                del self.object_tree[old_parent]['children'][child_oid]
+                self._remove_subtree(child_oid)
+
+            self.changed_oids.add(child_oid)
+            self.object_tree[child_oid] = {
+                'parent': oid,
+                'children': {},
+                'path': newpath,
+            }
             node['children'][child_oid] = child_id
 
     def quit(self, signo, _frame):
@@ -419,10 +352,7 @@ class Watch(SubCommand):
                 )
                 self.changed_oids.difference_update(next_oids)
 
-        remove_redundant_paths(paths)
-        for path in paths:
-            self.logger.info('Recording %s' % path)
-            self.sync.record(path)
+        self.sync.record(paths)
 
         self.sync.tm.abort()
 
