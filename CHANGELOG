@@ -1,4 +1,4 @@
-unreleased
+23.1.0
   * Update README
   * Explicitly name git branch in tests
   * Add configuration option playback_hook
