@@ -987,14 +987,11 @@ class TestSync():
         # remove folder s_folder_1
         shutil.rmtree(path)
 
-        txn = watcher.last_visible_txn
         # playback changes and check if those are existent in zodb
         self.run('playback', '/')
 
         # wait for watch to notices played back changes
-        self.watcher_step_until(watcher,
-                                lambda: watcher.last_visible_txn != txn)
-        assert not os.path.isdir(path)
+        self.watcher_step_until(watcher, lambda: not os.path.isdir(path))
 
     def test_commit_on_branch_and_exec_merge(self):
         '''
@@ -1913,7 +1910,6 @@ class TestSync():
                 self.repo.path, '__root__/something/__meta__'
             ))
 
-    @pytest.mark.xfail
     def test_layer_watch_paste(self):
         """
         Set up two folders, where one has a subfolder, both in the lower layer.
@@ -1938,23 +1934,21 @@ class TestSync():
                 with conn.tm:
                     cp = conn.app.Test1.manage_cutObjects(['Sub'])
                     conn.app.Test2._pasteObjects(cp)
-            watcher.step()
-            assert os.path.exists(os.path.join(
-                self.repo.path, '__root__/Test1/Sub/__deleted__'
-            ))
-            assert os.path.exists(os.path.join(
-                self.repo.path, '__root__/Test2/Sub/__meta__'
-            ))
+            paths = [os.path.join(self.repo.path, '__root__', path)
+                     for path in ['Test1/Sub/__deleted__',
+                                  'Test2/Sub/__meta__']]
+            self.watcher_step_until(watcher,
+                                    lambda: all(map(os.path.exists, paths)))
             with self.newconn() as conn:
                 with conn.tm:
                     cp = conn.app.Test2.manage_cutObjects(['Sub'])
                     conn.app.Test1._pasteObjects(cp)
-            assert not os.path.isdir(os.path.join(
-                self.repo.path, '__root__/Test1'
-            ))
-            assert not os.path.isdir(os.path.join(
-                self.repo.path, '__root__/Test2'
-            ))
+
+            paths = [os.path.join(self.repo.path, '__root__', path)
+                     for path in ['Test1', 'Test2']]
+            # Both folders must be removed
+            self.watcher_step_until(watcher,
+                                    lambda: not any(map(os.path.isdir, paths)))
 
     def test_layer_recreate_deleted(self):
         """

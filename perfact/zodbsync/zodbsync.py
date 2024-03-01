@@ -581,6 +581,8 @@ class ZODBSync:
                 continue
             start = os.path.join(layer['base_dir'], self.site)
             for root, _, _ in os.walk(start, topdown=False):
+                if root == start:
+                    continue
                 if not os.listdir(root):
                     os.rmdir(root)
 

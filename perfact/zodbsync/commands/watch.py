@@ -238,17 +238,14 @@ class Watch(SubCommand):
             newchildren[bytes(child_obj._p_oid)] = child_id
 
         # Go through old children and check if some are to be deleted
-        prune = []
         for child_oid, child_id in list(node['children'].items()):
             if newchildren.get(child_oid) == child_id:
                 continue
-            prune.append(child_id)
             self._remove_subtree(child_oid)
             del node['children'][child_oid]
 
-        if prune:
-            pathinfo = self.sync.fs_pathinfo(node['path'])
-            self.sync.fs_prune(pathinfo, newchildren.values())
+        pathinfo = self.sync.fs_pathinfo(node['path'])
+        self.sync.fs_prune(pathinfo, newchildren.values())
 
         # Add new children to changed_oids so they will also be recorded
         for child_oid, child_id in list(newchildren.items()):
