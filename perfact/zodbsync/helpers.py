@@ -233,3 +233,17 @@ def increment_txnid(s):
             arr[pos] += 1
             break
     return bytes(arr)
+
+
+def obj_modtime(obj):  # pragma: no cover
+    '''
+    Allow access to private method of an object to read out the modtime.
+    '''
+    return obj._p_mtime
+
+
+def db_modtime(context):  # pragma: no cover
+    """
+    Allow access to a modtime for the whole ZODB.
+    """
+    return context._p_jar._db.lastTransaction()
