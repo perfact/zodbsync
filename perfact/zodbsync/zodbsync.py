@@ -170,13 +170,6 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     return obj
 
 
-def obj_modtime(obj):  # pragma: no cover
-    '''
-    Allow access to private method of an object to read out the modtime.
-    '''
-    return obj._p_mtime
-
-
 class ZODBSync:
     '''A ZODBSync instance is capable of mirroring a part of the ZODB
     object tree in the file system.
