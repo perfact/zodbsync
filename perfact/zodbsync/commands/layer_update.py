@@ -74,6 +74,7 @@ class LayerUpdate(SubCommand):
             return
 
         self._playback_paths(sorted(paths))
+        self.sync.record(sorted(paths), recurse=False)
         for path in paths:
             if self.sync.fs_pathinfo(path)['layeridx'] == 0:
                 self.logger.warn(
