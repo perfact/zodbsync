@@ -1997,7 +1997,7 @@ class TestSync():
             assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
             assert os.path.exists(os.path.join(root, 'Test/Sub/__deleted__'))
 
-    def test_layer_update(self):
+    def test_layer_update(self, caplog):
         """
         Set up a layer, initialize its checksum file and register it. Change
         something in the layer, recompute the checksum file and use
@@ -2022,6 +2022,7 @@ class TestSync():
                 }))
             self.run('layer-hash', layer)
             self.run('layer-update', ident)
+            assert 'Conflict with object' not in caplog.text
             assert self.app.Test.title == 'Changed'
 
     def test_keep_acl(self):
