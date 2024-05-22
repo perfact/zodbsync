@@ -100,7 +100,7 @@ class Runner(object):
             logger = logging.getLogger('ZODBSync')
             logger.setLevel(logging.INFO)
             logger.addHandler(logging.StreamHandler())
-            logger.propagate = False
+            logger.propagate = True
 
         self.logger = logger
         if getattr(args.command, 'use_config', True):

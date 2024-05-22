@@ -74,6 +74,11 @@ class LayerUpdate(SubCommand):
             return
 
         self._playback_paths(sorted(paths))
+        for path in paths:
+            if self.sync.fs_pathinfo(path)['layeridx'] == 0:
+                self.logger.warn(
+                    'Conflict with object in custom layer: ' + path
+                )
 
         if not self.args.dry_run:
             for oldfname, newfname in fnames:

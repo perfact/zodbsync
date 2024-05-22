@@ -2106,3 +2106,35 @@ class TestSync():
             '/some_module/acl_users',
         )
         assert 'acl_users' not in self.app.some_module.objectIds()
+
+    def test_layer_update_warn(self, caplog):
+        """
+        Set up a layer and initialize it. Change an object that is provided by
+        this layer and record the change into the custom layer. Update the base
+        layer such that this object would change and make sure that we are
+        warned that the change is ignored due to a collision.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            ident = self.runner.sync.layers[-1]['ident']
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            self.run('layer-hash', layer)
+            self.run('layer-init')
+            with self.runner.sync.tm:
+                self.app.Test._setProperty('nav_hidden', True, 'boolean')
+            self.run('record', '/')
+            with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
+                f.write(zodbsync.mod_format({
+                    'title': 'Changed',
+                    'type': 'Folder'
+                }))
+            self.run('layer-hash', layer)
+            self.run('layer-update', ident)
+            expect = 'Conflict with object in custom layer: /Test'
+            assert expect in caplog.text
