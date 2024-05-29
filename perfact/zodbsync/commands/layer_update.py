@@ -74,13 +74,13 @@ class LayerUpdate(SubCommand):
             return
 
         self._playback_paths(sorted(paths))
-        self.sync.record(sorted(paths), recurse=False)
-        for path in paths:
-            if self.sync.fs_pathinfo(path)['layeridx'] == 0:
-                self.logger.warn(
-                    'Conflict with object in custom layer: ' + path
-                )
 
         if not self.args.dry_run:
+            self.sync.record(sorted(paths), recurse=False)
+            for path in paths:
+                if self.sync.fs_pathinfo(path)['layeridx'] == 0:
+                    self.logger.warning(
+                        'Conflict with object in custom layer: ' + path
+                    )
             for oldfname, newfname in fnames:
                 shutil.copyfile(newfname, oldfname)
