@@ -2026,7 +2026,11 @@ class TestSync():
 
     def test_keep_acl(self):
         '''
-        Make sure deletions on acl_users are NOT synced into Data.fs
+        Make sure deletions on top level acl_users are NOT synced into
+        Data.fs
+
+        User folders living somewhere else in the application may be
+        deleted though.
         '''
         acl_path = os.path.join(
             self.repo.path,
@@ -2039,4 +2043,23 @@ class TestSync():
         # this playback will fail horribly if acl_users is gone!
         self.run('playback', '/')
 
+        # make sure acl_users in toplevel is still present
         assert 'acl_users' in self.app.objectIds()
+
+        # now create cummy module with its own acl_users folder
+        self.app.manage_addFolder(id='some_module')
+        self.app.some_module.manage_addUserFolder()
+
+        self.run('record', '/')
+
+        assert 'acl_users' in self.app.some_module.objectIds()
+
+        module_acl = os.path.join(
+            self.repo.path,
+            '__root__',
+            'some_module',
+            'acl_users',
+        )
+        shutil.rmtree(module_acl)
+        self.run('playback', '/')
+        assert 'acl_users' not in self.app.some_module.objectIds()

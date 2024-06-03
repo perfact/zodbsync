@@ -786,7 +786,8 @@ class ZODBSync:
             # Find IDs in Data.fs object not present in file system
             del_ids = [
                 a for a in srv_contents
-                if a not in contents and a != 'acl_users'
+                if a not in contents and
+                (path != '/acl_users' and a != 'acl_users')
             ]
             if del_ids:
                 self.logger.warning('Deleting objects ' + repr(del_ids))
