@@ -2036,5 +2036,7 @@ class TestSync():
         shutil.rmtree(acl_path)
         self.run('playback', '/')
 
-        # this playback will fail horribly is acl_users is gone!
+        # this playback will fail horribly if acl_users is gone!
         self.run('playback', '/')
+
+        assert 'acl_users' in self.app.objectIds()
