@@ -2023,3 +2023,18 @@ class TestSync():
             self.run('layer-hash', layer)
             self.run('layer-update', ident)
             assert self.app.Test.title == 'Changed'
+
+    def test_keep_acl(self):
+        '''
+        Make sure deletions on acl_users are NOT synced into Data.fs
+        '''
+        acl_path = os.path.join(
+            self.repo.path,
+            '__root__',
+            'acl_users',
+        )
+        shutil.rmtree(acl_path)
+        self.run('playback', '/')
+
+        # this playback will fail horribly is acl_users is gone!
+        self.run('playback', '/')
