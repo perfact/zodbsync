@@ -2046,7 +2046,7 @@ class TestSync():
         # make sure acl_users in toplevel is still present
         assert 'acl_users' in self.app.objectIds()
 
-        # now create cummy module with its own acl_users folder
+        # now create dummy module with its own acl_users folder
         self.app.manage_addFolder(id='some_module')
         self.app.some_module.manage_addUserFolder()
 
