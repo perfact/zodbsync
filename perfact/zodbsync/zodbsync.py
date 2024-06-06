@@ -766,6 +766,8 @@ class ZODBSync:
                 return
 
         if fs_data is None:
+            if obj_id == 'acl_users' and path.startswith('/acl_users'):
+                return
             self.logger.info('Removing object ' + path)
             parent_obj.manage_delObjects(ids=[obj_id])
             return

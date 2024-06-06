@@ -2063,3 +2063,44 @@ class TestSync():
         shutil.rmtree(module_acl)
         self.run('playback', '/')
         assert 'acl_users' not in self.app.some_module.objectIds()
+
+    def test_keep_acl_norecurse(self):
+        '''
+        test_keep_acl but slightly altered for norecurse,
+        aka playing back single objects instead of the whole
+        object tree
+        '''
+        acl_path = os.path.join(
+            self.repo.path,
+            '__root__',
+            'acl_users',
+        )
+        shutil.rmtree(acl_path)
+        self.run('playback', '--no-recurse', '/acl_users')
+
+        # make sure acl_users in toplevel is still present
+        assert 'acl_users' in self.app.objectIds()
+
+        # now create dummy module with its own acl_users folder
+        self.app.manage_addFolder(id='some_module')
+        self.app.some_module.manage_addFolder(id='something')
+        self.app.some_module.manage_addUserFolder()
+
+        self.run('record', '/')
+
+        assert 'acl_users' in self.app.some_module.objectIds()
+
+        module_acl = os.path.join(
+            self.repo.path,
+            '__root__',
+            'some_module',
+            'acl_users',
+        )
+        shutil.rmtree(module_acl)
+        self.run(
+            'playback',
+            '--no-recurse',
+            '/some_module',
+            '/some_module/acl_users',
+        )
+        assert 'acl_users' not in self.app.some_module.objectIds()
