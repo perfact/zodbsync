@@ -641,7 +641,6 @@ class ZODBSync:
         # If /a/b as well as /a are to be recorded recursively, drop /a/b
         if recurse:
             remove_redundant_paths(paths)
-        recorded = []
         for path in paths:
             obj = self.app
             try:
@@ -657,9 +656,7 @@ class ZODBSync:
                 obj = None
             self.record_obj(obj, path, recurse=recurse,
                             skip_errors=skip_errors)
-            recorded.append(path)
         self.fs_prune_empty_dirs()
-        return recorded
 
     def record_obj(self, obj, path, recurse=True, skip_errors=False):
         '''Record a Zope object into the local filesystem'''

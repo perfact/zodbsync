@@ -2118,11 +2118,13 @@ class TestSync():
         layer such that this object would change and make sure that we are
         warned that the change is ignored due to a collision.
         Also check that deletion of an object in the base layer that is not
-        masked in the custom layer does *not* lead to a warning.
+        masked in the custom layer, but that has a masked subobject, also leads
+        to a warning.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id='Test')
             self.app.manage_addFolder(id='ToDelete')
+            self.app.ToDelete.manage_addFolder(id='Sub')
         with self.addlayer() as layer:
             self.run('record', '/')
             ident = self.runner.sync.layers[-1]['ident']
@@ -2135,6 +2137,8 @@ class TestSync():
             self.run('layer-init')
             with self.runner.sync.tm:
                 self.app.Test._setProperty('nav_hidden', True, 'boolean')
+                self.app.ToDelete.Sub._setProperty('nav_hidden', True,
+                                                   'boolean')
             self.run('record', '/')
             with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
                 f.write(zodbsync.mod_format({
@@ -2144,8 +2148,7 @@ class TestSync():
             shutil.rmtree(os.path.join(tgt, 'ToDelete'))
             self.run('layer-hash', layer)
             self.run('layer-update', ident)
-            expect = 'Conflict with object in custom layer: /Test'
-            assert expect in caplog.text
+            expect = 'Conflict with object in custom layer: '
+            assert expect + '/Test' in caplog.text
             assert 'AttributeError' not in caplog.text
-            no_expect = 'Conflict with object in custom layer: /ToDelete'
-            assert no_expect not in caplog.text
+            assert expect + '/ToDelete/Sub' in caplog.text
