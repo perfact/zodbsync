@@ -76,7 +76,8 @@ class LayerUpdate(SubCommand):
         self._playback_paths(sorted(paths))
 
         if not self.args.dry_run:
-            self.sync.record(sorted(paths), recurse=False, ignore_removed=True)
+            self.sync.record(sorted(paths), recurse=False, skip_errors=True,
+                             ignore_removed=True)
             for path in paths:
                 if self.sync.fs_pathinfo(path)['layeridx'] == 0:
                     self.logger.warning(
