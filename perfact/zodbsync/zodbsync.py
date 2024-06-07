@@ -643,17 +643,18 @@ class ZODBSync:
             remove_redundant_paths(paths)
         for path in paths:
             obj = self.app
-            try:
-                # traverse into the object of interest
-                for part in path.split('/'):
-                    if part:
-                        obj = getattr(obj, part)
-            except AttributeError:
-                if ignore_removed:
+            # traverse into the object of interest
+            for part in path.split('/'):
+                if not part:
                     continue
-                # Depending on skip_errors, this yields an error or a warning
-                # later
-                obj = None
+                if part not in obj.objectIds():
+                    # Depending on skip_errors, this yields an error or a
+                    # warning later
+                    obj = None
+                    break
+                obj = getattr(obj, part)
+            if obj is None and ignore_removed:
+                continue
             self.record_obj(obj, path, recurse=recurse,
                             skip_errors=skip_errors)
         self.fs_prune_empty_dirs()
