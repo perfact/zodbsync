@@ -766,6 +766,8 @@ class ZODBSync:
                 return
 
         if fs_data is None:
+            if obj_id == 'acl_users' and path.startswith('/acl_users'):
+                return
             self.logger.info('Removing object ' + path)
             parent_obj.manage_delObjects(ids=[obj_id])
             return
@@ -784,7 +786,11 @@ class ZODBSync:
             srv_contents = obj_contents(obj) if obj else []
 
             # Find IDs in Data.fs object not present in file system
-            del_ids = [a for a in srv_contents if a not in contents]
+            del_ids = [
+                a for a in srv_contents
+                if a not in contents and
+                not (obj == self.app and a == 'acl_users')
+            ]
             if del_ids:
                 self.logger.warning('Deleting objects ' + repr(del_ids))
                 obj.manage_delObjects(ids=del_ids)
