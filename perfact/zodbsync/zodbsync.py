@@ -789,7 +789,7 @@ class ZODBSync:
             del_ids = [
                 a for a in srv_contents
                 if a not in contents and
-                (path != '/acl_users' and a != 'acl_users')
+                not (obj == self.app and a == 'acl_users')
             ]
             if del_ids:
                 self.logger.warning('Deleting objects ' + repr(del_ids))
