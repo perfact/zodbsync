@@ -207,8 +207,11 @@ class TestSync():
         assert os.path.isfile(
             self.repo.path + '/__root__/acl_users/__meta__'
         )
-        # Recording a non-existent object only logs and does not fail
-        self.run('record', '/nonexist')
+        # Recording a non-existent object fails
+        with pytest.raises(AttributeError):
+            self.run('record', '/nonexist')
+        # ... unless --skip-errors is given
+        self.run('record', '/nonexist', '--skip-errors')
         # Recording with --lasttxn will create the file
         self.run('record', '--lasttxn')
         assert os.path.isfile(os.path.join(self.repo.path, '__last_txn__'))
@@ -2114,9 +2117,12 @@ class TestSync():
         this layer and record the change into the custom layer. Update the base
         layer such that this object would change and make sure that we are
         warned that the change is ignored due to a collision.
+        Also check that deletion of an object in the base layer that is not
+        masked in the custom layer does *not* lead to a warning.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id='Test')
+            self.app.manage_addFolder(id='ToDelete')
         with self.addlayer() as layer:
             self.run('record', '/')
             ident = self.runner.sync.layers[-1]['ident']
@@ -2135,7 +2141,11 @@ class TestSync():
                     'title': 'Changed',
                     'type': 'Folder'
                 }))
+            shutil.rmtree(os.path.join(tgt, 'ToDelete'))
             self.run('layer-hash', layer)
             self.run('layer-update', ident)
             expect = 'Conflict with object in custom layer: /Test'
             assert expect in caplog.text
+            assert 'AttributeError' not in caplog.text
+            no_expect = 'Conflict with object in custom layer: /ToDelete'
+            assert no_expect not in caplog.text

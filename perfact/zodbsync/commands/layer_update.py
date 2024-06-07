@@ -76,8 +76,9 @@ class LayerUpdate(SubCommand):
         self._playback_paths(sorted(paths))
 
         if not self.args.dry_run:
-            self.sync.record(sorted(paths), recurse=False)
-            for path in paths:
+            recorded = self.sync.record(sorted(paths), recurse=False,
+                                        ignore_removed=True)
+            for path in recorded:
                 if self.sync.fs_pathinfo(path)['layeridx'] == 0:
                     self.logger.warning(
                         'Conflict with object in custom layer: ' + path
