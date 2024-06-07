@@ -2083,9 +2083,10 @@ class TestSync():
         assert 'acl_users' in self.app.objectIds()
 
         # now create dummy module with its own acl_users folder
-        self.app.manage_addFolder(id='some_module')
-        self.app.some_module.manage_addFolder(id='something')
-        self.app.some_module.manage_addUserFolder()
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='some_module')
+            self.app.some_module.manage_addFolder(id='something')
+            self.app.some_module.manage_addUserFolder()
 
         self.run('record', '/')
 
