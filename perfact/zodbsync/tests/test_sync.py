@@ -207,8 +207,11 @@ class TestSync():
         assert os.path.isfile(
             self.repo.path + '/__root__/acl_users/__meta__'
         )
-        # Recording a non-existent object only logs and does not fail
-        self.run('record', '/nonexist')
+        # Recording a non-existent object fails
+        with pytest.raises(AttributeError):
+            self.run('record', '/nonexist')
+        # ... unless --skip-errors is given
+        self.run('record', '/nonexist', '--skip-errors')
         # Recording with --lasttxn will create the file
         self.run('record', '--lasttxn')
         assert os.path.isfile(os.path.join(self.repo.path, '__last_txn__'))
@@ -1997,7 +2000,7 @@ class TestSync():
             assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
             assert os.path.exists(os.path.join(root, 'Test/Sub/__deleted__'))
 
-    def test_layer_update(self):
+    def test_layer_update(self, caplog):
         """
         Set up a layer, initialize its checksum file and register it. Change
         something in the layer, recompute the checksum file and use
@@ -2022,6 +2025,7 @@ class TestSync():
                 }))
             self.run('layer-hash', layer)
             self.run('layer-update', ident)
+            assert 'Conflict with object' not in caplog.text
             assert self.app.Test.title == 'Changed'
 
     def test_keep_acl(self):
@@ -2106,3 +2110,45 @@ class TestSync():
             '/some_module/acl_users',
         )
         assert 'acl_users' not in self.app.some_module.objectIds()
+
+    def test_layer_update_warn(self, caplog):
+        """
+        Set up a layer and initialize it. Change an object that is provided by
+        this layer and record the change into the custom layer. Update the base
+        layer such that this object would change and make sure that we are
+        warned that the change is ignored due to a collision.
+        Also check that deletion of an object in the base layer that is not
+        masked in the custom layer, but that has a masked subobject, also leads
+        to a warning.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id='Test')
+            self.app.manage_addFolder(id='ToDelete')
+            self.app.ToDelete.manage_addFolder(id='Sub')
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            ident = self.runner.sync.layers[-1]['ident']
+            src = os.path.join(self.repo.path, '__root__')
+            tgt = os.path.join(layer, '__root__')
+            os.rmdir(tgt)
+            os.rename(src, tgt)
+            os.mkdir(src)
+            self.run('layer-hash', layer)
+            self.run('layer-init')
+            with self.runner.sync.tm:
+                self.app.Test._setProperty('nav_hidden', True, 'boolean')
+                self.app.ToDelete.Sub._setProperty('nav_hidden', True,
+                                                   'boolean')
+            self.run('record', '/')
+            with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
+                f.write(zodbsync.mod_format({
+                    'title': 'Changed',
+                    'type': 'Folder'
+                }))
+            shutil.rmtree(os.path.join(tgt, 'ToDelete'))
+            self.run('layer-hash', layer)
+            self.run('layer-update', ident)
+            expect = 'Conflict with object in custom layer: '
+            assert expect + '/Test' in caplog.text
+            assert 'AttributeError' not in caplog.text
+            assert expect + '/ToDelete/Sub' in caplog.text

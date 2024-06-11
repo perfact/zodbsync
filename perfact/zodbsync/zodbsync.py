@@ -634,7 +634,8 @@ class ZODBSync:
 
         return result
 
-    def record(self, paths, recurse=True, skip_errors=False):
+    def record(self, paths, recurse=True, skip_errors=False,
+               ignore_removed=False):
         '''Record Zope objects from the given paths into the local
         filesystem.'''
         # If /a/b as well as /a are to be recorded recursively, drop /a/b
@@ -642,13 +643,17 @@ class ZODBSync:
             remove_redundant_paths(paths)
         for path in paths:
             obj = self.app
-            try:
-                # traverse into the object of interest
-                for part in path.split('/'):
-                    if part:
-                        obj = getattr(obj, part)
-            except AttributeError:
-                self.logger.exception('Unable to record path ' + path)
+            # traverse into the object of interest
+            for part in path.split('/'):
+                if not part:
+                    continue
+                if part not in obj.objectIds():
+                    # Depending on skip_errors, this yields an error or a
+                    # warning later
+                    obj = None
+                    break
+                obj = getattr(obj, part)
+            if obj is None and ignore_removed:
                 continue
             self.record_obj(obj, path, recurse=recurse,
                             skip_errors=skip_errors)
@@ -664,7 +669,7 @@ class ZODBSync:
             )
         except Exception:
             severity = 'Skipping' if skip_errors else 'ERROR'
-            msg = '%s %s' % (severity, path)
+            msg = '{}: Unable to record path {}'.format(severity, path)
             if skip_errors:
                 self.logger.warning(msg)
                 return
