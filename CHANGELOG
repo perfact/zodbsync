@@ -1,5 +1,6 @@
-23.1.2.dev0
+23.1.2
   * Add warning for custom layer paths shadowing changes in layer-update
+  * Panic before deleting the top-level acl_users
 
 23.1.1
   * Add method that exposes reading the db_modtime
