@@ -1654,7 +1654,7 @@ class TestSync():
             assert 'NewFolder2' not in self.app.objectIds()
 
     @contextmanager
-    def addlayer(self, seqnum='00'):
+    def addlayer(self, seqnum='00', frozen=True):
         """
         Create a temp directory and add a config that uses this as additional
         code layer.
@@ -1666,6 +1666,7 @@ class TestSync():
         with tempfile.TemporaryDirectory() as layer:
             with open(path, 'w') as f:
                 f.write('base_dir = "{}"\n'.format(layer))
+                f.write('frozen = {}\n'.format(frozen))
             os.mkdir(os.path.join(layer, '__root__'))
             # Force re-reading config
             if hasattr(self, 'runner'):
@@ -2152,3 +2153,32 @@ class TestSync():
             assert expect + '/Test' in caplog.text
             assert 'AttributeError' not in caplog.text
             assert expect + '/ToDelete/Sub' in caplog.text
+    
+    def test_layer_frozen(self):
+        """
+        Verify that changed files are propery written into the custom
+        layer in case the layer below is frozen.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob') 
+        
+        with self.addlayer(frozen=True) as layer:
+            self.run('record', '/blob')
+            shutil.move(
+                '{}/__root__/blob'.format(self.repo.path),
+                '{}/__root__/blob'.format(layer),
+            )
+            with self.runner.sync.tm:
+                self.app.blob.manage_edit(
+                    filedata='text_content',
+                    content_type='text/plain',
+                    title='BLOB'
+                )
+            self.run('record', '/')
+            root = os.path.join(self.repo.path, '__root__')
+            # both meta and source file are in custom layer
+            assert os.path.exists(os.path.join(root, 'blob/__meta__'))
+            assert os.path.exists(os.path.join(root, 'blob/__source__.txt'))
+            with open('{}/__root__/blob/__source__.txt'.format(layer)) as f:
+                # source in layer should still be empty
+                assert f.read() == ''
