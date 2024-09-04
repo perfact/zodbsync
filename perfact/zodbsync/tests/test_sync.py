@@ -2153,15 +2153,15 @@ class TestSync():
             assert expect + '/Test' in caplog.text
             assert 'AttributeError' not in caplog.text
             assert expect + '/ToDelete/Sub' in caplog.text
-    
+
     def test_layer_frozen(self):
         """
         Verify that changed files are propery written into the custom
         layer in case the layer below is frozen.
         """
         with self.runner.sync.tm:
-            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob') 
-        
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+
         with self.addlayer(frozen=True) as layer:
             self.run('record', '/blob')
             shutil.move(
