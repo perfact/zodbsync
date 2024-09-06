@@ -2156,7 +2156,7 @@ class TestSync():
 
     def test_layer_frozen(self):
         """
-        Verify that changed files are propery written into the custom
+        Verify that changed files are properly written into the custom
         layer in case the layer below is frozen.
         """
         with self.runner.sync.tm:
