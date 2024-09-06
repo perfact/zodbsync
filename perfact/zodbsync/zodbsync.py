@@ -470,7 +470,6 @@ class ZODBSync:
                 obj_id=path.rstrip('/').rsplit('/', 1)[-1],
             )
             src_fname = '{}.{}'.format(base, ext)
-            src_path = os.path.join(base_dir, src_fname)
             new_data['src_fnames'] = [src_fname]
             new_data['source'] = source
 
@@ -494,7 +493,7 @@ class ZODBSync:
                 self.logger.debug(
                     "Will write %d bytes of source" % len(source)
                 )
-                with open(src_path, 'wb') as f:
+                with open(os.path.join(write_base, src_fname), 'wb') as f:
                     f.write(source)
 
             # We wrote the object to the topmost layer, so the index where the
