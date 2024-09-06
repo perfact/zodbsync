@@ -55,7 +55,7 @@ class LayerUpdate(SubCommand):
             newidx = 0
             # Iterate through results, which are ordered by path. Add any
             # deviation to paths
-            while oldidx < len(old) or newidx < len(new):
+            while oldidx < len(old) and newidx < len(new):
                 if old[oldidx] == new[newidx]:
                     oldidx += 1
                     newidx += 1
@@ -69,6 +69,8 @@ class LayerUpdate(SubCommand):
                 if newpath <= oldpath:
                     paths.add(newpath)
                     newidx += 1
+            paths.update([row[0] for row in old[oldidx:]])
+            paths.update([row[0] for row in new[newidx:]])
 
         if not paths:
             return

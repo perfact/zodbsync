@@ -1,3 +1,7 @@
+23.1.2+dev.1
+  * Fix layer-update for cases where the last element in both checksum files is
+    not the same.
+
 23.1.2
   * Add warning for custom layer paths shadowing changes in layer-update
   * Panic before deleting the top-level acl_users
