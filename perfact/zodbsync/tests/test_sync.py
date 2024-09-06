@@ -2179,6 +2179,10 @@ class TestSync():
             # both meta and source file are in custom layer
             assert os.path.exists(os.path.join(root, 'blob/__meta__'))
             assert os.path.exists(os.path.join(root, 'blob/__source__.txt'))
-            with open('{}/__root__/blob/__source__.txt'.format(layer)) as f:
+            source_fmt = '{}/__root__/blob/__source__.txt'
+            with open(source_fmt.format(layer)) as f:
                 # source in layer should still be empty
                 assert f.read() == ''
+            with open(source_fmt.format(self.repo.path)) as f:
+                # ... content is in custom layer!
+                assert f.read() == 'text_content'
