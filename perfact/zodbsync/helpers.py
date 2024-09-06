@@ -247,3 +247,33 @@ def db_modtime(context):  # pragma: no cover
     Allow access to a modtime for the whole ZODB.
     """
     return context._p_jar._db.lastTransaction()
+
+
+def path_diff(old, new):
+    """
+    For two lists of tuples (path, checksum) that are ordered by path, return
+    the set of all paths that differ, i.e. either are only present in one of
+    the lists or have a different checksum.
+    """
+    result = set()
+    oldidx = 0
+    newidx = 0
+    # Iterate through results, which are ordered by path. Add any
+    # deviation to paths
+    while oldidx < len(old) and newidx < len(new):
+        if old[oldidx] == new[newidx]:
+            oldidx += 1
+            newidx += 1
+            continue
+        oldpath = old[oldidx][0]
+        newpath = new[newidx][0]
+        if oldpath <= newpath:
+            result.add(oldpath)
+            oldidx += 1
+            continue
+        if newpath <= oldpath:
+            result.add(newpath)
+            newidx += 1
+    result.update([row[0] for row in old[oldidx:]])
+    result.update([row[0] for row in new[newidx:]])
+    return result
