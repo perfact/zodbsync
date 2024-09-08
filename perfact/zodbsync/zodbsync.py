@@ -754,8 +754,9 @@ class ZODBSync:
         fs_data = pathinfo['fspath'] and self.fs_parse(pathinfo['fspath'])
 
         # extend fs_data with layerinfo
-        fs_data['zodbsync_layer'] = pathinfo['layers'][
-            pathinfo['layeridx']]['ident']
+        if fs_data:
+            fs_data['zodbsync_layer'] = pathinfo['layers'][
+                pathinfo['layeridx']]['ident']
 
         # Traverse to the object if it exists
         parent_obj = None
