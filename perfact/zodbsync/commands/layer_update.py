@@ -4,7 +4,7 @@ import os
 import shutil
 
 from ..subcommand import SubCommand
-# from ..helpers import hashdir
+from ..helpers import path_diff
 
 
 class LayerUpdate(SubCommand):
@@ -49,34 +49,18 @@ class LayerUpdate(SubCommand):
                 os.path.join(self.sync.base_dir, '.layer-checksums', ident),
                 os.path.join(layer_paths[ident], '.checksums')
             ))
-            old = self.read_checksums(fnames[-1][0])
-            new = self.read_checksums(fnames[-1][1])
-            oldidx = 0
-            newidx = 0
-            # Iterate through results, which are ordered by path. Add any
-            # deviation to paths
-            while oldidx < len(old) or newidx < len(new):
-                if old[oldidx] == new[newidx]:
-                    oldidx += 1
-                    newidx += 1
-                    continue
-                oldpath = old[oldidx][0]
-                newpath = new[newidx][0]
-                if oldpath <= newpath:
-                    paths.add(oldpath)
-                    oldidx += 1
-                    continue
-                if newpath <= oldpath:
-                    paths.add(newpath)
-                    newidx += 1
+            paths.update(path_diff(
+                self.read_checksums(fnames[-1][0]),
+                self.read_checksums(fnames[-1][1]),
+            ))
 
         if not paths:
             return
-
-        self._playback_paths(sorted(paths))
+        paths = sorted(paths)
+        self._playback_paths(paths)
 
         if not self.args.dry_run:
-            self.sync.record(sorted(paths), recurse=False, skip_errors=True,
+            self.sync.record(paths, recurse=False, skip_errors=True,
                              ignore_removed=True)
             for path in paths:
                 if self.sync.fs_pathinfo(path)['layeridx'] == 0:

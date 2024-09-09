@@ -123,3 +123,20 @@ def test_literal_eval():
     assert helpers.literal_eval("-True") == -1
     with pytest.raises(Exception):
         helpers.literal_eval('f(1)')
+
+
+def test_path_diff():
+    """Check that path_diff also handles cases where the last element is not
+    the same in both lists."""
+    old = [
+        ('Abc', '1234'),
+        ('Def', 'afaf'),
+        ('Xyz', 'yzyz'),
+    ]
+    new = [
+        ('Abc', '1234'),
+        ('Def', 'axax'),
+        ('Yyy', 'yzyz'),
+    ]
+    result = helpers.path_diff(old, new)
+    assert result == {'Def', 'Xyz', 'Yyy'}
