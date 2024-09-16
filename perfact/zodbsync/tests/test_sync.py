@@ -2186,3 +2186,27 @@ class TestSync():
             with open(source_fmt.format(self.repo.path)) as f:
                 # ... content is in custom layer!
                 assert f.read() == 'text_content'
+
+    def test_layer_commit(self):
+        """
+        Commit a change to a file that belongs to a lower layer. This creates
+        two commits, one where the old state is added to the custom layer and
+        one where the actual change is recorded.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        with self.addlayer() as layer:
+            self.run('record', '/blob')
+            shutil.move(
+                '{}/__root__/blob'.format(self.repo.path),
+                '{}/__root__/blob'.format(layer),
+            )
+            with self.runner.sync.tm:
+                self.app.blob.manage_edit(
+                    filedata='text_content',
+                    content_type='text/plain',
+                    title='BLOB'
+                )
+            self.run('record', '/')
+            self.run('commit', '-m', 'change content', '__root__/blob')
+            assert self.gitoutput('status', '--porcelain') == ''
