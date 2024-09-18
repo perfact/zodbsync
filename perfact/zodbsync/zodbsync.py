@@ -691,6 +691,12 @@ class ZODBSync:
                 raise
 
         pathinfo = self.fs_write(path, data)
+        path_layer = pathinfo['layers'][pathinfo['layeridx']]['ident']
+
+        current_layer = getattr(obj, 'zodbsync_layer', None)
+        if current_layer != path_layer:
+            with self.tm:
+                obj.zodbsync_layer = path_layer
 
         if not recurse:
             return
