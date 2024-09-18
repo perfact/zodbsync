@@ -691,8 +691,7 @@ class ZODBSync:
 
         current_layer = getattr(obj, 'zodbsync_layer', None)
         if current_layer != path_layer:
-            with self.tm:
-                obj.zodbsync_layer = path_layer
+            obj.zodbsync_layer = path_layer
 
         if not recurse:
             return
