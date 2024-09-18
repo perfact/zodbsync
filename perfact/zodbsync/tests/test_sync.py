@@ -1994,8 +1994,7 @@ class TestSync():
                 os.path.join(root, 'Test'),
                 os.path.join(layer, 'workdir/__root__/Test'),
             )
-            with self.runner.sync.tm:
-                self.app.Test.manage_delObjects(ids=['Sub'])
+            self.app.Test.manage_delObjects(ids=['Sub'])
             self.run('record', '/')
             assert not os.path.exists(os.path.join(root, 'Test/__meta__'))
             assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
@@ -2299,8 +2298,7 @@ class TestSync():
                 '{}/__root__/blob'.format(layer),
             )
             self.run('record', '/')
-            with self.runner.sync.tm:
-                assert getattr(self.app.blob, 'zodbsync_layer') is not None
+            assert getattr(self.app.blob, 'zodbsync_layer') is not None
             # Change file in Data.FS and verify that layer info is cleared
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
