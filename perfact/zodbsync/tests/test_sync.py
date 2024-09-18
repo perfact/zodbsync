@@ -1665,6 +1665,8 @@ class TestSync():
             with open(path, 'w') as f:
                 f.write(f'workdir = "{layer}/workdir"\n')
                 f.write(f'source = "{source}"\n')
+                f.write('ident = "{}"\n'.format(name))
+            os.mkdir(os.path.join(layer, '__root__'))
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
@@ -2189,9 +2191,6 @@ class TestSync():
         the top layer. Check that the playback hook script gets the normalized
         object paths and not the specific files.
         """
-        with self.runner.sync.tm:
-            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
-
         root = '{}/__root__'.format(self.repo.path)
         with self.addlayer() as layer:
             self.run('record', '/blob')
@@ -2281,3 +2280,32 @@ class TestSync():
                 with pytest.raises(AssertionError):
                     self.run('layer-update', '*')
                 assert str(self.app.blob) == ''
+
+    def test_layer_info_datafs(self):
+        """
+        Validate the correct writing and clearing of the layer ident
+        in the Data.FS
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+
+        with self.addlayer(frozen=True) as layer:
+            self.run('record', '/blob')
+            assert getattr(self.app.blob, 'zodbsync_layer', None) is None
+            # Move file to layer and check that layer info is stored in Data.FS
+            shutil.move(
+                '{}/__root__/blob'.format(self.repo.path),
+                '{}/__root__/blob'.format(layer),
+            )
+            self.run('record', '/')
+            with self.runner.sync.tm:
+                assert getattr(self.app.blob, 'zodbsync_layer') is not None
+            # Change file in Data.FS and verify that layer info is cleared
+            with self.runner.sync.tm:
+                self.app.blob.manage_edit(
+                    filedata='text_content',
+                    content_type='text/plain',
+                    title='BLOB'
+                )
+            self.run('record', '/')
+            assert getattr(self.app.blob, 'zodbsync_layer', None) is None
