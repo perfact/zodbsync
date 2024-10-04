@@ -1,3 +1,6 @@
+23.2.1.dev0
+  * Only try to playback differing paths below __root__
+
 23.2.0
   * Fixed a bug where zodbsync was writing `source`-files into frozen
     layers
