@@ -246,7 +246,9 @@ class SubCommand(Namespace):
                 assert not conflicts, "Change in unstaged files, aborting"
 
                 # Make unique and sort
-                self.paths = sorted(set(files))
+                self.paths = sorted({
+                    file for file in files if file.startswith(self.sync.site)
+                })
 
                 self._playback_paths(self.paths)
 
