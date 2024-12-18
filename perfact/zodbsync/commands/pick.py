@@ -37,7 +37,7 @@ class Pick(SubCommand):
     @SubCommand.gitexec
     def run(self):
         commits = []
-        if self.args.grep or self.args.after or self.args.before:
+        if self.args.grep or self.args.since or self.args.until:
             cmd = [
                 'log', '--format=%H', '--reverse'
             ]
