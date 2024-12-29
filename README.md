@@ -366,6 +366,16 @@ Some more commands are needed for the following use cases:
   defined. However, the intention is not to pre-apply a change that is about to
   also be included upstream, but to freeze and record the object into some
   other layer.
+- A migration path for systems that don't use layers yet, but have a lot of the
+  same objects that are to be provided by a separate layer, which will probably
+  have some deviations. It needs to be possible to decide which objects to
+  reset to their upstream state, which to freeze as changed into the custom
+  layer and which to add as change to the separate layer (intending to include
+  that change upstream until the next release).
+- Similarly, for the few systems that use the "original" layering system from
+  23.2.0, a migration path needs to be provided. For any deviating object, it
+  needs to be decided if that object is to be frozen in the custom layer or
+  reset to its upstream state.
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
