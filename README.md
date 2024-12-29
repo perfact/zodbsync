@@ -101,6 +101,9 @@ and should output a json dictionary in the form of
 ]
 ```
 
+### `layers`
+Path to folder on the filesystem that contains layer definitions. See below.
+
 ## Usage
 
 The executable `zodbsync` provides several subcommands
@@ -284,6 +287,85 @@ Detailed steps:
     (except the `zodbsync reformat` commit)
 
 Hint: This requires `git` in version 2.22 or above.
+
+## Layer handling
+
+Since version 23.1.0, `zodbsync` has gained the possibility to handle multiple
+file system source trees that each contribute a separate layer to the objects
+in the Data.FS. Layer handling was reworked for 23.3.0 and the following
+describes the new handling.
+
+The configuration option `layers` points to a folder on the file system that
+contains separate configuration files or symlinks that may be contributed by
+different layer packages. These are read alphabetically and provide the
+following options:
+
+### `workdir`
+A path where the layer is placed. This needs to be owned by the user that
+executes `zodbsync`. It will be initialized as a git repository if it is not
+already one.
+
+### `source`
+This is a path that provides the objects of a layer, possibly read-only to the
+user executing `zodbsync` and provided by a Debian package or similar.
+
+An implicit layer is added at the top where `workdir` is set to the `base_dir`
+provided in the main config for compatibility with a non-layered setup.
+
+The representation rules for objects in a multi-layer setup are as follows:
+
+- Each object is defined by the topmost layer that provides a `__meta__` file
+  for it.
+- If a folder in some layer contains a `__frozen__` file, both the folder and
+  any subobjects from any layer below this are ignored - the layer is expected
+  to fully replicate the intended state of the folder and anything below it.
+- If a folder in some layer contains a `__frozen__`, but no `__meta__` file,
+  the object is supposed to be deleted even if it is defined in some layer
+  below.
+- It is cause for a warning if an object is definend in multiple layers without
+  explicitly marking it as `__frozen__` and therefore declaring the intent for
+  a higher layer to shadow the lower layer definition.
+- Layers can define subobjects without defining their parent objects, with the
+  assumption that some lower layer dependency will provide the parent object.
+  However, if some subobject is defined while no active layer provides the
+  parent, re-recording will remove it.
+
+During `record`, the following rules hold:
+
+- If a new object is found, it is recorded into the `workdir` of the layer that
+  defines its parent.
+- If an object is changed, it is changed in the layer that defined the object.
+- If an object is deleted, it is deleted in all layers that define the object,
+  unless shadowed by a `__frozen__` marker. As mentioned above, this should
+  usually only be one layer.
+- If an object is deleted that is defined as `__frozen__` in one layer and
+  additionally in a lower layer, that marker is kept.
+
+The following subcommands for `zodbsync` provide layer handling:
+
+### `layer-init`
+Initialize all layers by initializing the `workdir`s from their `source`s and
+uploading all changes into the Data.FS.
+
+### `layer-update`
+For each layer, the file `.checksums` in the `source` is compared to that in
+the `workdir`. If it deviates, any unstaged changes in the `workdir` are
+committed and the layer content is reset to that found in the `source`. This is
+used to update a layer to a newer version. Note that any changes done directly
+in the layer since the last update are overwritten by this - they can still be
+found in the `git` history in the `workdir`, but the working directory and the
+resulting Data.FS content are reset. It is therefore possible to pre-apply
+changes that will be part of the next release, but if there is a change that is
+not yet merged upstream, the layer should not be updated until it is.
+
+### TBD
+Some more commands are needed for the following use cases:
+- A new object is recorded into the layer where its parent is defined. However,
+  it should instead be an additional object defined in a different layer.
+- An object is changed, which is recorded into the layer where the object is
+  defined. However, the intention is not to pre-apply a change that is about to
+  also be included upstream, but to freeze and record the object into some
+  other layer.
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
