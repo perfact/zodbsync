@@ -1,4 +1,4 @@
-23.2.1.dev0
+23.3.0
   * Only try to playback differing paths below __root__
   * Add `since` and `until` arguments to the `pick` command
 

@@ -206,6 +206,8 @@ message starts with T12345:
 
     zodbsync pick --grep="^T12345" source/master
 
+Similarly, `--since` and `--until` can be used to limit commits - see the `git
+log` documentation.
 Commit ranges in the form of `COMMIT1..COMMIT2` can also be picked, but be
 aware that there is no check that the commit range is actually a straight
 forward succession - internally, `git log` is used and therefore any commits
