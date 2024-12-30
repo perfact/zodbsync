@@ -292,7 +292,7 @@ Hint: This requires `git` in version 2.22 or above.
 
 Since version 23.1.0, `zodbsync` has gained the possibility to handle multiple
 file system source trees that each contribute a separate layer to the objects
-in the Data.FS. Layer handling was reworked for 23.3.0 and the following
+in the Data.FS. Layer handling was reworked for 23.4.0 and the following
 describes the new handling.
 
 The configuration option `layers` points to a folder on the file system that
@@ -373,7 +373,7 @@ Some more commands are needed for the following use cases:
   layer and which to add as change to the separate layer (intending to include
   that change upstream until the next release).
 - Similarly, for the few systems that use the "original" layering system from
-  23.2.0, a migration path needs to be provided. For any deviating object, it
+  23.3.0, a migration path needs to be provided. For any deviating object, it
   needs to be decided if that object is to be frozen in the custom layer or
   reset to its upstream state.
 
