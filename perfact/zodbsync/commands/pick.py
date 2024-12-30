@@ -21,6 +21,14 @@ class Pick(SubCommand):
             pattern - like "git log --grep".""",
         )
         parser.add_argument(
+            '--since', type=str, help="""Find commits since the given timestamp
+             - like "git log --since".""",
+        )
+        parser.add_argument(
+            '--until', type=str, help="""Find commits until the given timestamp
+             - like "git log --until".""",
+        )
+        parser.add_argument(
             'commit', type=str, nargs='*',
             help='''Commits that are checked for compatibility and applied,
             playing back all affected paths at the end.'''
@@ -29,10 +37,18 @@ class Pick(SubCommand):
     @SubCommand.gitexec
     def run(self):
         commits = []
-        if self.args.grep:
+        if self.args.grep or self.args.since or self.args.until:
+            cmd = [
+                'log', '--format=%H', '--reverse'
+            ]
+            if self.args.grep:
+                cmd.extend(['--grep', self.args.grep])
+            if self.args.since:
+                cmd.extend(['--since', self.args.since])
+            if self.args.until:
+                cmd.extend(['--until', self.args.until])
             commits = self.gitcmd_output(
-                'log', '--grep', self.args.grep,
-                '--format=%H', '--reverse', *self.args.commit
+                *cmd, *self.args.commit
             ).split('\n')
         else:
             for commit in self.args.commit:
