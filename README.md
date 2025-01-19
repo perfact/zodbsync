@@ -306,11 +306,13 @@ executes `zodbsync`. It will be initialized as a git repository if it is not
 already one.
 
 ### `source`
-This is a path that provides the objects of a layer, possibly read-only to the
-user executing `zodbsync` and provided by a Debian package or similar.
+This is an optional path that provides the objects of a layer, possibly
+read-only to the user executing `zodbsync` and provided by a Debian package or
+similar.
 
-An implicit layer is added at the top where `workdir` is set to the `base_dir`
-provided in the main config for compatibility with a non-layered setup.
+An implicit fallback layer is added at the top where `workdir` is set to the
+`base_dir` provided in the main config for compatibility with a non-layered
+setup.
 
 The representation rules for objects in a multi-layer setup are as follows:
 
@@ -322,9 +324,6 @@ The representation rules for objects in a multi-layer setup are as follows:
 - If a folder in some layer contains a `__frozen__`, but no `__meta__` file,
   the object is supposed to be deleted even if it is defined in some layer
   below.
-- It is cause for a warning if an object is definend in multiple layers without
-  explicitly marking it as `__frozen__` and therefore declaring the intent for
-  a higher layer to shadow the lower layer definition.
 - Layers can define subobjects without defining their parent objects, with the
   assumption that some lower layer dependency will provide the parent object.
   However, if some subobject is defined while no active layer provides the
@@ -334,22 +333,22 @@ During `record`, the following rules hold:
 
 - If a new object is found, it is recorded into the `workdir` of the layer that
   defines its parent.
-- If an object is changed, it is changed in the layer that defined the object.
+- If an object is changed, it is changed in the (top-most) layer that defined
+  the object.
 - If an object is deleted, it is deleted in all layers that define the object,
-  unless shadowed by a `__frozen__` marker. As mentioned above, this should
-  usually only be one layer.
-- If an object is deleted that is defined as `__frozen__` in one layer and
-  additionally in a lower layer, that marker is kept.
+  unless shadowed by a `__frozen__` marker.
+- TBD: Is there a case where `__frozen__` should be removed?
 
 The following subcommands for `zodbsync` provide layer handling:
 
 ### `layer-init`
-Initialize all layers by initializing the `workdir`s from their `source`s and
-uploading all changes into the Data.FS.
+Initialize all layers with `source` by initializing the `workdir` and
+uploading all changes into the Data.FS. A checksum file of the objects in
+`source` is also stored in the `workdir`.
 
 ### `layer-update`
-For each layer, the file `.checksums` in the `source` is compared to that in
-the `workdir`. If it deviates, any unstaged changes in the `workdir` are
+For each layer with `source`, the checksums are recomputed and compared to that
+in the `workdir`. If it deviates, any unstaged changes in the `workdir` are
 committed and the layer content is reset to that found in the `source`. This is
 used to update a layer to a newer version. Note that any changes done directly
 in the layer since the last update are overwritten by this - they can still be
@@ -366,16 +365,24 @@ Some more commands are needed for the following use cases:
   defined. However, the intention is not to pre-apply a change that is about to
   also be included upstream, but to freeze and record the object into some
   other layer.
+  - Manual steps that should cover this: Add a `__frozen__` marker, reset the
+    unstaged changes in the layer that wrongfully got the changes, and
+    `record`.
 - A migration path for systems that don't use layers yet, but have a lot of the
   same objects that are to be provided by a separate layer, which will probably
   have some deviations. It needs to be possible to decide which objects to
   reset to their upstream state, which to freeze as changed into the custom
   layer and which to add as change to the separate layer (intending to include
   that change upstream until the next release).
+  - Should be something like: Do a merge-based upgrade and then obtain the list
+    of all deviating paths from the merge base. Add `__frozen__` markers where
+    necessary. Remove all superfluous files from the original layer (than now
+    becomes the fallback layer) and initialize the added layers.
 - Similarly, for the few systems that use the "original" layering system from
   23.3.0, a migration path needs to be provided. For any deviating object, it
   needs to be decided if that object is to be frozen in the custom layer or
   reset to its upstream state.
+  - Might simply be done by adjusting the configuration
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
