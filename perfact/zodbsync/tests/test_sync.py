@@ -2177,4 +2177,32 @@ class TestSync():
         the top layer. Check that the playback hook script gets the normalized
         object paths and not the specific files.
         """
-        # TBD
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+
+        root = '{}/__root__'.format(self.repo.path)
+        with self.addlayer() as layer:
+            self.run('record', '/blob')
+            shutil.move(
+                '{}/blob'.format(root),
+                '{}/__root__/blob'.format(layer),
+            )
+            os.mkdir('{}/blob'.format(root))
+            with open('{}/blob/__deleted__'.format(root), 'w'):
+                pass
+            self.gitrun('add', '.')
+            self.gitrun('commit', '-m', 'delete blob')
+            commid = self.get_head_id()
+            self.gitrun('reset', '--hard', 'HEAD~')
+            output = '{}/playback_hook.out'.format(self.zeo.path)
+            playback_hook = self.addscript(
+                "playback_hook",
+                "cat > {}".format(output),
+                "echo '[]'",
+            )
+            with self.appendtoconf(
+                    'playback_hook = "{}"'.format(playback_hook)
+            ):
+                self.run('pick', commid)
+            with open(output) as f:
+                assert {"paths": ["/blob/"]} == json.loads(f.read())
