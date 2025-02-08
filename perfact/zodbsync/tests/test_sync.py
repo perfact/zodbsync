@@ -1561,6 +1561,17 @@ class TestSync():
             with open(outfile) as f:
                 assert json.loads(f.read()) == {"paths": ["/index_html/"]}
 
+    def addscript(self, basename, *lines):
+        """
+        Add executable file into zeo dir, returning the full filename
+        """
+        fname = "{}/{}".format(self.zeo.path, basename)
+        lines = ("#!/bin/bash",) + lines
+        with open(fname, 'w') as f:
+            f.write('\n'.join(lines))
+        os.chmod(fname, 0o700)
+        return fname
+
     def test_playback_hook(self):
         """
         Add configuration option for a playback hook script and check that
@@ -1572,44 +1583,25 @@ class TestSync():
         # Reset the commit
         self.gitrun('reset', '--hard', 'HEAD~2')
 
-        playback_cmd = "{}/playback_cmd".format(self.zeo.path)
-        cmd_script = '\n'.join([
-            "#!/bin/bash",
-            "cat > {}"
-        ]).format('{}.out'.format(playback_cmd))
-        with open(playback_cmd, 'w') as f:
-            f.write(cmd_script)
-        os.chmod(playback_cmd, 0o700)
+        playback_cmd_out = "{}/playback_cmd.out".format(self.zeo.path)
+        playback_cmd = self.addscript(
+            "playback_cmd",
+            "cat > {}".format(playback_cmd_out),
+        )
 
-        fname = "{}/playback_hook".format(self.zeo.path)
-        playback_dict = [{
-            "paths": ["/NewFolder"],
-            "cmd": playback_cmd
-        }]
-
-        script = '\n'.join([
-            "#!/bin/bash",
-            "echo '{}'".format(json.dumps(playback_dict)),
-        ])
-        with open(fname, 'w') as f:
-            f.write(script)
-        os.chmod(fname, 0o700)
-        with open(self.config.path) as f:
-            orig_config = f.read()
-        with open(self.config.path, 'a') as f:
-            f.write('\nplayback_hook = "{}"\n'.format(fname))
-
-        # Avoid error regarding reusing runner with changed config
-        del self.runner
-        self.run('pick', 'HEAD..{}'.format(commit))
+        playback_hook = self.addscript(
+            "playback_hook",
+            "echo '{}'".format(json.dumps([{
+                "paths": ["/NewFolder"],
+                "cmd": playback_cmd,
+            }])),
+        )
+        with self.appendtoconf('playback_hook = "{}"'.format(playback_hook)):
+            self.run('pick', 'HEAD..{}'.format(commit))
 
         assert 'NewFolder' in self.app.objectIds()
         assert 'NewFolder2' not in self.app.objectIds()
-        assert os.path.isfile('{}.out'.format(playback_cmd))
-
-        with open(self.config.path, 'w') as f:
-            f.write(orig_config)
-        del self.runner
+        assert os.path.isfile(playback_cmd_out)
 
     def test_playback_hook_failed(self):
         """
@@ -1622,31 +1614,23 @@ class TestSync():
         # Reset the commit
         self.gitrun('reset', '--hard', 'HEAD~2')
 
-        playback_cmd = "{}/playback_cmd".format(self.zeo.path)
-        cmd_script = '\n'.join([
-            "#!/bin/bash",
-            "exit 42"
-        ])
-        with open(playback_cmd, 'w') as f:
-            f.write(cmd_script)
-        os.chmod(playback_cmd, 0o700)
-
-        fname = "{}/playback_hook".format(self.zeo.path)
-        playback_dict = [{
-            "paths": ["/NewFolder"],
-            "cmd": playback_cmd
-            }, {
-            "paths": ["/NewFolder2"],
-            },
-        ]
-        script = '\n'.join([
-            "#!/bin/bash",
-            "echo '{}'".format(json.dumps(playback_dict)),
-        ])
-        with open(fname, 'w') as f:
-            f.write(script)
-        os.chmod(fname, 0o700)
-        with self.appendtoconf('playback_hook = "{}"'.format(fname)):
+        playback_cmd = self.addscript(
+            "playback_cmd",
+            "exit 42",
+        )
+        playback_hook = self.addscript(
+            "playback_hook",
+            "echo '{}'".format(json.dumps([
+                {
+                    "paths": ["/NewFolder"],
+                    "cmd": playback_cmd,
+                },
+                {
+                    "paths": ["/NewFolder2"],
+                },
+            ])),
+        )
+        with self.appendtoconf('playback_hook = "{}"'.format(playback_hook)):
             with pytest.raises(AssertionError):
                 self.run('pick', 'HEAD..{}'.format(commit))
 
@@ -2186,3 +2170,39 @@ class TestSync():
             with open(source_fmt.format(self.repo.path)) as f:
                 # ... content is in custom layer!
                 assert f.read() == 'text_content'
+
+    def test_layer_playback_hook(self):
+        """
+        Set up two layers. Pick a commit that marks an object as __deleted__ in
+        the top layer. Check that the playback hook script gets the normalized
+        object paths and not the specific files.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+
+        root = '{}/__root__'.format(self.repo.path)
+        with self.addlayer() as layer:
+            self.run('record', '/blob')
+            shutil.move(
+                '{}/blob'.format(root),
+                '{}/__root__/blob'.format(layer),
+            )
+            os.mkdir('{}/blob'.format(root))
+            with open('{}/blob/__deleted__'.format(root), 'w'):
+                pass
+            self.gitrun('add', '.')
+            self.gitrun('commit', '-m', 'delete blob')
+            commid = self.get_head_id()
+            self.gitrun('reset', '--hard', 'HEAD~')
+            output = '{}/playback_hook.out'.format(self.zeo.path)
+            playback_hook = self.addscript(
+                "playback_hook",
+                "cat > {}".format(output),
+                "echo '[]'",
+            )
+            with self.appendtoconf(
+                    'playback_hook = "{}"'.format(playback_hook)
+            ):
+                self.run('pick', commid)
+            with open(output) as f:
+                assert {"paths": ["/blob/"]} == json.loads(f.read())

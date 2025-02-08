@@ -1,3 +1,6 @@
+23.3.1
+  * Fix path preparation for changes in __deleted__ and __frozen__ markers
+
 23.3.0
   * Only try to playback differing paths below __root__
   * Add `since` and `until` arguments to the `pick` command

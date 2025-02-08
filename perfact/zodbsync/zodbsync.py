@@ -872,8 +872,7 @@ class ZODBSync:
         # normalize paths - cut off filenames and the site name
         paths = {
             path.rsplit('/', 1)[0] if (
-                path.endswith('__meta__')
-                or path.rsplit('/', 1)[-1].startswith('__source')
+                path.rsplit('/', 1)[-1].startswith('__')
             ) else path
             for path in paths
         }
