@@ -550,9 +550,9 @@ class ZODBSync:
         for item in pathinfo['children']:
             if item in contents:
                 continue
-            self.logger.info("Removing old item %s from filesystem" % item)
             tgt = os.path.join(base_dir, item)
             if os.path.isdir(tgt):
+                self.logger.info("Removing old item %s from filesystem" % item)
                 shutil.rmtree(tgt)
             meta = os.path.join(relpath, item, '__meta__')
             # Omit topmost (custom) layer
