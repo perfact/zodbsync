@@ -297,8 +297,8 @@ describes the new handling.
 
 The configuration option `layers` points to a folder on the file system that
 contains separate configuration files or symlinks that may be contributed by
-different layer packages. These are read alphabetically and provide the
-following options:
+different layer packages. These are read alphabetically from the bottom-most to
+the top-most layer and provide the following options:
 
 ### `workdir`
 A path where the layer is placed. This needs to be owned by the user that
@@ -308,7 +308,8 @@ already one.
 ### `source`
 This is an optional path that provides the objects of a layer, possibly
 read-only to the user executing `zodbsync` and provided by a Debian package or
-similar.
+similar. Instead of a directory, this can also point to a (possibly compressed)
+tar archive.
 
 An implicit fallback layer is added at the top where `workdir` is set to the
 `base_dir` provided in the main config for compatibility with a non-layered
@@ -329,16 +330,6 @@ The representation rules for objects in a multi-layer setup are as follows:
   However, if some subobject is defined while no active layer provides the
   parent, re-recording will remove it.
 
-During `record`, the following rules hold:
-
-- If a new object is found, it is recorded into the `workdir` of the layer that
-  defines its parent.
-- If an object is changed, it is changed in the (top-most) layer that defined
-  the object.
-- If an object is deleted, it is deleted in all layers that define the object,
-  unless shadowed by a `__frozen__` marker.
-- TBD: Is there a case where `__frozen__` should be removed?
-
 The following subcommands for `zodbsync` provide layer handling:
 
 ### `layer-init`
@@ -356,33 +347,6 @@ found in the `git` history in the `workdir`, but the working directory and the
 resulting Data.FS content are reset. It is therefore possible to pre-apply
 changes that will be part of the next release, but if there is a change that is
 not yet merged upstream, the layer should not be updated until it is.
-
-### TBD
-Some more commands are needed for the following use cases:
-- A new object is recorded into the layer where its parent is defined. However,
-  it should instead be an additional object defined in a different layer.
-- An object is changed, which is recorded into the layer where the object is
-  defined. However, the intention is not to pre-apply a change that is about to
-  also be included upstream, but to freeze and record the object into some
-  other layer.
-  - Manual steps that should cover this: Add a `__frozen__` marker, reset the
-    unstaged changes in the layer that wrongfully got the changes, and
-    `record`.
-- A migration path for systems that don't use layers yet, but have a lot of the
-  same objects that are to be provided by a separate layer, which will probably
-  have some deviations. It needs to be possible to decide which objects to
-  reset to their upstream state, which to freeze as changed into the custom
-  layer and which to add as change to the separate layer (intending to include
-  that change upstream until the next release).
-  - Should be something like: Do a merge-based upgrade and then obtain the list
-    of all deviating paths from the merge base. Add `__frozen__` markers where
-    necessary. Remove all superfluous files from the original layer (than now
-    becomes the fallback layer) and initialize the added layers.
-- Similarly, for the few systems that use the "original" layering system from
-  23.3.0, a migration path needs to be provided. For any deviating object, it
-  needs to be decided if that object is to be frozen in the custom layer or
-  reset to its upstream state.
-  - Might simply be done by adjusting the configuration
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
@@ -417,3 +381,34 @@ in order to build the test environment from `pyproject.toml` instead of
 just upgrade `tox` to latest version and retry.
 
 ## To Do / Roadmap
+Some more commands are needed for the following layer use cases:
+- A new object is recorded into the layer where its parent is defined. However,
+  it should instead be an additional object defined in a different layer.
+- An object is changed, which is recorded into the layer where the object is
+  defined. However, the intention is not to pre-apply a change that is about to
+  also be included upstream, but to freeze and record the object into some
+  other layer.
+  - Manual steps that should cover this: Add a `__frozen__` marker, reset the
+    unstaged changes in the layer that wrongfully got the changes, and
+    `record`.
+- A migration path for systems that don't use layers yet, but have a lot of the
+  same objects that are to be provided by a separate layer, which will probably
+  have some deviations. It needs to be possible to decide which objects to
+  reset to their upstream state, which to freeze as changed into the custom
+  layer and which to add as change to the separate layer (intending to include
+  that change upstream until the next release).
+  - Should be something like: Do a merge-based upgrade and then obtain the list
+    of all deviating paths from the merge base. Add `__frozen__` markers where
+    necessary. Remove all superfluous files from the original layer (than now
+    becomes the fallback layer) and initialize the added layers.
+
+To allow developing multiple layers on the same development system, `record`
+should be changed to follow the following rules:
+
+- If a new object is found, it is recorded into the `workdir` of the layer that
+  defines its parent.
+- If an object is changed, it is changed in the (top-most) layer that defined
+  the object.
+- If an object is deleted, it is deleted in all layers that define the object,
+  unless shadowed by a `__frozen__` marker.
+- TBD: Is there a case where `__frozen__` should be removed?
