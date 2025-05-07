@@ -1648,15 +1648,17 @@ class TestSync():
         ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
+            os.makedirs(f'{layer}/base_dir')
+            os.makedirs(f'{layer}/source')
             with open(path, 'w') as f:
-                f.write('base_dir = "{}"\n'.format(layer))
-                f.write('frozen = {}\n'.format(frozen))
-            os.mkdir(os.path.join(layer, '__root__'))
+                f.write(f'base_dir = "{layer}/base_dir"\n')
+                f.write(f'source = "{layer}/source"\n')
+            os.mkdir(f'{layer}/base_dir/__root__')
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
             try:
-                yield layer
+                yield f'{layer}/base_dir'
             finally:
                 if hasattr(self, 'runner'):
                     del self.runner
@@ -2146,7 +2148,7 @@ class TestSync():
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
 
-        with self.addlayer(frozen=True) as layer:
+        with self.addlayer() as layer:
             self.run('record', '/blob')
             shutil.move(
                 '{}/__root__/blob'.format(self.repo.path),

@@ -25,7 +25,7 @@ class LayerUpdate(SubCommand):
         )
         parser.add_argument(
             'ident', type=str, nargs='*',
-            help='Layer identifier(s)',
+            help='Layer identifier(s). May be * for all',
         )
 
     @staticmethod
@@ -43,7 +43,10 @@ class LayerUpdate(SubCommand):
         layer_paths = {layer['ident']: layer['base_dir']
                        for layer in self.sync.layers}
         fnames = []
-        for ident in self.args.ident:
+        idents = self.args.ident
+        if idents == ['*']:
+            idents = layer_paths.keys()
+        for ident in idents:
             assert ident in layer_paths, "Invalid ident"
             fnames.append((
                 os.path.join(self.sync.base_dir, '.layer-checksums', ident),

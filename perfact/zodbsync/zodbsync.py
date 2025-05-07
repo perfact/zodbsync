@@ -6,6 +6,7 @@ import shutil
 import time  # for periodic output
 import sys
 import logging
+import subprocess as sp
 
 # for using an explicit transaction manager
 import transaction
@@ -250,29 +251,41 @@ class ZODBSync:
 
         # Initialize layers
         layerdir = self.config.get('layers', None)
-        self.layers = []
+        layers = []
+        fnames = []
         if layerdir and os.path.isdir(layerdir):
             fnames = sorted(os.listdir(layerdir))
-            for fname in fnames:
-                if any([fname.startswith(key) for key in '.~_']):
-                    continue
-                ident = fname
-                if ident.endswith('.py'):
-                    ident = ident[:-3]
-                self.layers.append({
-                    **{
-                        'ident': ident,
-                        'frozen': True,
-                    },
-                    **load_config('{}/{}'.format(layerdir, fname))
-                })
+        for fname in fnames:
+            if any([fname.startswith(key) for key in '.~_']):
+                continue
+            ident = fname
+            if ident.endswith('.py'):
+                ident = ident[:-3]
+            layer = {
+                **{
+                    'ident': ident,
+                },
+                **load_config(f'{layerdir}/{fname}')
+            }
+            if 'base_dir' not in layer or 'source' not in layer:
+                raise ValueError(
+                    "Old-style layer config without base_dir+source"
+                )
+            layers.append(layer)
+            base_dir = layer['base_dir']
+            root = f'{base_dir}/{site}'
+            if not os.path.isdir(root):
+                os.makedirs(root, exist_ok=True)
+            if not os.path.isdir(f"{base_dir}/.git"):
+                sp.run(['git', 'init'], cwd=base_dir, check=True)
+
         # Append default top-level layer
-        self.layers.append({
+        layers.append({
             'ident': None,
             'base_dir': self.config['base_dir'],
         })
-        # Reverse order - index zero is the topmost custom layer
-        self.layers = list(reversed(self.layers))
+        # Reverse order - index zero is the topmost fallback layer
+        self.layers = list(reversed(layers))
 
         # Make sure the manager user exists
         if self.config.get('create_manager_user', False):
@@ -500,16 +513,12 @@ class ZODBSync:
             # current representation can be found is zero.
             pathinfo['layeridx'] = 0
 
-        # Compress if possible.
         # Compress if possible: Compare object with its representation on disk
         # if the current layer is ignored. If it is the same, remove it in the
         # current layer. Continue with the next layer that holds the object
-        # unless it is frozen.
-        frozen = False  # Set to True on first frozen layer
         for idx, layer in enumerate(pathinfo['layers']):
             # This is now the layer that we compare the current layer to in
             # order to check if we can compress it.
-            frozen = frozen or layer.get('frozen', False)
             if idx <= pathinfo['layeridx']:
                 continue
 
@@ -532,9 +541,6 @@ class ZODBSync:
                 os.remove(os.path.join(base, src))
             # Next comparison point
             pathinfo['layeridx'] = idx
-            if frozen:
-                # The current layer is now frozen, so no further compression
-                break
 
         return pathinfo
 
@@ -569,8 +575,6 @@ class ZODBSync:
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
         for layer in self.layers:
-            if layer.get('frozen', False):
-                continue
             start = os.path.join(layer['base_dir'], self.site)
             for root, _, _ in os.walk(start, topdown=False):
                 if root == start:

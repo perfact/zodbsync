@@ -300,20 +300,20 @@ contains separate configuration files or symlinks that may be contributed by
 different layer packages. These are read alphabetically from the bottom-most to
 the top-most layer and provide the following options:
 
-### `workdir`
+### `base_dir`
 A path where the layer is placed. This needs to be owned by the user that
 executes `zodbsync`. It will be initialized as a git repository if it is not
 already one.
 
 ### `source`
-This is an optional path that provides the objects of a layer, possibly
-read-only to the user executing `zodbsync` and provided by a Debian package or
-similar. Instead of a directory, this can also point to a (possibly compressed)
-tar archive.
+This path provides the objects of a layer, possibly read-only to the user
+executing `zodbsync` and provided by a Debian package or similar. Instead of a
+directory, this can also point to a (possibly compressed) tar archive, but this
+then needs to contain the `.checksums` file.
 
-An implicit fallback layer is added at the top where `workdir` is set to the
+An implicit fallback layer is added at the top where `base_dir` is set to the
 `base_dir` provided in the main config for compatibility with a non-layered
-setup.
+setup and without a `source`.
 
 The representation rules for objects in a multi-layer setup are as follows:
 
@@ -333,17 +333,19 @@ The representation rules for objects in a multi-layer setup are as follows:
 The following subcommands for `zodbsync` provide layer handling:
 
 ### `layer-init`
-Initialize all layers with `source` by initializing the `workdir` and
+Initialize all layers with `source` by initializing the `base_dir` and
 uploading all changes into the Data.FS. A checksum file of the objects in
-`source` is also stored in the `workdir`.
+`source` is also stored in the `base_dir`.
+TODO: Is this even needed? The base_dir should be initialized empty with every
+command if needed. `layer-update` will then upload any needed objects.
 
 ### `layer-update`
 For each layer with `source`, the checksums are recomputed and compared to that
-in the `workdir`. If it deviates, any unstaged changes in the `workdir` are
+in the `base_dir`. If it deviates, any unstaged changes in the `base_dir` are
 committed and the layer content is reset to that found in the `source`. This is
 used to update a layer to a newer version. Note that any changes done directly
 in the layer since the last update are overwritten by this - they can still be
-found in the `git` history in the `workdir`, but the working directory and the
+found in the `git` history in the `base_dir`, but the working directory and the
 resulting Data.FS content are reset. It is therefore possible to pre-apply
 changes that will be part of the next release, but if there is a change that is
 not yet merged upstream, the layer should not be updated until it is.
@@ -405,7 +407,7 @@ Some more commands are needed for the following layer use cases:
 To allow developing multiple layers on the same development system, `record`
 should be changed to follow the following rules:
 
-- If a new object is found, it is recorded into the `workdir` of the layer that
+- If a new object is found, it is recorded into the `base_dir` of the layer that
   defines its parent.
 - If an object is changed, it is changed in the (top-most) layer that defined
   the object.
