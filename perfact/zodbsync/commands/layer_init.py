@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-import shutil
+import subprocess as sp
 
 from ..subcommand import SubCommand
 
@@ -15,14 +15,22 @@ class LayerInit(SubCommand):
         pass
 
     def run(self):
-        tgt = os.path.join(self.sync.base_dir, '.layer-checksums')
-        if not os.path.isdir(tgt):
-            os.mkdir(tgt)
-
         for layer in self.sync.layers:
             ident = layer['ident']
             if not ident:
                 continue
-            src = os.path.join(layer['base_dir'], '.checksums')
-            if os.path.exists(src):
-                shutil.copy(src, os.path.join(tgt, ident))
+            source = layer['source']
+            target = layer['base_dir']
+            if os.path.isdir(source):
+                sp.run(
+                    ['rsync', '-a', '--delete-during', f'{source}/__root__/',
+                     f'{target}/__root__/'],
+                    check=True,
+                )
+            else:
+                # TAR file
+                sp.run(
+                    ['tar', 'xf', source, '-C', f'{target}/__root__/',
+                     '--recursive-unlink'],
+                    check=True,
+                )

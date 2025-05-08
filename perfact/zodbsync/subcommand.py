@@ -142,7 +142,7 @@ class SubCommand(Namespace):
 
     def _playback_paths(self, paths):
         paths = self.sync.prepare_paths(paths)
-        dryrun = self.args.dry_run
+        dryrun = getattr(self.args, 'dry_run', False)
 
         playback_hook = self.config.get('playback_hook', None)
         if playback_hook and os.path.isfile(playback_hook):

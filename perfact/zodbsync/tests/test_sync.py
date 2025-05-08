@@ -1648,12 +1648,11 @@ class TestSync():
         ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
-            os.makedirs(f'{layer}/base_dir')
-            os.makedirs(f'{layer}/source')
+            os.makedirs(f'{layer}/base_dir/__root__')
+            os.makedirs(f'{layer}/source/__root__')
             with open(path, 'w') as f:
                 f.write(f'base_dir = "{layer}/base_dir"\n')
                 f.write(f'source = "{layer}/source"\n')
-            os.mkdir(f'{layer}/base_dir/__root__')
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner

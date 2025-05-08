@@ -333,19 +333,19 @@ The representation rules for objects in a multi-layer setup are as follows:
 The following subcommands for `zodbsync` provide layer handling:
 
 ### `layer-init`
-Initialize all layers with `source` by initializing the `base_dir` and
-uploading all changes into the Data.FS. A checksum file of the objects in
-`source` is also stored in the `base_dir`.
-TODO: Is this even needed? The base_dir should be initialized empty with every
-command if needed. `layer-update` will then upload any needed objects.
+Initialize all given layers by initializing the `base_dir` and
+copying/extracting all objects there. This does *not* play back anything into
+the Data.FS. It is intended for the use case where code that was previously
+part of one layer (maybe the fallback layer) is now to be provided by a
+separate layer. Afterwards, a `record` call can be used to clear up the
+duplicates present in both layers.
 
 ### `layer-update`
-For each layer with `source`, the checksums are recomputed and compared to that
-in the `base_dir`. If it deviates, any unstaged changes in the `base_dir` are
-committed and the layer content is reset to that found in the `source`. This is
-used to update a layer to a newer version. Note that any changes done directly
-in the layer since the last update are overwritten by this - they can still be
-found in the `git` history in the `base_dir`, but the working directory and the
+For each given layer, any unstaged changes in the `base_dir` are committed and
+the layer content is reset to that found in the `source`. This is used to
+update a layer to a newer version. Note that any changes done directly in the
+layer since the last update are overwritten by this - they can still be found
+in the `git` history in the `base_dir`, but the working directory and the
 resulting Data.FS content are reset. It is therefore possible to pre-apply
 changes that will be part of the next release, but if there is a change that is
 not yet merged upstream, the layer should not be updated until it is.
