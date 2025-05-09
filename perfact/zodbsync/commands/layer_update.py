@@ -49,10 +49,10 @@ class LayerUpdate(SubCommand):
         precommit = self.commit_all(target, f'{msg} (pre)')
         if os.path.isdir(source):
             cmd = ['rsync', '-a', '--delete-during', f'{source}/__root__/',
-                   f'{target}/__root__/'],
+                   f'{target}/__root__/']
         else:
             cmd = ['tar', 'xf', source, '-C', f'{target}/__root__/',
-                   '--recursive-unlink'],
+                   '--recursive-unlink']
         sp.run(cmd, check=True)
         changes = [
             line for line in sp.check_output(
@@ -67,7 +67,7 @@ class LayerUpdate(SubCommand):
             commit = self.commit_all(target, msg)
         self.restore[layer['ident']] = (precommit, commit)
         return {
-            os.dirname(line[len('__root__'):])
+            os.path.dirname(line[len('__root__'):])
             for line in changes
             if line.startswith('__root__/')
         }
@@ -92,7 +92,7 @@ class LayerUpdate(SubCommand):
     def run(self):
         "Process given layers"
         self.restore = {}  # Info for restoring for dry-run
-        paths = {}
+        paths = set()
         layers = {layer['ident']: layer
                   for layer in self.sync.layers
                   if layer['ident']}
