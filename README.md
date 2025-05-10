@@ -322,9 +322,11 @@ The representation rules for objects in a multi-layer setup are as follows:
 - If a folder in some layer contains a `__frozen__` file, both the folder and
   any subobjects from any layer below this are ignored - the layer is expected
   to fully replicate the intended state of the folder and anything below it.
-- If a folder in some layer contains a `__frozen__`, but no `__meta__` file,
-  the object is supposed to be deleted even if it is defined in some layer
-  below.
+- If a folder contains a file named `__deleted__`, the object is supposed to be
+  deleted even if it is defined in some layer below. It must not also contain a
+  meta or source file or any subdirectories. It may additionally contain a
+  `__frozen__` file, which makes a difference if the object reappears and
+  controls if the lower layers are considered or not.
 - Layers can define subobjects without defining their parent objects, with the
   assumption that some lower layer dependency will provide the parent object.
   However, if some subobject is defined while no active layer provides the

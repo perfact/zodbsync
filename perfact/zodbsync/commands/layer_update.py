@@ -55,8 +55,8 @@ class LayerUpdate(SubCommand):
                    '--recursive-unlink']
         sp.run(cmd, check=True)
         changes = [
-            line for line in sp.check_output(
-                ['git', 'diff', '--name-only'],
+            line.split(' ', 1)[1] for line in sp.check_output(
+                ['git', 'status', '--porcelain', '-u'],
                 cwd=target,
                 text=True,
             ).split('\n')

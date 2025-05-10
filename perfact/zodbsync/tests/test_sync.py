@@ -1638,7 +1638,7 @@ class TestSync():
             assert 'NewFolder2' not in self.app.objectIds()
 
     @contextmanager
-    def addlayer(self, seqnum='00', frozen=True):
+    def addlayer(self, seqnum='00', tarsource=False):
         """
         Create a temp directory and add a config that uses this as additional
         code layer.
@@ -1650,9 +1650,15 @@ class TestSync():
         with tempfile.TemporaryDirectory() as layer:
             os.makedirs(f'{layer}/base_dir/__root__')
             os.makedirs(f'{layer}/source/__root__')
+            with open(f'{layer}/source.tar', 'w'):
+                pass
+            if tarsource:
+                source = f'{layer}/source.tar'
+            else:
+                source = f'{layer}/source'
             with open(path, 'w') as f:
                 f.write(f'base_dir = "{layer}/base_dir"\n')
-                f.write(f'source = "{layer}/source"\n')
+                f.write(f'source = "{source}"\n')
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
@@ -2002,7 +2008,7 @@ class TestSync():
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
-            self.run('layer-init')
+            self.run('layer-init', '*')
             with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
                 f.write(zodbsync.mod_format({
                     'title': 'Changed',
@@ -2117,7 +2123,7 @@ class TestSync():
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
-            self.run('layer-init')
+            self.run('layer-init', '*')
             with self.runner.sync.tm:
                 self.app.Test._setProperty('nav_hidden', True, 'boolean')
                 self.app.ToDelete.Sub._setProperty('nav_hidden', True,
@@ -2135,10 +2141,13 @@ class TestSync():
             assert 'AttributeError' not in caplog.text
             assert expect + '/ToDelete/Sub' in caplog.text
 
-    def test_layer_frozen(self):
+    def test_layer_change_into_top(self):
         """
-        Verify that changed files are properly written into the custom
-        layer in case the layer below is frozen.
+        Verify that changed files are written into the top layer.
+        Note that this is not what we want in the long run, but until we have
+        methods for moving objects between layers and there is a frontend for
+        showing unstaged changes in all layers, everything is written into the
+        top layer.
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
@@ -2203,3 +2212,37 @@ class TestSync():
                 self.run('pick', commid)
             with open(output) as f:
                 assert {"paths": ["/blob/"]} == json.loads(f.read())
+
+    def test_layer_tar(self):
+        """
+        Perform a layer-init and layer-update from a tar file source.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        with self.addlayer(tarsource=True) as layer:
+            self.run('record', '/blob')
+            # ident = self.runner.sync.layers[-1]['ident']
+            subprocess.run(
+                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                cwd=f'{self.repo.path}/__root__',
+                check=True,
+            )
+            self.run('layer-init', '*')
+            assert os.listdir(f'{layer}/base_dir/__root__') == ['blob']
+            # Record to remove from fallback layer
+            self.run('record', '/')
+            assert 'blob' not in os.listdir(f'{self.repo.path}/__root__')
+            # Now change the file in the TAR file and run layer-update
+            shutil.copytree(
+                f'{layer}/base_dir/__root__/blob',
+                f'{layer}/blob',
+            )
+            with open(f'{layer}/blob/__source__.txt', 'w') as f:
+                f.write('changed')
+            subprocess.run(
+                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                cwd=layer,
+                check=True,
+            )
+            self.run('layer-update', '*')
+            assert str(self.app.blob) == 'changed'
