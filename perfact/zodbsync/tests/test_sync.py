@@ -1648,7 +1648,7 @@ class TestSync():
         ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
-            os.makedirs(f'{layer}/base_dir/__root__')
+            os.makedirs(f'{layer}/workdir/__root__')
             os.makedirs(f'{layer}/source/__root__')
             with open(f'{layer}/source.tar', 'w'):
                 pass
@@ -1657,7 +1657,7 @@ class TestSync():
             else:
                 source = f'{layer}/source'
             with open(path, 'w') as f:
-                f.write(f'base_dir = "{layer}/base_dir"\n')
+                f.write(f'workdir = "{layer}/workdir"\n')
                 f.write(f'source = "{source}"\n')
             # Force re-reading config
             if hasattr(self, 'runner'):
@@ -1680,7 +1680,7 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
-                '{}/base_dir/__root__/Test'.format(layer),
+                '{}/workdir/__root__/Test'.format(layer),
             )
             self.run('freeze', '/')
             self.run('record', '/')
@@ -1699,7 +1699,7 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
-                '{}/base_dir/__root__/Test'.format(layer),
+                '{}/workdir/__root__/Test'.format(layer),
             )
             self.run('record', '/')
         assert not os.path.exists(
@@ -1724,14 +1724,14 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),  # custom layer!
-                '{}/base_dir/__root__/Test'.format(layer),  # new base layer!
+                '{}/workdir/__root__/Test'.format(layer),  # new base layer!
             )
             # now create the standard Test folder titled 'Something
             meta = zodbsync.mod_format({
                 'title': 'Something',
                 'type': 'Folder'
             })
-            with open(f'{layer}/base_dir/__root__/Test/__meta__', 'w') as f:
+            with open(f'{layer}/workdir/__root__/Test/__meta__', 'w') as f:
                 f.write(meta)
             self.run('playback', '/')
 
@@ -1756,7 +1756,7 @@ class TestSync():
         self.add_folder('Test')
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
-            tgt = '{}/base_dir/__root__'.format(layer)
+            tgt = '{}/workdir/__root__'.format(layer)
             os.rename(src + '/Test', tgt + '/Test')
             cmd = ['playback', '/Test']
             if not recurse:
@@ -1772,7 +1772,7 @@ class TestSync():
         self.add_folder('Test')
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
-            tgt = '{}/base_dir/__root__'.format(layer)
+            tgt = '{}/workdir/__root__'.format(layer)
             shutil.copytree(src + '/Test', tgt + '/Test')
             with open('{}/__frozen__'.format(src), 'w'):
                 pass
@@ -1794,7 +1794,7 @@ class TestSync():
         with self.addlayer() as layer:
             root = os.path.join(self.repo.path, '__root__')
             # Move current structure into lower layer
-            os.rename(root, os.path.join(layer, 'base_dir/__root__'))
+            os.rename(root, os.path.join(layer, 'workdir/__root__'))
             # Create a sparse structure in top layer
             files = [
                 'Test1/__frozen__',
@@ -1834,7 +1834,7 @@ class TestSync():
         self.run('record', '/Test')
         with self.addlayer() as layer:
             root = [
-                os.path.join(layer, 'base_dir/__root__'),
+                os.path.join(layer, 'workdir/__root__'),
                 os.path.join(self.repo.path, '__root__'),
             ]
             os.rename(os.path.join(root[1], 'Test'),
@@ -1852,7 +1852,7 @@ class TestSync():
         self.add_folder('Sub', parent='Test')
         with self.addlayer() as layer:
             srcroot = os.path.join(self.repo.path, '__root__')
-            tgtroot = os.path.join(layer, 'base_dir/__root__')
+            tgtroot = os.path.join(layer, 'workdir/__root__')
             os.rename(os.path.join(srcroot, 'Test'),
                       os.path.join(tgtroot, 'Test'))
             self.run('record', '/')
@@ -1870,7 +1870,7 @@ class TestSync():
         with self.addlayer() as layer:
             os.rename(
                 os.path.join(self.repo.path, '__root__/__meta__'),
-                os.path.join(layer, 'base_dir/__root__/__meta__'),
+                os.path.join(layer, 'workdir/__root__/__meta__'),
             )
             self.run('record', '/')
         assert not os.path.isdir(
@@ -1886,7 +1886,7 @@ class TestSync():
         with self.addlayer() as layer:
             os.rename(
                 os.path.join(self.repo.path, '__root__/index_html'),
-                os.path.join(layer, 'base_dir/__root__/index_html'),
+                os.path.join(layer, 'workdir/__root__/index_html'),
             )
             watcher = self.mkrunner('watch')
             watcher.setup()
@@ -1919,7 +1919,7 @@ class TestSync():
         self.run('record', '/')
         with self.addlayer() as layer:
             src = os.path.join(self.repo.path, '__root__')
-            tgt = os.path.join(layer, 'base_dir/__root__')
+            tgt = os.path.join(layer, 'workdir/__root__')
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
@@ -1959,7 +1959,7 @@ class TestSync():
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
                 os.path.join(root, 'Test'),
-                os.path.join(layer, 'base_dir/__root__/Test'),
+                os.path.join(layer, 'workdir/__root__/Test'),
             )
             self.app.manage_delObjects(ids=['Test'])
             self.run('record', '/')
@@ -1984,7 +1984,7 @@ class TestSync():
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
                 os.path.join(root, 'Test'),
-                os.path.join(layer, 'base_dir/__root__/Test'),
+                os.path.join(layer, 'workdir/__root__/Test'),
             )
             self.app.Test.manage_delObjects(ids=['Sub'])
             self.run('record', '/')
@@ -2156,7 +2156,7 @@ class TestSync():
             self.run('record', '/blob')
             shutil.move(
                 '{}/__root__/blob'.format(self.repo.path),
-                '{}/base_dir/__root__/blob'.format(layer),
+                '{}/workdir/__root__/blob'.format(layer),
             )
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
@@ -2170,7 +2170,7 @@ class TestSync():
             assert os.path.exists(os.path.join(root, 'blob/__meta__'))
             assert os.path.exists(os.path.join(root, 'blob/__source__.txt'))
             source_fmt = '{}/__root__/blob/__source__.txt'
-            with open(source_fmt.format(f'{layer}/base_dir')) as f:
+            with open(source_fmt.format(f'{layer}/workdir')) as f:
                 # source in layer should still be empty
                 assert f.read() == ''
             with open(source_fmt.format(self.repo.path)) as f:
@@ -2191,7 +2191,7 @@ class TestSync():
             self.run('record', '/blob')
             shutil.move(
                 '{}/blob'.format(root),
-                '{}/base_dir/__root__/blob'.format(layer),
+                '{}/workdir/__root__/blob'.format(layer),
             )
             os.mkdir('{}/blob'.format(root))
             with open('{}/blob/__deleted__'.format(root), 'w'):
@@ -2228,13 +2228,13 @@ class TestSync():
                 check=True,
             )
             self.run('layer-init', '*')
-            assert os.listdir(f'{layer}/base_dir/__root__') == ['blob']
+            assert os.listdir(f'{layer}/workdir/__root__') == ['blob']
             # Record to remove from fallback layer
             self.run('record', '/')
             assert 'blob' not in os.listdir(f'{self.repo.path}/__root__')
             # Now change the file in the TAR file and run layer-update
             shutil.copytree(
-                f'{layer}/base_dir/__root__/blob',
+                f'{layer}/workdir/__root__/blob',
                 f'{layer}/blob',
             )
             with open(f'{layer}/blob/__source__.txt', 'w') as f:

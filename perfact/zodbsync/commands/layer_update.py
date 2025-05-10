@@ -44,7 +44,7 @@ class LayerUpdate(SubCommand):
         source, commit that and play back any changes.
         """
         source = layer['source']
-        target = layer['base_dir']
+        target = layer['workdir']
         msg = self.args.message
         precommit = self.commit_all(target, f'{msg} (pre)')
         if os.path.isdir(source):
@@ -77,7 +77,7 @@ class LayerUpdate(SubCommand):
         Restore layer for dry-run
         """
         (precommit, commit) = self.restore[layer['ident']]
-        target = layer['base_dir']
+        target = layer['workdir']
         if commit:
             sp.run(
                 ['git', 'reset', '--hard', f'{commit}~'],

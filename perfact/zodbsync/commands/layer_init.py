@@ -30,7 +30,7 @@ class LayerInit(SubCommand):
         for ident in idents:
             layer = layers[ident]
             source = layer['source']
-            target = layer['base_dir']
+            target = layer['workdir']
             if os.path.isdir(source):
                 sp.run(
                     ['rsync', '-a', '--delete-during', f'{source}/__root__/',

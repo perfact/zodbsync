@@ -267,22 +267,22 @@ class ZODBSync:
                 },
                 **load_config(f'{layerdir}/{fname}')
             }
-            if 'base_dir' not in layer or 'source' not in layer:
+            if 'workdir' not in layer or 'source' not in layer:
                 raise ValueError(
-                    "Old-style layer config without base_dir+source"
+                    "Old-style layer config without workdir+source"
                 )
             layers.append(layer)
-            base_dir = layer['base_dir']
-            root = f'{base_dir}/{site}'
+            workdir = layer['workdir']
+            root = f'{workdir}/{site}'
             if not os.path.isdir(root):
                 os.makedirs(root, exist_ok=True)
-            if not os.path.isdir(f"{base_dir}/.git"):
-                sp.run(['git', 'init'], cwd=base_dir, check=True)
+            if not os.path.isdir(f"{workdir}/.git"):
+                sp.run(['git', 'init'], cwd=workdir, check=True)
 
         # Append default top-level layer
         layers.append({
             'ident': None,
-            'base_dir': self.config['base_dir'],
+            'workdir': self.config['base_dir'],
         })
         # Reverse order - index zero is the topmost fallback layer
         self.layers = list(reversed(layers))
@@ -421,7 +421,7 @@ class ZODBSync:
         path = path.lstrip('/')
         children = set()
         for idx, layer in enumerate(layers):
-            fspath = os.path.join(layer['base_dir'], self.site, path)
+            fspath = os.path.join(layer['workdir'], self.site, path)
             if not os.path.isdir(fspath):
                 continue
             meta = os.path.join(fspath, '__meta__')
@@ -522,7 +522,7 @@ class ZODBSync:
             if idx <= pathinfo['layeridx']:
                 continue
 
-            fspath = os.path.join(layer['base_dir'], self.site,
+            fspath = os.path.join(layer['workdir'], self.site,
                                   path.lstrip('/'))
             data = self.fs_read(fspath)
             if not data or not data.get('meta'):
@@ -533,7 +533,7 @@ class ZODBSync:
                 break
             # Remove meta file and all source files
             base = os.path.join(
-                pathinfo['layers'][pathinfo['layeridx']]['base_dir'],
+                pathinfo['layers'][pathinfo['layeridx']]['workdir'],
                 self.site, path.lstrip('/')
             )
             os.remove(os.path.join(base, '__meta__'))
@@ -563,7 +563,7 @@ class ZODBSync:
             meta = os.path.join(relpath, item, '__meta__')
             # Omit topmost (custom) layer
             for layer in pathinfo['layers'][1:]:
-                if not os.path.exists(os.path.join(layer['base_dir'], meta)):
+                if not os.path.exists(os.path.join(layer['workdir'], meta)):
                     continue
                 # Mask the path as deleted because it is also present
                 # in a lower layer
@@ -575,7 +575,7 @@ class ZODBSync:
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
         for layer in self.layers:
-            start = os.path.join(layer['base_dir'], self.site)
+            start = os.path.join(layer['workdir'], self.site)
             for root, _, _ in os.walk(start, topdown=False):
                 if root == start:
                     continue
