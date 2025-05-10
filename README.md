@@ -385,7 +385,20 @@ in order to build the test environment from `pyproject.toml` instead of
 just upgrade `tox` to latest version and retry.
 
 ## To Do / Roadmap
-Some more commands are needed for the following layer use cases:
+To allow developing multiple layers on the same development system, `record`
+should be changed to follow the following rules:
+
+- If a new object is found, it is recorded into the `workdir` of the layer that
+  defines its parent.
+- If an object is changed, it is changed in the (top-most) layer that defined
+  the object.
+- If an object is deleted, it is deleted in all layers that define the object,
+  unless shadowed by a `__frozen__` marker.
+
+All commands that allow to apply changes, like `pick` and `reset`, should be
+able to work on all layers' workdirs, not only on the fallback layer.
+
+Some more commands are then needed for the following layer use cases:
 - A new object is recorded into the layer where its parent is defined. However,
   it should instead be an additional object defined in a different layer.
 - An object is changed, which is recorded into the layer where the object is
@@ -405,14 +418,3 @@ Some more commands are needed for the following layer use cases:
     of all deviating paths from the merge base. Add `__frozen__` markers where
     necessary. Remove all superfluous files from the original layer (than now
     becomes the fallback layer) and initialize the added layers.
-
-To allow developing multiple layers on the same development system, `record`
-should be changed to follow the following rules:
-
-- If a new object is found, it is recorded into the `workdir` of the layer that
-  defines its parent.
-- If an object is changed, it is changed in the (top-most) layer that defined
-  the object.
-- If an object is deleted, it is deleted in all layers that define the object,
-  unless shadowed by a `__frozen__` marker.
-- TBD: Is there a case where `__frozen__` should be removed?
