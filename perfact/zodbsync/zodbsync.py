@@ -453,7 +453,7 @@ class ZODBSync:
         old_data = self.fs_read(pathinfo['fspath'])
 
         # Build object
-        exclude_keys = ['source', 'zodbsync_layer']
+        exclude_keys = ['source', 'zodbsync_layer', 'is_root']
         meta = {
             key: value
             for key, value in data.items()
@@ -691,7 +691,8 @@ class ZODBSync:
 
         current_layer = getattr(obj, 'zodbsync_layer', None)
         if current_layer != path_layer:
-            obj.zodbsync_layer = path_layer
+            with self.tm:
+                obj.zodbsync_layer = path_layer
 
         if not recurse:
             return
