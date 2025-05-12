@@ -2179,6 +2179,9 @@ class TestSync():
         the top layer. Check that the playback hook script gets the normalized
         object paths and not the specific files.
         """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+
         root = '{}/__root__'.format(self.repo.path)
         with self.addlayer() as layer:
             self.run('record', '/blob')
@@ -2211,9 +2214,6 @@ class TestSync():
         Validate the correct writing and clearing of the layer ident
         in the Data.FS
         """
-        with self.runner.sync.tm:
-            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
-
         with self.addlayer(frozen=True) as layer:
             self.run('record', '/blob')
             assert getattr(self.app.blob, 'zodbsync_layer', None) is None
