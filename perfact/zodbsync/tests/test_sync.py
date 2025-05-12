@@ -1994,7 +1994,8 @@ class TestSync():
                 os.path.join(root, 'Test'),
                 os.path.join(layer, 'workdir/__root__/Test'),
             )
-            self.app.Test.manage_delObjects(ids=['Sub'])
+            with self.runner.sync.tm:
+                self.app.Test.manage_delObjects(ids=['Sub'])
             self.run('record', '/')
             assert not os.path.exists(os.path.join(root, 'Test/__meta__'))
             assert not os.path.exists(os.path.join(root, 'Test/Sub/__meta__'))
