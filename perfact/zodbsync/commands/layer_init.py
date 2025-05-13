@@ -44,6 +44,5 @@ class LayerInit(SubCommand):
                      '--recursive-unlink'],
                     check=True,
                 )
-            if sp.run(['git', 'add', '.'], cwd=target).returncode != 0:
-                sp.run(['git', 'commit', '-m', 'zodbsync layer-init'],
-                       cwd=target, check=True)
+            sp.run(['git', 'add', '.'], cwd=target)
+            sp.run(['git', 'commit', '-m', 'zodbsync layer-init'], cwd=target)

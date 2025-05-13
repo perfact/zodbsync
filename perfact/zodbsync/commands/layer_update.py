@@ -33,8 +33,8 @@ class LayerUpdate(SubCommand):
     def commit_all(self, target, msg):
         """Commit all unstaged changes in target, returning the commit ID or
         None if there is no change."""
-        if sp.run(['git', 'add', '.'], cwd=target).returncode != 0:
-            sp.run(['git', 'commit', '-m', msg], cwd=target, check=True)
+        sp.run(['git', 'add', '.'], cwd=target)
+        if sp.run(['git', 'commit', '-m', msg], cwd=target).returncode == 0:
             return sp.check_output(['git', 'rev-parse', 'HEAD'],
                                    cwd=target, text=True).strip()
 
@@ -55,7 +55,7 @@ class LayerUpdate(SubCommand):
                    '--recursive-unlink']
         sp.run(cmd, check=True)
         changes = [
-            line.split(' ', 1)[1] for line in sp.check_output(
+            line[3:] for line in sp.check_output(
                 ['git', 'status', '--porcelain', '-u'],
                 cwd=target,
                 text=True,
@@ -74,7 +74,7 @@ class LayerUpdate(SubCommand):
 
     def restore_layer(self, layer):
         """
-        Restore layer for dry-run
+        Restore layer for dry-run or in case of failure
         """
         (precommit, commit) = self.restore[layer['ident']]
         target = layer['workdir']
@@ -106,7 +106,22 @@ class LayerUpdate(SubCommand):
         if not paths:
             return
         paths = sorted(paths)
-        self._playback_paths(paths)
+        try:
+            self._playback_paths(paths)
+        except Exception:
+            for ident in idents:
+                self.restore_layer(layers[ident])
+            # if we are not in dryrun we can't be sure we havent already
+            # committed some stuff to the data-fs so playback all paths
+            if not self.args.dry_run and paths:
+                self.sync.playback_paths(
+                    paths=paths,
+                    recurse=False,
+                    override=True,
+                    skip_errors=True,
+                    dryrun=False,
+                )
+            raise
 
         if self.args.dry_run:
             for ident in idents:

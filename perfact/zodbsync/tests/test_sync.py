@@ -1648,7 +1648,13 @@ class TestSync():
         ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
-            os.makedirs(f'{layer}/workdir/__root__')
+            workdir = f'{layer}/workdir'
+            os.makedirs(f'{workdir}/__root__')
+            subprocess.run(['git', 'init'], cwd=workdir)
+            subprocess.run(['git', 'config', 'user.email',
+                            'zodbsync-tester@perfact.de'], cwd=workdir)
+            subprocess.run(['git', 'config', 'user.name',
+                            'ZODBSync tester'], cwd=workdir)
             os.makedirs(f'{layer}/source/__root__')
             with open(f'{layer}/source.tar', 'w'):
                 pass
@@ -2221,7 +2227,6 @@ class TestSync():
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
         with self.addlayer(tarsource=True) as layer:
             self.run('record', '/blob')
-            # ident = self.runner.sync.layers[-1]['ident']
             subprocess.run(
                 ['tar', 'cf', f'{layer}/source.tar', 'blob'],
                 cwd=f'{self.repo.path}/__root__',
@@ -2246,3 +2251,33 @@ class TestSync():
             )
             self.run('layer-update', '*')
             assert str(self.app.blob) == 'changed'
+
+    def test_layer_update_2phase_failed(self):
+        """
+        Perform layer-update with a two-phase playback where a command at the
+        end of the first phase fails. Check that the rollback is performed
+        correctly.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        playback_cmd = self.addscript("playback_cmd", "false")
+
+        playback_hook = self.addscript(
+            "playback_hook",
+            "echo '{}'".format(json.dumps([{
+                "paths": ["/blob"],
+                "cmd": playback_cmd,
+            }])),
+        )
+        with self.appendtoconf('playback_hook = "{}"'.format(playback_hook)):
+            with self.addlayer() as layer:
+                self.run('record', '/')
+                src = f'{self.repo.path}/__root__/blob'
+                tgt = f'{layer}/source/__root__/blob'
+                os.rename(src, tgt)
+                self.run('layer-init', '*')
+                with open(f'{tgt}/__source__.txt', 'w') as f:
+                    f.write('changed')
+                with pytest.raises(AssertionError):
+                    self.run('layer-update', '*')
+                assert str(self.app.blob) == ''

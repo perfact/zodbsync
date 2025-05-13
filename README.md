@@ -416,5 +416,5 @@ Some more commands are then needed for the following layer use cases:
   that change upstream until the next release).
   - Should be something like: Do a merge-based upgrade and then obtain the list
     of all deviating paths from the merge base. Add `__frozen__` markers where
-    necessary. Remove all superfluous files from the original layer (than now
+    necessary. Remove all superfluous files from the original layer (which now
     becomes the fallback layer) and initialize the added layers.
