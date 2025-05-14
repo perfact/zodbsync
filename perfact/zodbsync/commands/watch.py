@@ -187,7 +187,13 @@ class Watch(SubCommand):
             obj=obj,
             default_owner=self.sync.default_owner
         )
-        self.sync.fs_write(path=path, data=data)
+
+        pathinfo = self.sync.fs_write(path=path, data=data)
+        path_layer = pathinfo['layers'][pathinfo['layeridx']]['ident']
+        current_layer = getattr(obj, 'zodbsync_layer', None)
+        if current_layer != path_layer:
+            with self.sync.tm:
+                obj.zodbsync_layer = path_layer
 
     def _update_objects(self):
         '''
