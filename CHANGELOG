@@ -1,3 +1,13 @@
+23.4.0
+  * Refactor layering (step 1). Note that this explicitly does not try to be
+    backwards compatible to a layering setup as given before. I think it will
+    be much simpler to no longer support truly frozen layers where changes are
+    somehow again stored into the custom layer even though the object was
+    originally defined in a lower layer. Instead, every layer must have both a
+    source (provided by the Debian package) and a workdir (where the contents
+    of the Debian package are copied to and where subsequent changes can be
+    pre-applied).
+
 23.3.1
   * Fix path preparation for changes in __deleted__ and __frozen__ markers
 
