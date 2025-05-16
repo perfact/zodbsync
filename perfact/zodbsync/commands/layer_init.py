@@ -1,28 +1,48 @@
 #!/usr/bin/env python
 
 import os
-import shutil
+import subprocess as sp
 
 from ..subcommand import SubCommand
 
 
 class LayerInit(SubCommand):
-    """Register layers by copying over the checksum files."""
+    """Register layers from source to work_dir, assuming objects are already in
+    the Data.FS, but are now to be provided by a new layer."""
     subcommand = 'layer-init'
 
     @staticmethod
     def add_args(parser):
-        pass
+        parser.add_argument(
+            'ident', type=str, nargs='*',
+            help='Layer identifier(s). May be * for all',
+        )
 
     def run(self):
-        tgt = os.path.join(self.sync.base_dir, '.layer-checksums')
-        if not os.path.isdir(tgt):
-            os.mkdir(tgt)
-
-        for layer in self.sync.layers:
-            ident = layer['ident']
-            if not ident:
-                continue
-            src = os.path.join(layer['base_dir'], '.checksums')
-            if os.path.exists(src):
-                shutil.copy(src, os.path.join(tgt, ident))
+        layers = {layer['ident']: layer
+                  for layer in self.sync.layers
+                  if layer['ident']}
+        idents = self.args.ident
+        if idents == ['*']:
+            idents = layers.keys()
+        for ident in idents:
+            assert ident in layers, "Invalid ident"
+        for ident in idents:
+            layer = layers[ident]
+            source = layer['source']
+            target = layer['workdir']
+            if os.path.isdir(source):
+                sp.run(
+                    ['rsync', '-a', '--delete-during', f'{source}/__root__/',
+                     f'{target}/__root__/'],
+                    check=True,
+                )
+            else:
+                # TAR file
+                sp.run(
+                    ['tar', 'xf', source, '-C', f'{target}/__root__/',
+                     '--recursive-unlink'],
+                    check=True,
+                )
+            sp.run(['git', 'add', '.'], cwd=target)
+            sp.run(['git', 'commit', '-m', 'zodbsync layer-init'], cwd=target)

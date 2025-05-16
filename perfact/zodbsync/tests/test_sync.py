@@ -1638,7 +1638,7 @@ class TestSync():
             assert 'NewFolder2' not in self.app.objectIds()
 
     @contextmanager
-    def addlayer(self, seqnum='00', frozen=True):
+    def addlayer(self, seqnum='00', tarsource=False):
         """
         Create a temp directory and add a config that uses this as additional
         code layer.
@@ -1648,10 +1648,23 @@ class TestSync():
         ))
         path = '{}/layers/{}'.format(self.config.folder, name)
         with tempfile.TemporaryDirectory() as layer:
+            workdir = f'{layer}/workdir'
+            os.makedirs(f'{workdir}/__root__')
+            subprocess.run(['git', 'init'], cwd=workdir)
+            subprocess.run(['git', 'config', 'user.email',
+                            'zodbsync-tester@perfact.de'], cwd=workdir)
+            subprocess.run(['git', 'config', 'user.name',
+                            'ZODBSync tester'], cwd=workdir)
+            os.makedirs(f'{layer}/source/__root__')
+            with open(f'{layer}/source.tar', 'w'):
+                pass
+            if tarsource:
+                source = f'{layer}/source.tar'
+            else:
+                source = f'{layer}/source'
             with open(path, 'w') as f:
-                f.write('base_dir = "{}"\n'.format(layer))
-                f.write('frozen = {}\n'.format(frozen))
-            os.mkdir(os.path.join(layer, '__root__'))
+                f.write(f'workdir = "{layer}/workdir"\n')
+                f.write(f'source = "{source}"\n')
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
@@ -1673,7 +1686,7 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
-                '{}/__root__/Test'.format(layer),
+                '{}/workdir/__root__/Test'.format(layer),
             )
             self.run('freeze', '/')
             self.run('record', '/')
@@ -1692,7 +1705,7 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),
-                '{}/__root__/Test'.format(layer),
+                '{}/workdir/__root__/Test'.format(layer),
             )
             self.run('record', '/')
         assert not os.path.exists(
@@ -1717,14 +1730,14 @@ class TestSync():
         with self.addlayer() as layer:
             shutil.copytree(
                 '{}/__root__/Test'.format(self.repo.path),  # custom layer!
-                '{}/__root__/Test'.format(layer),           # new base layer!
+                '{}/workdir/__root__/Test'.format(layer),  # new base layer!
             )
             # now create the standard Test folder titled 'Something
             meta = zodbsync.mod_format({
                 'title': 'Something',
                 'type': 'Folder'
             })
-            with open(os.path.join(layer, '__root__/Test/__meta__'), 'w') as f:
+            with open(f'{layer}/workdir/__root__/Test/__meta__', 'w') as f:
                 f.write(meta)
             self.run('playback', '/')
 
@@ -1749,7 +1762,7 @@ class TestSync():
         self.add_folder('Test')
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
-            tgt = '{}/__root__'.format(layer)
+            tgt = '{}/workdir/__root__'.format(layer)
             os.rename(src + '/Test', tgt + '/Test')
             cmd = ['playback', '/Test']
             if not recurse:
@@ -1765,7 +1778,7 @@ class TestSync():
         self.add_folder('Test')
         with self.addlayer() as layer:
             src = '{}/__root__'.format(self.repo.path)
-            tgt = '{}/__root__'.format(layer)
+            tgt = '{}/workdir/__root__'.format(layer)
             shutil.copytree(src + '/Test', tgt + '/Test')
             with open('{}/__frozen__'.format(src), 'w'):
                 pass
@@ -1787,7 +1800,7 @@ class TestSync():
         with self.addlayer() as layer:
             root = os.path.join(self.repo.path, '__root__')
             # Move current structure into lower layer
-            os.rename(root, os.path.join(layer, '__root__'))
+            os.rename(root, os.path.join(layer, 'workdir/__root__'))
             # Create a sparse structure in top layer
             files = [
                 'Test1/__frozen__',
@@ -1827,7 +1840,7 @@ class TestSync():
         self.run('record', '/Test')
         with self.addlayer() as layer:
             root = [
-                os.path.join(layer, '__root__'),
+                os.path.join(layer, 'workdir/__root__'),
                 os.path.join(self.repo.path, '__root__'),
             ]
             os.rename(os.path.join(root[1], 'Test'),
@@ -1845,7 +1858,7 @@ class TestSync():
         self.add_folder('Sub', parent='Test')
         with self.addlayer() as layer:
             srcroot = os.path.join(self.repo.path, '__root__')
-            tgtroot = os.path.join(layer, '__root__')
+            tgtroot = os.path.join(layer, 'workdir/__root__')
             os.rename(os.path.join(srcroot, 'Test'),
                       os.path.join(tgtroot, 'Test'))
             self.run('record', '/')
@@ -1863,7 +1876,7 @@ class TestSync():
         with self.addlayer() as layer:
             os.rename(
                 os.path.join(self.repo.path, '__root__/__meta__'),
-                os.path.join(layer, '__root__/__meta__'),
+                os.path.join(layer, 'workdir/__root__/__meta__'),
             )
             self.run('record', '/')
         assert not os.path.isdir(
@@ -1879,7 +1892,7 @@ class TestSync():
         with self.addlayer() as layer:
             os.rename(
                 os.path.join(self.repo.path, '__root__/index_html'),
-                os.path.join(layer, '__root__/index_html'),
+                os.path.join(layer, 'workdir/__root__/index_html'),
             )
             watcher = self.mkrunner('watch')
             watcher.setup()
@@ -1912,7 +1925,7 @@ class TestSync():
         self.run('record', '/')
         with self.addlayer() as layer:
             src = os.path.join(self.repo.path, '__root__')
-            tgt = os.path.join(layer, '__root__')
+            tgt = os.path.join(layer, 'workdir/__root__')
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
@@ -1952,7 +1965,7 @@ class TestSync():
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
                 os.path.join(root, 'Test'),
-                os.path.join(layer, '__root__/Test'),
+                os.path.join(layer, 'workdir/__root__/Test'),
             )
             self.app.manage_delObjects(ids=['Test'])
             self.run('record', '/')
@@ -1977,7 +1990,7 @@ class TestSync():
             root = os.path.join(self.repo.path, '__root__')
             os.rename(
                 os.path.join(root, 'Test'),
-                os.path.join(layer, '__root__/Test'),
+                os.path.join(layer, 'workdir/__root__/Test'),
             )
             self.app.Test.manage_delObjects(ids=['Sub'])
             self.run('record', '/')
@@ -1997,18 +2010,16 @@ class TestSync():
             self.run('record', '/')
             ident = self.runner.sync.layers[-1]['ident']
             src = os.path.join(self.repo.path, '__root__')
-            tgt = os.path.join(layer, '__root__')
+            tgt = os.path.join(layer, 'source/__root__')
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
-            self.run('layer-hash', layer)
-            self.run('layer-init')
+            self.run('layer-init', '*')
             with open(os.path.join(tgt, 'Test/__meta__'), 'w') as f:
                 f.write(zodbsync.mod_format({
                     'title': 'Changed',
                     'type': 'Folder'
                 }))
-            self.run('layer-hash', layer)
             self.run('layer-update', ident)
             assert 'Conflict with object' not in caplog.text
             assert self.app.Test.title == 'Changed'
@@ -2114,12 +2125,11 @@ class TestSync():
             self.run('record', '/')
             ident = self.runner.sync.layers[-1]['ident']
             src = os.path.join(self.repo.path, '__root__')
-            tgt = os.path.join(layer, '__root__')
+            tgt = os.path.join(layer, 'source/__root__')
             os.rmdir(tgt)
             os.rename(src, tgt)
             os.mkdir(src)
-            self.run('layer-hash', layer)
-            self.run('layer-init')
+            self.run('layer-init', '*')
             with self.runner.sync.tm:
                 self.app.Test._setProperty('nav_hidden', True, 'boolean')
                 self.app.ToDelete.Sub._setProperty('nav_hidden', True,
@@ -2131,26 +2141,28 @@ class TestSync():
                     'type': 'Folder'
                 }))
             shutil.rmtree(os.path.join(tgt, 'ToDelete'))
-            self.run('layer-hash', layer)
             self.run('layer-update', ident)
             expect = 'Conflict with object in custom layer: '
             assert expect + '/Test' in caplog.text
             assert 'AttributeError' not in caplog.text
             assert expect + '/ToDelete/Sub' in caplog.text
 
-    def test_layer_frozen(self):
+    def test_layer_change_into_top(self):
         """
-        Verify that changed files are properly written into the custom
-        layer in case the layer below is frozen.
+        Verify that changed files are written into the top layer.
+        Note that this is not what we want in the long run, but until we have
+        methods for moving objects between layers and there is a frontend for
+        showing unstaged changes in all layers, everything is written into the
+        top layer.
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
 
-        with self.addlayer(frozen=True) as layer:
+        with self.addlayer() as layer:
             self.run('record', '/blob')
             shutil.move(
                 '{}/__root__/blob'.format(self.repo.path),
-                '{}/__root__/blob'.format(layer),
+                '{}/workdir/__root__/blob'.format(layer),
             )
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
@@ -2164,7 +2176,7 @@ class TestSync():
             assert os.path.exists(os.path.join(root, 'blob/__meta__'))
             assert os.path.exists(os.path.join(root, 'blob/__source__.txt'))
             source_fmt = '{}/__root__/blob/__source__.txt'
-            with open(source_fmt.format(layer)) as f:
+            with open(source_fmt.format(f'{layer}/workdir')) as f:
                 # source in layer should still be empty
                 assert f.read() == ''
             with open(source_fmt.format(self.repo.path)) as f:
@@ -2185,7 +2197,7 @@ class TestSync():
             self.run('record', '/blob')
             shutil.move(
                 '{}/blob'.format(root),
-                '{}/__root__/blob'.format(layer),
+                '{}/workdir/__root__/blob'.format(layer),
             )
             os.mkdir('{}/blob'.format(root))
             with open('{}/blob/__deleted__'.format(root), 'w'):
@@ -2206,3 +2218,66 @@ class TestSync():
                 self.run('pick', commid)
             with open(output) as f:
                 assert {"paths": ["/blob/"]} == json.loads(f.read())
+
+    def test_layer_tar(self):
+        """
+        Perform a layer-init and layer-update from a tar file source.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        with self.addlayer(tarsource=True) as layer:
+            self.run('record', '/blob')
+            subprocess.run(
+                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                cwd=f'{self.repo.path}/__root__',
+                check=True,
+            )
+            self.run('layer-init', '*')
+            assert os.listdir(f'{layer}/workdir/__root__') == ['blob']
+            # Record to remove from fallback layer
+            self.run('record', '/')
+            assert 'blob' not in os.listdir(f'{self.repo.path}/__root__')
+            # Now change the file in the TAR file and run layer-update
+            shutil.copytree(
+                f'{layer}/workdir/__root__/blob',
+                f'{layer}/blob',
+            )
+            with open(f'{layer}/blob/__source__.txt', 'w') as f:
+                f.write('changed')
+            subprocess.run(
+                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                cwd=layer,
+                check=True,
+            )
+            self.run('layer-update', '*')
+            assert str(self.app.blob) == 'changed'
+
+    def test_layer_update_2phase_failed(self):
+        """
+        Perform layer-update with a two-phase playback where a command at the
+        end of the first phase fails. Check that the rollback is performed
+        correctly.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        playback_cmd = self.addscript("playback_cmd", "false")
+
+        playback_hook = self.addscript(
+            "playback_hook",
+            "echo '{}'".format(json.dumps([{
+                "paths": ["/blob"],
+                "cmd": playback_cmd,
+            }])),
+        )
+        with self.appendtoconf('playback_hook = "{}"'.format(playback_hook)):
+            with self.addlayer() as layer:
+                self.run('record', '/')
+                src = f'{self.repo.path}/__root__/blob'
+                tgt = f'{layer}/source/__root__/blob'
+                os.rename(src, tgt)
+                self.run('layer-init', '*')
+                with open(f'{tgt}/__source__.txt', 'w') as f:
+                    f.write('changed')
+                with pytest.raises(AssertionError):
+                    self.run('layer-update', '*')
+                assert str(self.app.blob) == ''

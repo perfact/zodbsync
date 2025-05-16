@@ -6,6 +6,7 @@ import shutil
 import time  # for periodic output
 import sys
 import logging
+import subprocess as sp
 
 # for using an explicit transaction manager
 import transaction
@@ -250,29 +251,41 @@ class ZODBSync:
 
         # Initialize layers
         layerdir = self.config.get('layers', None)
-        self.layers = []
+        layers = []
+        fnames = []
         if layerdir and os.path.isdir(layerdir):
             fnames = sorted(os.listdir(layerdir))
-            for fname in fnames:
-                if any([fname.startswith(key) for key in '.~_']):
-                    continue
-                ident = fname
-                if ident.endswith('.py'):
-                    ident = ident[:-3]
-                self.layers.append({
-                    **{
-                        'ident': ident,
-                        'frozen': True,
-                    },
-                    **load_config('{}/{}'.format(layerdir, fname))
-                })
+        for fname in fnames:
+            if any([fname.startswith(key) for key in '.~_']):
+                continue
+            ident = fname
+            if ident.endswith('.py'):
+                ident = ident[:-3]
+            layer = {
+                **{
+                    'ident': ident,
+                },
+                **load_config(f'{layerdir}/{fname}')
+            }
+            if 'workdir' not in layer or 'source' not in layer:
+                raise ValueError(
+                    "Old-style layer config without workdir+source"
+                )
+            layers.append(layer)
+            workdir = layer['workdir']
+            root = f'{workdir}/{site}'
+            if not os.path.isdir(root):
+                os.makedirs(root, exist_ok=True)
+            if not os.path.isdir(f"{workdir}/.git"):
+                sp.run(['git', 'init'], cwd=workdir, check=True)
+
         # Append default top-level layer
-        self.layers.append({
+        layers.append({
             'ident': None,
-            'base_dir': self.config['base_dir'],
+            'workdir': self.config['base_dir'],
         })
-        # Reverse order - index zero is the topmost custom layer
-        self.layers = list(reversed(self.layers))
+        # Reverse order - index zero is the topmost fallback layer
+        self.layers = list(reversed(layers))
 
         # Make sure the manager user exists
         if self.config.get('create_manager_user', False):
@@ -408,7 +421,7 @@ class ZODBSync:
         path = path.lstrip('/')
         children = set()
         for idx, layer in enumerate(layers):
-            fspath = os.path.join(layer['base_dir'], self.site, path)
+            fspath = os.path.join(layer['workdir'], self.site, path)
             if not os.path.isdir(fspath):
                 continue
             meta = os.path.join(fspath, '__meta__')
@@ -500,20 +513,16 @@ class ZODBSync:
             # current representation can be found is zero.
             pathinfo['layeridx'] = 0
 
-        # Compress if possible.
         # Compress if possible: Compare object with its representation on disk
         # if the current layer is ignored. If it is the same, remove it in the
         # current layer. Continue with the next layer that holds the object
-        # unless it is frozen.
-        frozen = False  # Set to True on first frozen layer
         for idx, layer in enumerate(pathinfo['layers']):
             # This is now the layer that we compare the current layer to in
             # order to check if we can compress it.
-            frozen = frozen or layer.get('frozen', False)
             if idx <= pathinfo['layeridx']:
                 continue
 
-            fspath = os.path.join(layer['base_dir'], self.site,
+            fspath = os.path.join(layer['workdir'], self.site,
                                   path.lstrip('/'))
             data = self.fs_read(fspath)
             if not data or not data.get('meta'):
@@ -524,7 +533,7 @@ class ZODBSync:
                 break
             # Remove meta file and all source files
             base = os.path.join(
-                pathinfo['layers'][pathinfo['layeridx']]['base_dir'],
+                pathinfo['layers'][pathinfo['layeridx']]['workdir'],
                 self.site, path.lstrip('/')
             )
             os.remove(os.path.join(base, '__meta__'))
@@ -532,9 +541,6 @@ class ZODBSync:
                 os.remove(os.path.join(base, src))
             # Next comparison point
             pathinfo['layeridx'] = idx
-            if frozen:
-                # The current layer is now frozen, so no further compression
-                break
 
         return pathinfo
 
@@ -557,7 +563,7 @@ class ZODBSync:
             meta = os.path.join(relpath, item, '__meta__')
             # Omit topmost (custom) layer
             for layer in pathinfo['layers'][1:]:
-                if not os.path.exists(os.path.join(layer['base_dir'], meta)):
+                if not os.path.exists(os.path.join(layer['workdir'], meta)):
                     continue
                 # Mask the path as deleted because it is also present
                 # in a lower layer
@@ -569,9 +575,7 @@ class ZODBSync:
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
         for layer in self.layers:
-            if layer.get('frozen', False):
-                continue
-            start = os.path.join(layer['base_dir'], self.site)
+            start = os.path.join(layer['workdir'], self.site)
             for root, _, _ in os.walk(start, topdown=False):
                 if root == start:
                     continue
