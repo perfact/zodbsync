@@ -2293,13 +2293,13 @@ class TestSync():
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
 
-        with self.addlayer(frozen=True) as layer:
+        with self.addlayer() as layer:
             self.run('record', '/blob')
             assert getattr(self.app.blob, 'zodbsync_layer', None) is None
             # Move file to layer and check that layer info is stored in Data.FS
             shutil.move(
                 '{}/__root__/blob'.format(self.repo.path),
-                '{}/__root__/blob'.format(layer),
+                '{}/workdir/__root__/blob'.format(layer),
             )
             self.run('record', '/')
             assert getattr(self.app.blob, 'zodbsync_layer') is not None
