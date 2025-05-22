@@ -2281,3 +2281,26 @@ class TestSync():
                 with pytest.raises(AssertionError):
                     self.run('layer-update', '*')
                 assert str(self.app.blob) == ''
+
+    def test_layer_reset_remove_delmarker(self):
+        """
+        Make sure switching from a state where an object is marked as deleted
+        to a state where that marker is deleted works correctly, restoring the
+        object.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
+        with self.addlayer() as layer:
+            self.run('record', '/')
+            os.rename(
+                f'{self.repo.path}/__root__/blob',
+                f'{layer}/workdir/__root__/blob',
+            )
+            tgt = self.get_head_id()
+            with self.runner.sync.tm:
+                self.app.manage_delObjects(ids=['blob'])
+            self.run('record', '/')
+            self.gitrun('add', '.')
+            self.gitrun('commit', '-m', 'remove blob')
+            self.run('reset', tgt)
+            assert 'blob' in self.app.objectIds()
