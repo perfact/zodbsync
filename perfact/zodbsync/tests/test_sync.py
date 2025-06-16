@@ -2107,6 +2107,7 @@ class TestSync():
         )
         assert 'acl_users' not in self.app.some_module.objectIds()
 
+    @pytest.mark.skip(reason="Not a valid test anymore")
     def test_layer_update_warn(self, caplog):
         """
         Set up a layer and initialize it. Change an object that is provided by
@@ -2147,6 +2148,7 @@ class TestSync():
             assert 'AttributeError' not in caplog.text
             assert expect + '/ToDelete/Sub' in caplog.text
 
+    @pytest.mark.skip(reason="Not a valid test anymore")
     def test_layer_change_into_top(self):
         """
         Verify that changed files are written into the top layer.

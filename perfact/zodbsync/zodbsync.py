@@ -489,7 +489,7 @@ class ZODBSync:
         if old_data != new_data:
             # Path in top layer, might be different than the one where we read
             # the content
-            write_base = self.fs_path(path)
+            write_base = base_dir 
             os.makedirs(write_base, exist_ok=True)
 
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
