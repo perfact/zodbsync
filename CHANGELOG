@@ -1,3 +1,6 @@
+23.4.1
+  * Use lock for layer-update, avoiding interference from other operations
+
 23.4.0
   * Refactor layering (step 1). Note that this explicitly does not try to be
     backwards compatible to a layering setup as given before. I think it will

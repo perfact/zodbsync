@@ -18,6 +18,7 @@ class LayerInit(SubCommand):
             help='Layer identifier(s). May be * for all',
         )
 
+    @SubCommand.with_lock
     def run(self):
         layers = {layer['ident']: layer
                   for layer in self.sync.layers

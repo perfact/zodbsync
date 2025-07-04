@@ -89,6 +89,7 @@ class LayerUpdate(SubCommand):
                 cwd=target, check=True
             )
 
+    @SubCommand.with_lock
     def run(self):
         "Process given layers"
         self.restore = {}  # Info for restoring for dry-run
