@@ -1,3 +1,7 @@
+23.4.2
+  * Add tests for Python 3.12 and 3.13 and clean up literal_eval of
+    DeprecationWarnings.
+
 23.4.1
   * Use lock for layer-update, avoiding interference from other operations
 
