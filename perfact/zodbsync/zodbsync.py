@@ -94,11 +94,13 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None,
         if 'owner' in meta:
             del meta['owner']
 
+    meta['zodbsync_layer'] = getattr(obj, 'zodbsync_layer', None)
+
     return meta
 
 
 def mod_write(data, parent=None, obj_id=None, override=False, root=None,
-              default_owner=None, force_default_owner=False):
+              default_owner=None, force_default_owner=False, layer=None):
     '''
     Given object data in <data>, store the object, creating it if it was
     missing. With <override> = True, this method will remove an existing object
@@ -162,6 +164,9 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     # Send an update (depending on type)
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, d)
+
+    # Also write zodbsync layer information
+    obj.zodbsync_layer = layer
 
     if temp_obj:
         children = temp_obj.manage_cutObjects(temp_obj.objectIds())
@@ -461,7 +466,12 @@ class ZODBSync:
         old_data = self.fs_read(pathinfo['fspath'])
 
         # Build object
-        meta = {key: value for key, value in data.items() if key != 'source'}
+        exclude_keys = ['source', 'zodbsync_layer', 'is_root']
+        meta = {
+            key: value
+            for key, value in data.items()
+            if key not in exclude_keys
+        }
         fmt = mod_format(meta)
         if isinstance(fmt, str):
             fmt = fmt.encode('utf-8')
@@ -681,6 +691,12 @@ class ZODBSync:
                 raise
 
         pathinfo = self.fs_write(path, data)
+        path_layer = pathinfo['layers'][pathinfo['layeridx']]['ident']
+
+        current_layer = getattr(obj, 'zodbsync_layer', None)
+        if current_layer != path_layer:
+            with self.tm:
+                obj.zodbsync_layer = path_layer
 
         if not recurse:
             return
@@ -742,6 +758,11 @@ class ZODBSync:
 
         # fspath is None if the object is to be deleted
         fs_data = pathinfo['fspath'] and self.fs_parse(pathinfo['fspath'])
+
+        # extend fs_data with layerinfo
+        if fs_data:
+            fs_data['zodbsync_layer'] = pathinfo['layers'][
+                pathinfo['layeridx']]['ident']
 
         # Traverse to the object if it exists
         parent_obj = None
@@ -827,6 +848,7 @@ class ZODBSync:
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner,
                     force_default_owner=self.force_default_owner,
+                    layer=pathinfo['layers'][pathinfo['layeridx']]['ident']
                 )
             except Exception:
                 # If we do not want to get errors from missing
