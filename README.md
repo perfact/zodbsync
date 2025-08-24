@@ -352,6 +352,34 @@ resulting Data.FS content are reset. It is therefore possible to pre-apply
 changes that will be part of the next release, but if there is a change that is
 not yet merged upstream, the layer should not be updated until it is.
 
+### Layer Mechanics Diagram
+
+This diagram illustrates how ZODBSync handles layering of file system source trees and the main rules of object composition:
+
+```mermaid
+flowchart TB
+  subgraph Layers
+    direction TB
+    A["Base Layer (Bottom-most)<br/>workdir: system base<br/>source: package objects"]
+    B["Middle Layer(s)<br/>workdir/source: overlays (optional)"]
+    C["Custom Layer (Top-most)<br/>workdir: user-writable<br/>source: custom objects"]
+  end
+
+  Config["layers/<br/>(config dir, alphabetical order)"]
+  DataFS["Data.FS<br/>(effective object view)"]
+
+  Config --> A
+  A --> B
+  B --> C
+  C --> DataFS
+
+  note1["Rules:<br/>- Topmost __meta__ defines object<br/>- __frozen__ masks all below<br/>- __deleted__ deletes object from all below"] 
+  note1 --- DataFS
+
+  LayerInit["layer-init:<br/>Copies source to workdir<br/>(no Data.FS change)"] -.-> C
+  LayerUpdate["layer-update:<br/>Commits, resets workdir to source,<br/>updates Data.FS"] -.-> C
+```
+
 ## Compatibility
 This package replaces similar functionality that was previously found in
 `python-perfact` and `perfact-dbutils-zope2`. For backwards compatibility,
