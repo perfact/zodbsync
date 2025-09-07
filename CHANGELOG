@@ -1,3 +1,6 @@
+23.4.2
+  * Clean up literal_eval of DeprecationWarnings.
+
 23.4.1
   * Use lock for layer-update, avoiding interference from other operations
 

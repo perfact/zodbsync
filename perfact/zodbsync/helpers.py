@@ -161,12 +161,8 @@ def literal_eval(value):
     def _convert(node):
         if isinstance(node, ast.Expression):
             return _convert(node.body)
-        elif isinstance(node, ast.Str):
-            return node.s
-        elif isinstance(node, ast.Bytes):  # pragma: nocover_py2
-            return node.s
-        elif isinstance(node, ast.Num):
-            return node.n
+        elif isinstance(node, ast.Constant):
+            return node.value
         elif isinstance(node, ast.Tuple):
             return tuple(map(_convert, node.elts))
         elif isinstance(node, ast.List):
@@ -174,8 +170,6 @@ def literal_eval(value):
         elif isinstance(node, ast.Dict):
             return dict((_convert(k), _convert(v)) for k, v
                         in zip(node.keys, node.values))
-        elif isinstance(node, ast.NameConstant):
-            return node.value
         elif isinstance(node, ast.BinOp):
             return bin_ops[type(node.op)](
                 _convert(node.left),
