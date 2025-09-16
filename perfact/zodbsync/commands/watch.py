@@ -279,7 +279,6 @@ class Watch(SubCommand):
         """
         Signal handler
         """
-        self.logger.info('Caught signal, exiting...')
         self.unregister_signals()
         self.exit.set()
 
