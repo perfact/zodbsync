@@ -299,18 +299,23 @@ class SubCommand(Namespace):
                         dryrun=False,
                     )
                 raise
-            
+
             if not self.args.dry_run:
                 is_ancestor = (
-                    self.gitcmd_try("merge-base", "--is-ancestor", self.orig_commit, "HEAD") == 0
+                    self.gitcmd_try(
+                        "merge-base", "--is-ancestor", self.orig_commit, "HEAD"
+                    ) == 0
                 )
                 if is_ancestor:
                     merge_commits = self.gitcmd_output(
-                        "log", "--oneline", "--min-parents=2", f"{self.orig_commit}..HEAD"
+                        "log", "--oneline", "--min-parents=2",
+                        f"{self.orig_commit}..HEAD"
                     ).strip()
                     if not merge_commits:
-                        head_commit = self.gitcmd_output("rev-parse", "HEAD").strip()
-                        print(f"{self.orig_commit}..{head_commit}")
+                        head_commit = self.gitcmd_output(
+                            "rev-parse", "HEAD"
+                        ).strip()
+                        self.logger.info(f"{self.orig_commit}..{head_commit}")
 
         return wrapper
 
