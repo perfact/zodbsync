@@ -437,3 +437,5 @@ class Watch(SubCommand):
             self.step()
             # a wait that is interrupted immediately if exit.set() is called
             self.exit.wait(interval)
+
+        self.logger.info('Exited due to signal')
