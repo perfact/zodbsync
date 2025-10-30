@@ -1,3 +1,6 @@
+25.1.0
+  * Explain publishing steps in README
+
 25.0.0
   * Clean up literal_eval of DeprecationWarnings.
   * Use --no-renames for path detection in layer-update
