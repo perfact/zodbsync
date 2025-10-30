@@ -1,5 +1,7 @@
-23.4.2
+25.0.0
   * Clean up literal_eval of DeprecationWarnings.
+  * Use --no-renames for path detection in layer-update
+  * Write layer-source of object into Data.FS
 
 23.4.1
   * Use lock for layer-update, avoiding interference from other operations
