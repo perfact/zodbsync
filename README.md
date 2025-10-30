@@ -19,7 +19,11 @@ Viktor Dick <viktor.dick@perfact.de>
 In general, the PyPi access token is personalized, so publishing can only be
 done by one person (currently Viktor). Scratch tokens are stored in the PerFact
 vault so this can be changed in the case of an emergency.
-See https://packaging.python.org/en/latest/tutorials/packaging-projects/:
+
+See https://packaging.python.org/en/latest/tutorials/packaging-projects/.
+
+The username `__token__` and the password from pypi needs to be stored to
+`~/.pypirc`. Then:
 
     virtualenv venv
     venv/bin/pip install build twine
