@@ -56,7 +56,7 @@ class LayerUpdate(SubCommand):
         sp.run(cmd, check=True)
         changes = [
             line[3:] for line in sp.check_output(
-                ['git', 'status', '--porcelain', '-u'],
+                ['git', 'status', '--porcelain', '-u', '--no-renames'],
                 cwd=target,
                 text=True,
             ).split('\n')
