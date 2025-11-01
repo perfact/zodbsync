@@ -466,7 +466,7 @@ class ZODBSync:
         old_data = self.fs_read(pathinfo['fspath'])
 
         # Build object
-        exclude_keys = ['source', 'zodbsync_layer', 'is_root']
+        exclude_keys = ['source', 'zodbsync_layer']
         meta = {
             key: value
             for key, value in data.items()
