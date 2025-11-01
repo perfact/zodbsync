@@ -1,5 +1,8 @@
 25.1.0
   * Explain publishing steps in README
+  * Remove logging from signal handler
+  * Provide better error message when working with empty layer
+  * Re-include is_root, fixing a regression in 25.0.0
 
 25.0.0
   * Clean up literal_eval of DeprecationWarnings.
