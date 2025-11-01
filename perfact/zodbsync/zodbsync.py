@@ -798,7 +798,16 @@ class ZODBSync:
             if obj_id == 'acl_users' and path.startswith('/acl_users'):
                 return
             self.logger.info('Removing object ' + path)
-            parent_obj.manage_delObjects(ids=[obj_id])
+            try:
+                parent_obj.manage_delObjects(ids=[obj_id])
+            except AttributeError as e:
+                msg = (
+                    f'\n\nFailed to remove object {path}, '
+                    f'original error was {e}.\n'
+                    f'Perhaps your layer workdir is empty?\n'
+                    f'Possible solution: Execute layer-init or layer-update.\n'
+                )
+                raise AssertionError(msg) from e
             return
 
         if 'unsupported' in fs_data:
