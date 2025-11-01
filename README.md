@@ -15,6 +15,21 @@ Viktor Dick <viktor.dick@perfact.de>
 
     git clone https://github.com/perfact/zodbsync.git
 
+## Building and publishing
+In general, the PyPi access token is personalized, so publishing can only be
+done by one person (currently Viktor). Scratch tokens are stored in the PerFact
+vault so this can be changed in the case of an emergency.
+
+See https://packaging.python.org/en/latest/tutorials/packaging-projects/.
+
+The username `__token__` and the password from pypi needs to be stored to
+`~/.pypirc`. Then:
+
+    virtualenv venv
+    venv/bin/pip install build twine
+    venv/bin/python -m build
+    venv/bin/twine upload dist/*
+
 ## Installation
 
 The package should be installed using `pip` in the same virt-env as `zope`, p.e.
