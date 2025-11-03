@@ -717,7 +717,8 @@ class TestSync():
 
     def test_ff(self):
         """
-        Change the title on a second branch, perform a fast-forward merge to it,
+        Change the title on a second branch,
+        perform a fast-forward merge to it,
         and verify that the change is correctly applied.
         """
         self.gitrun('checkout', '-b', 'second')
@@ -736,7 +737,6 @@ class TestSync():
         self.gitrun('checkout', 'autotest')
         self.run('ff', 'second')
         assert self.app.index_html.title == 'test-ff'
-
 
     def test_reset(self):
         """

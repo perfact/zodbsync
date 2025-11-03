@@ -4,7 +4,9 @@ from ..subcommand import SubCommand
 
 
 class FF(SubCommand):
-    '''Perform a fast-forward merge to the target commit and apply changed paths'''
+    '''
+    Perform a fast-forward merge to the target commit and apply changed paths
+    '''
     @staticmethod
     def add_args(parser):
         parser.add_argument(
