@@ -1,3 +1,7 @@
+25.2.0
+  * Add command "zodbsync ff"
+  * Print commit range
+
 25.1.0
   * Explain publishing steps in README
   * Remove logging from signal handler
