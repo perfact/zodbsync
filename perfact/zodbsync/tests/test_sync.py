@@ -715,6 +715,29 @@ class TestSync():
                 tofind.remove(obj['path'])
         assert tofind == []
 
+    def test_ff(self):
+        """
+        Change the title on a second branch,
+        perform a fast-forward merge to it,
+        and verify that the change is correctly applied.
+        """
+        self.gitrun('checkout', '-b', 'second')
+        path = self.repo.path + '/__root__/index_html/__meta__'
+        with open(path) as f:
+            lines = f.readlines()
+        lines = [
+            line if "('title', " not in line
+            else "    ('title', 'test-ff'),\n"
+            for line in lines
+        ]
+        with open(path, 'w') as f:
+            f.writelines(lines)
+        self.gitrun('commit', '-a', '-m', 'Change title via ff')
+
+        self.gitrun('checkout', 'autotest')
+        self.run('ff', 'second')
+        assert self.app.index_html.title == 'test-ff'
+
     def test_reset(self):
         """
         Change the title of index_html in a second branch, reset to it and
