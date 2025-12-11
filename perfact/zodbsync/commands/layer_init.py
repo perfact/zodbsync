@@ -32,18 +32,19 @@ class LayerInit(SubCommand):
             layer = layers[ident]
             source = layer['source']
             target = layer['workdir']
-            if os.path.isdir(source):
-                sp.run(
-                    ['rsync', '-a', '--delete-during', f'{source}/__root__/',
-                     f'{target}/__root__/'],
-                    check=True,
-                )
-            else:
-                # TAR file
-                sp.run(
-                    ['tar', 'xf', source, '-C', f'{target}/__root__/',
-                     '--recursive-unlink'],
-                    check=True,
-                )
+            for entry in os.listdir(source):
+                if entry.startswith('.'):
+                    continue
+                srcentrypath = f'{source}/{entry}'
+                if os.path.isdir(srcentrypath):
+                    # p.e. __root__ or __schema__ as folders
+                    cmd = ['rsync', '-a', '--delete-during',
+                           f'{srcentrypath}/', f'{target}/{entry}/']
+                else:
+                    # p.e. __root__.tar.gz -> Unpack to __root__/
+                    basename = entry.split('.')[0]
+                    cmd = ['tar', 'xf', srcentrypath, '-C',
+                           f'{target}/{basename}/', '--recursive-unlink']
+                sp.run(cmd, check=True)
             sp.run(['git', 'add', '.'], cwd=target)
             sp.run(['git', 'commit', '-m', 'zodbsync layer-init'], cwd=target)

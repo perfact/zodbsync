@@ -322,9 +322,10 @@ already one.
 
 ### `source`
 This path provides the objects of a layer, possibly read-only to the user
-executing `zodbsync` and provided by a Debian package or similar. Instead of a
-directory, this can also point to a (possibly compressed) tar archive, but this
-then needs to contain the `.checksums` file.
+executing `zodbsync` and provided by a Debian package or similar. Must be a
+directory containing a `__root__` subdirectory or `__root__.tar*` file.
+Additionally, it can contain further folders or compressed files that will also
+be copied over or unpacked to the workdir.
 
 An implicit fallback layer is added at the top where `workdir` is set to the
 `base_dir` provided in the main config for compatibility with a non-layered
