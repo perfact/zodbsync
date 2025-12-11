@@ -3,6 +3,7 @@
 import sys
 import subprocess
 import os
+import shutil
 
 import filelock
 import json
@@ -101,6 +102,35 @@ class SubCommand(Namespace):
             )
 
         return data_fs_path, filesystem_path
+
+    @staticmethod
+    def unpack_source(src, tgt):
+        """
+        Unpack files from source to target.
+        Each non-hidden folder in src is copied over, each non-hidden file is
+        unpacked, both removing superfluous files in the target.
+        """
+        targetitems = []
+        for entry in os.listdir(src):
+            if entry.startswith('.'):
+                continue
+            path = f'{src}/{entry}'
+            if os.path.isdir(path):
+                # p.e. __root__ or __schema__ as folders
+                targetitems.append(entry)
+                cmd = ['rsync', '-a', '--delete-during',
+                       f'{path}/', f'{tgt}/{entry}/']
+            else:
+                # p.e. __root__.tar.gz -> Unpack to __root__/
+                basename = entry.split('.')[0]
+                targetitems.append(basename)
+                cmd = ['tar', 'xf', path, '-C', f'{tgt}/{basename}/',
+                       '--recursive-unlink']
+            subprocess.run(cmd, check=True)
+        for entry in os.listdir(tgt):
+            if entry.startswith('.') or entry in targetitems:
+                continue
+            shutil.rmtree(f"{tgt}/{entry}")
 
     def _branch_info(self):
         """Returns currently checked out branch as well as where each branch
