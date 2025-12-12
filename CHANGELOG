@@ -1,3 +1,9 @@
+25.3.0
+  * Unpack or copy over additional folders besides __root__ in layer-update
+  * Allow switching over to using tars for layer source without changing the
+    config, expecting a __root__.tar* file inside the source instead of the
+    source directly pointing towards a tar file.
+
 25.2.0
   * Add command "zodbsync ff"
   * Print commit range

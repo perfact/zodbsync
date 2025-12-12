@@ -47,13 +47,7 @@ class LayerUpdate(SubCommand):
         target = layer['workdir']
         msg = self.args.message
         precommit = self.commit_all(target, f'{msg} (pre)')
-        if os.path.isdir(source):
-            cmd = ['rsync', '-a', '--delete-during', f'{source}/__root__/',
-                   f'{target}/__root__/']
-        else:
-            cmd = ['tar', 'xf', source, '-C', f'{target}/__root__/',
-                   '--recursive-unlink']
-        sp.run(cmd, check=True)
+        self.unpack_source(source, target)
         changes = [
             line[3:] for line in sp.check_output(
                 ['git', 'status', '--porcelain', '-u', '--no-renames'],

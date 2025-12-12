@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import os
 import subprocess as sp
 
 from ..subcommand import SubCommand
@@ -32,18 +31,6 @@ class LayerInit(SubCommand):
             layer = layers[ident]
             source = layer['source']
             target = layer['workdir']
-            if os.path.isdir(source):
-                sp.run(
-                    ['rsync', '-a', '--delete-during', f'{source}/__root__/',
-                     f'{target}/__root__/'],
-                    check=True,
-                )
-            else:
-                # TAR file
-                sp.run(
-                    ['tar', 'xf', source, '-C', f'{target}/__root__/',
-                     '--recursive-unlink'],
-                    check=True,
-                )
+            self.unpack_source(source, target)
             sp.run(['git', 'add', '.'], cwd=target)
             sp.run(['git', 'commit', '-m', 'zodbsync layer-init'], cwd=target)

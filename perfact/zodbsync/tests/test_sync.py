@@ -1661,7 +1661,7 @@ class TestSync():
             assert 'NewFolder2' not in self.app.objectIds()
 
     @contextmanager
-    def addlayer(self, seqnum='00', tarsource=False):
+    def addlayer(self, seqnum='00'):
         """
         Create a temp directory and add a config that uses this as additional
         code layer.
@@ -1678,18 +1678,12 @@ class TestSync():
                             'zodbsync-tester@perfact.de'], cwd=workdir)
             subprocess.run(['git', 'config', 'user.name',
                             'ZODBSync tester'], cwd=workdir)
-            os.makedirs(f'{layer}/source/__root__')
-            with open(f'{layer}/source.tar', 'w'):
-                pass
-            if tarsource:
-                source = f'{layer}/source.tar'
-            else:
-                source = f'{layer}/source'
+            source = f"{layer}/source"
+            os.makedirs(f'{source}/__root__')
             with open(path, 'w') as f:
                 f.write(f'workdir = "{layer}/workdir"\n')
                 f.write(f'source = "{source}"\n')
-                f.write('ident = "{}"\n'.format(name))
-            os.mkdir(os.path.join(layer, '__root__'))
+                f.write(f'ident = "{name}"\n')
             # Force re-reading config
             if hasattr(self, 'runner'):
                 del self.runner
@@ -2026,8 +2020,7 @@ class TestSync():
 
     def test_layer_update(self, caplog):
         """
-        Set up a layer, initialize its checksum file and register it. Change
-        something in the layer, recompute the checksum file and use
+        Set up a layer, and register it. Change something in the layer and use
         layer-update to play back the changed object.
         """
         with self.runner.sync.tm:
@@ -2251,13 +2244,14 @@ class TestSync():
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct['OFSP'].manage_addFile(id='blob')
-        with self.addlayer(tarsource=True) as layer:
+        with self.addlayer() as layer:
             self.run('record', '/blob')
             subprocess.run(
-                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                ['tar', 'cf', f'{layer}/source/__root__.tar', 'blob'],
                 cwd=f'{self.repo.path}/__root__',
                 check=True,
             )
+            os.rmdir(f"{layer}/source/__root__")
             self.run('layer-init', '*')
             assert os.listdir(f'{layer}/workdir/__root__') == ['blob']
             # Record to remove from fallback layer
@@ -2271,7 +2265,7 @@ class TestSync():
             with open(f'{layer}/blob/__source__.txt', 'w') as f:
                 f.write('changed')
             subprocess.run(
-                ['tar', 'cf', f'{layer}/source.tar', 'blob'],
+                ['tar', 'cf', f'{layer}/source/__root__.tar', 'blob'],
                 cwd=layer,
                 check=True,
             )
