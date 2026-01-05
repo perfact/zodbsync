@@ -1,3 +1,7 @@
+25.3.1
+  * Create target folder before extracting tar files
+  * Work around Debian sometimes keeping around files
+
 25.3.0
   * Unpack or copy over additional folders besides __root__ in layer-update
   * Allow switching over to using tars for layer source without changing the
