@@ -111,12 +111,19 @@ class SubCommand(Namespace):
         unpacked, both removing superfluous files in the target.
         """
         targetitems = []
-        for entry in os.listdir(src):
+        srcitems = os.listdir(src)
+        for entry in srcitems:
             if entry.startswith('.'):
                 continue
             path = f'{src}/{entry}'
             if os.path.isdir(path):
                 # p.e. __root__ or __schema__ as folders
+                # Sometimes, there might be some residual folder with .dpkg-new
+                # files or similar, even though this is now supplied as file.
+                other = [other for other in srcitems
+                         if other.startswith(entry) and other != entry]
+                if other:
+                    continue
                 targetitems.append(entry)
                 cmd = ['rsync', '-a', '--delete-during',
                        f'{path}/', f'{tgt}/{entry}/']
@@ -124,6 +131,7 @@ class SubCommand(Namespace):
                 # p.e. __root__.tar.gz -> Unpack to __root__/
                 basename = entry.split('.')[0]
                 targetitems.append(basename)
+                os.makedirs(f'{tgt}/{basename}', exist_ok=True)
                 cmd = ['tar', 'xf', path, '-C', f'{tgt}/{basename}/',
                        '--recursive-unlink']
             subprocess.run(cmd, check=True)
