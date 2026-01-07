@@ -353,7 +353,14 @@ class SubCommand(Namespace):
                         head_commit = self.gitcmd_output(
                             "rev-parse", "HEAD"
                         ).strip()
-                        self.logger.info(f"{self.orig_commit}..{head_commit}")
+                        cmd = (
+                           f'zodbsync exec "git revert '
+                           f'{self.orig_commit}..{head_commit}"'
+                        )
+                        self.logger.info(
+                                "Prepared Command for Rollback:\n%s",
+                                cmd,
+                        )
 
         return wrapper
 
