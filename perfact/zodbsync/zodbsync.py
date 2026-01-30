@@ -79,7 +79,7 @@ def mod_read(obj=None, onerrorstop=False, default_owner=None,
 
     if meta_type not in known_types:
         if onerrorstop:
-            assert False, "Unsupported type: %s" % meta_type
+            raise AssertionError(f"Unsupported type: {meta_type}")
         else:
             meta['unsupported'] = meta_type
             return meta
@@ -139,7 +139,8 @@ def mod_write(data, parent=None, obj_id=None, override=False, root=None,
     temp_obj = None
     # ID exists? Check for type
     if obj and obj.meta_type != meta_type:
-        assert override, "Type mismatch for object " + repr(data)
+        if not override:
+            raise AssertionError(f"Type mismatch for object {data!r}")
         contents = obj_contents(obj)
         if contents:
             # Rename so we can cut+paste the children
@@ -322,10 +323,11 @@ class ZODBSync:
         # Log in as a manager
         uf = self.app.acl_users
         user = uf.getUser(self.manager_user).__of__(uf)
-        assert user is not None, (
-            'User %s is not available in database. Perhaps you need to set'
-            ' create_manager_user in config.py?' % self.manager_user
-        )
+        if user is None:
+            raise AssertionError(
+                f'User {self.manager_user} is not available in database.'
+                ' Perhaps you need to set create_manager_user in config.py?'
+            )
 
         self.logger.info('Using user %s' % self.manager_user)
         AccessControl.SecurityManagement.newSecurityManager(None, user)
@@ -442,7 +444,10 @@ class ZODBSync:
                 if os.path.exists(os.path.join(fspath, entry, '__meta__')):
                     children.add(entry)
         missing = candidates - children
-        assert not missing, f"No __meta__ file on any layer: {path}/{children}"
+        if missing:
+            raise AssertionError(
+                f"No __meta__ file on any layer: {path}/{children}"
+            )
 
         result['children'] = sorted(children)
         return result
@@ -636,11 +641,13 @@ class ZODBSync:
         if data is None:
             data = self.fs_read(fspath)
 
-        assert 'meta' in data, 'Missing meta file: ' + fspath
+        if 'meta' not in data:
+            raise AssertionError(f"Missing meta file: {fspath}")
         src_fnames = data.get('src_fnames', [])
-        assert len(src_fnames) <= 1, (
-            "Multiple source files in " + fspath
-        )
+        if len(src_fnames) > 1:
+            raise AssertionError(
+                f"Multiple source files in {fspath}"
+            )
         result = dict(literal_eval(data['meta']))
         if src_fnames:
             src_fname = src_fnames[0]

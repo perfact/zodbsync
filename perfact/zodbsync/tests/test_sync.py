@@ -2340,5 +2340,16 @@ class TestSync():
         os.mkdir(f'{root}/newobj')
         with open(f'{root}/newobj/__source__.py', 'w'):
             pass
-        with pytest.raises(Exception):
+        with pytest.raises(AssertionError):
             self.run('playback', '/')
+
+    def test_fail_when_meta_missing_layers(self):
+        """
+        Check that playing back a structure where no layer has a meta file for
+        a given folder does not work (multi-layer).
+        """
+        with self.addlayer() as layer:
+            os.mkdir(f'{self.repo.path}/__root__/newfolder')
+            os.mkdir(f'{layer}/workdir/__root__/newfolder')
+            with pytest.raises(AssertionError):
+                self.run('playback', '/')
