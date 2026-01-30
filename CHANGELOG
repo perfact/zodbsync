@@ -1,3 +1,6 @@
+26.1.0
+  * Fail playback if a folder has no meta on any layer
+
 26.0.0
   * Improve output descriptiveness
 
