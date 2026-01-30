@@ -424,7 +424,8 @@ class ZODBSync:
             'layeridx': None,
         }
         path = path.lstrip('/')
-        children = set()
+        candidates = set()  # subfolders on any layer
+        children = set()  # those with a __meta__ file on a some layer
         for idx, layer in enumerate(layers):
             fspath = os.path.join(layer['workdir'], self.site, path)
             if not os.path.isdir(fspath):
@@ -437,8 +438,11 @@ class ZODBSync:
             for entry in os.listdir(fspath):
                 if entry in children or entry.startswith('__'):
                     continue
+                candidates.add(entry)
                 if os.path.exists(os.path.join(fspath, entry, '__meta__')):
                     children.add(entry)
+        missing = candidates - children
+        assert not missing, f"No __meta__ file on any layer: {path}/{children}"
 
         result['children'] = sorted(children)
         return result
