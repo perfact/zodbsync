@@ -7,13 +7,16 @@ from ..subcommand import SubCommand
 
 class WithLock(SubCommand):
     """Execute a shell command by first grabbing the lock"""
-    subcommand = 'with-lock'
+
+    subcommand = "with-lock"
     connect = False
 
     @staticmethod
     def add_args(parser):
         parser.add_argument(
-            'cmd', type=str, help="Shell-command to be executed",
+            "cmd",
+            type=str,
+            help="Shell-command to be executed",
         )
 
     @SubCommand.with_lock

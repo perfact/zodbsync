@@ -20,11 +20,13 @@ from ..zodbsync import mod_read
 class TreeOutdatedException(Exception):
     """Exception which is raised if the internal tree structure
     is not matching the actual Filesystem anymore"""
+
     pass
 
 
 class Watch(SubCommand):
     """Periodically check for changes and record them"""
+
     # Connects to ZEO, builds a mirror of the tree structure of the objects,
     # periodically checks for new transactions, looks directly into the Data.FS
     # to get the object IDs affected by those transactions, and updates its
@@ -33,10 +35,10 @@ class Watch(SubCommand):
     @staticmethod
     def add_args(parser):
         parser.add_argument(
-            '--init',
-            action='store_true',
+            "--init",
+            action="store_true",
             default=False,
-            help='Internal mode for initialization subprocess',
+            help="Internal mode for initialization subprocess",
         )
 
     def __init__(self, **kw):
@@ -68,23 +70,23 @@ class Watch(SubCommand):
         self.additional_oids = {}
 
     def _set_last_visible_txn(self):
-        ''' Set self.last_visible_txn to a transaction ID such that every
+        """Set self.last_visible_txn to a transaction ID such that every
         effect up to this ID is visible in the current transaction and every
         effect for transaction IDs above this are not yet visible.
-        '''
+        """
         self.last_visible_txn = self.app._p_jar._db.lastTransaction()
 
     def _store_last_visible_txn(self):
-        '''
+        """
         Store last visible transaction ID to disk if it changed.
-        '''
+        """
         if self.last_visible_txn != self.txnid_on_disk:
             self.txnid_on_disk = self.last_visible_txn
             self.sync.txn_write(base64.b64encode(self.last_visible_txn))
 
-    def _init_tree(self, obj, parent_oid=None, path='/'):
-        ''' Insert obj and everything below into self.object_tree. '''
-        if not hasattr(obj, '_p_oid'):
+    def _init_tree(self, obj, parent_oid=None, path="/"):
+        """Insert obj and everything below into self.object_tree."""
+        if not hasattr(obj, "_p_oid"):
             # objects that have no oid are ignored
             return None
         # In some Python/Zope versions, _p_oid is a zodbpickle.binary, which is
@@ -101,23 +103,21 @@ class Watch(SubCommand):
             self.last_report = now
 
         self.object_tree[oid] = {
-            'parent': parent_oid,
-            'children': children,
-            'path': path,
+            "parent": parent_oid,
+            "children": children,
+            "path": path,
         }
 
         # If it turns out there are other objects needing such a hack, this
         # should probably be moved to object_types
-        if obj.meta_type == 'User Folder':
+        if obj.meta_type == "User Folder":
             self.additional_oids[bytes(obj.data._p_oid)] = oid
             for user in obj.getUsers():
                 self.additional_oids[bytes(user._p_oid)] = oid
 
         for child_id, child_obj in sorted(obj.objectItems()):
             child_oid = self._init_tree(
-                obj=child_obj,
-                parent_oid=oid,
-                path=path+child_id+'/'
+                obj=child_obj, parent_oid=oid, path=path + child_id + "/"
             )
             if child_oid:
                 children[child_oid] = child_id
@@ -159,8 +159,7 @@ class Watch(SubCommand):
                 # * plen: the size of the pickle data, which comes after the
                 #   header
                 dlen = dhead.recordlen()
-                oid = self.additional_oids.get(bytes(dhead.oid),
-                                               bytes(dhead.oid))
+                oid = self.additional_oids.get(bytes(dhead.oid), bytes(dhead.oid))
                 self.changed_oids.add(oid)
                 pos = pos + dlen
 
@@ -171,40 +170,37 @@ class Watch(SubCommand):
         todo = [oid]
         while todo:
             oid = todo.pop()
-            todo.extend(self.object_tree[oid]['children'])
+            todo.extend(self.object_tree[oid]["children"])
             del self.object_tree[oid]
 
     def _record_object(self, oid):
-        '''
+        """
         Store data of an object at the path stored in our object tree.
-        '''
-        path = self.object_tree[oid]['path']
-        self.logger.info('Recording %s' % path)
-        self.logger.debug('OID: ' + repr(oid))
+        """
+        path = self.object_tree[oid]["path"]
+        self.logger.info("Recording %s" % path)
+        self.logger.debug("OID: " + repr(oid))
 
         obj = self.app._p_jar[oid]
-        data = mod_read(
-            obj=obj,
-            default_owner=self.sync.default_owner
-        )
+        data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
         pathinfo = self.sync.fs_write(path=path, data=data)
-        path_layer = pathinfo['layers'][pathinfo['layeridx']]['ident']
-        current_layer = getattr(obj, 'zodbsync_layer', None)
+        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+        current_layer = getattr(obj, "zodbsync_layer", None)
         if current_layer != path_layer:
             with self.sync.tm:
                 obj.zodbsync_layer = path_layer
 
     def _update_objects(self):
-        '''
+        """
         Run through the changed oids and update the tree and the file system
         accordingly.
-        '''
+        """
 
         if not len(self.changed_oids):
             return
-        self.logger.info('Found %s changed objects' % len(self.changed_oids))
-        self.logger.debug('OIDs: ' + str(sorted(self.changed_oids)))
+        self.logger.info("Found %s changed objects" % len(self.changed_oids))
+        self.logger.debug("OIDs: " + str(sorted(self.changed_oids)))
 
         while len(self.changed_oids):
             # not all oids are part of our object tree yet, so we have to
@@ -229,51 +225,51 @@ class Watch(SubCommand):
         self.sync.fs_prune_empty_dirs()
 
     def _update_children(self, oid):
-        '''
+        """
         Check the current children of an object and compare with the stored
         children. Remove any superfluous children (oid not found or wrong id)
         and record any new children recursively.
-        '''
+        """
         obj = self.app._p_jar[oid]
         node = self.object_tree[oid]
 
         newchildren = {}
         for child_id, child_obj in obj.objectItems():
-            if not hasattr(child_obj, '_p_oid'):
+            if not hasattr(child_obj, "_p_oid"):
                 continue
             newchildren[bytes(child_obj._p_oid)] = child_id
 
         # Go through old children and check if some are to be deleted
-        for child_oid, child_id in list(node['children'].items()):
+        for child_oid, child_id in list(node["children"].items()):
             if newchildren.get(child_oid) == child_id:
                 continue
             self._remove_subtree(child_oid)
-            del node['children'][child_oid]
+            del node["children"][child_oid]
 
-        pathinfo = self.sync.fs_pathinfo(node['path'])
+        pathinfo = self.sync.fs_pathinfo(node["path"])
         self.sync.fs_prune(pathinfo, newchildren.values())
 
         # Add new children to changed_oids so they will also be recorded
         for child_oid, child_id in list(newchildren.items()):
-            if child_oid in node['children']:
+            if child_oid in node["children"]:
                 continue
-            newpath = node['path']+child_id+'/'
+            newpath = node["path"] + child_id + "/"
 
             if child_oid in self.object_tree:
                 # The parent changed. Remove from there. Since the old parent
                 # will also be changed, the call to fs_prune there will take
                 # care of removing everything on the FS.
-                old_parent = self.object_tree[child_oid]['parent']
-                del self.object_tree[old_parent]['children'][child_oid]
+                old_parent = self.object_tree[child_oid]["parent"]
+                del self.object_tree[old_parent]["children"][child_oid]
                 self._remove_subtree(child_oid)
 
             self.changed_oids.add(child_oid)
             self.object_tree[child_oid] = {
-                'parent': oid,
-                'children': {},
-                'path': newpath,
+                "parent": oid,
+                "children": {},
+                "path": newpath,
             }
-            node['children'][child_oid] = child_id
+            node["children"][child_oid] = child_id
 
     def quit(self, signo, _frame):
         """
@@ -283,12 +279,12 @@ class Watch(SubCommand):
         self.exit.set()
 
     def register_signals(self):
-        for sig in ('TERM', 'HUP', 'INT'):
-            signal.signal(getattr(signal, 'SIG'+sig), self.quit)
+        for sig in ("TERM", "HUP", "INT"):
+            signal.signal(getattr(signal, "SIG" + sig), self.quit)
 
     def unregister_signals(self):
-        for sig in ('TERM', 'HUP', 'INT'):
-            signal.signal(getattr(signal, 'SIG'+sig), signal.SIG_DFL)
+        for sig in ("TERM", "HUP", "INT"):
+            signal.signal(getattr(signal, "SIG" + sig), signal.SIG_DFL)
 
     def setup(self):
         """
@@ -328,22 +324,17 @@ class Watch(SubCommand):
 
         if self.txnid_on_disk is None:
             # no txnid found, record everything
-            paths = ['/']
+            paths = ["/"]
         else:
             self.txnid_on_disk = base64.b64decode(self.txnid_on_disk)
             txn_start = increment_txnid(self.txnid_on_disk)
 
             # obtain all object ids affected by transactions between (the one
             # in last_txn + 1) and (the currently visible one) (incl.)
-            self._read_changed_oids(
-                txn_start=txn_start,
-                txn_stop=self.last_visible_txn
-            )
+            self._read_changed_oids(txn_start=txn_start, txn_stop=self.last_visible_txn)
             paths = []
             while len(self.changed_oids):
-                next_oids = self.changed_oids.intersection(
-                    self.object_tree.keys()
-                )
+                next_oids = self.changed_oids.intersection(self.object_tree.keys())
                 if not len(next_oids):
                     # The remaining oids are not reachable by any of the
                     # currently existing nodes. This can happen during
@@ -352,9 +343,7 @@ class Watch(SubCommand):
                     # affected objects are collected for earlier transactions,
                     # but they might no longer exist
                     break
-                paths.extend(
-                    [self.object_tree[oid]['path'] for oid in next_oids]
-                )
+                paths.extend([self.object_tree[oid]["path"] for oid in next_oids])
                 self.changed_oids.difference_update(next_oids)
 
         self.sync.record(paths)
@@ -376,25 +365,31 @@ class Watch(SubCommand):
         long time and uses much less memory. Therefore, we use a separate
         process.
         """
-        cmd = [sys.executable, sys.argv[0], '--config', self.args.config,
-               'watch', '--init']
+        cmd = [
+            sys.executable,
+            sys.argv[0],
+            "--config",
+            self.args.config,
+            "watch",
+            "--init",
+        ]
         data = pickle.loads(subprocess.check_output(cmd))
-        self.object_tree = data['tree']
-        self.additional_oids = data['add_oids']
-        self.last_visible_txn = self.txnid_on_disk = data['txn']
+        self.object_tree = data["tree"]
+        self.additional_oids = data["add_oids"]
+        self.last_visible_txn = self.txnid_on_disk = data["txn"]
 
     def dump_setup_data(self, stream=sys.stdout):
         """
         Print pickled setup data for usage in main process.
         """
         data = {
-            'tree': self.object_tree,
-            'add_oids': self.additional_oids,
-            'txn': self.last_visible_txn,
+            "tree": self.object_tree,
+            "add_oids": self.additional_oids,
+            "txn": self.last_visible_txn,
         }
         # write binary to stdout - in Py3, this requires using
         # sys.stdout.buffer, in Py2 sys.stdout itself is used.
-        pickle.dump(data, file=getattr(stream, 'buffer', stream))
+        pickle.dump(data, file=getattr(stream, "buffer", stream))
 
     def step(self):
         """Read new transactions, update the object tree and record all
@@ -418,15 +413,13 @@ class Watch(SubCommand):
 
             self._store_last_visible_txn()
         except TreeOutdatedException:
-            self.logger.info(
-                'Exiting due to inconsistencies in filesystem'
-            )
+            self.logger.info("Exiting due to inconsistencies in filesystem")
             self.exit.set()
         finally:
             self.release_lock()
 
     def run(self, interval=10):
-        """ Setup and run in a loop. """
+        """Setup and run in a loop."""
         if self.args.init:
             self.setup()
             self.dump_setup_data()
@@ -438,4 +431,4 @@ class Watch(SubCommand):
             # a wait that is interrupted immediately if exit.set() is called
             self.exit.wait(interval)
 
-        self.logger.info('Exited due to signal')
+        self.logger.info("Exited due to signal")

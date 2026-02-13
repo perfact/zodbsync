@@ -35,36 +35,54 @@ class Runner(object):
     """
     Parses arguments to select the correct SubCommand subclass.
     """
-    commands = [Record, Playback, Watch, Pick, Upload, WithLock, Reset, Exec,
-                Reformat, Checkout, Freeze, LayerInit, LayerUpdate, FF]
+
+    commands = [
+        Record,
+        Playback,
+        Watch,
+        Pick,
+        Upload,
+        WithLock,
+        Reset,
+        Exec,
+        Reformat,
+        Checkout,
+        Freeze,
+        LayerInit,
+        LayerUpdate,
+        FF,
+    ]
 
     def __init__(self):
         """
         Set up the argument parser with the possible subcommands
         """
-        parser = argparse.ArgumentParser(description='''
+        parser = argparse.ArgumentParser(description="""
             Tool to sync objects between a ZODB and a git-controlled folder on
             the file system.
-        ''')
-        default_configfile = '/etc/perfact/modsync/zodb.py'
+        """)
+        default_configfile = "/etc/perfact/modsync/zodb.py"
         parser.add_argument(
-            '--config', '-c', type=str,
-            help='Path to config (default: %s)' % default_configfile,
-            default=default_configfile
+            "--config",
+            "-c",
+            type=str,
+            help="Path to config (default: %s)" % default_configfile,
+            default=default_configfile,
         )
         parser.add_argument(
-            '--no-lock', action='store_true',
-            help='Do not acquire lock. Only use inside a with-lock wrapper.',
+            "--no-lock",
+            action="store_true",
+            help="Do not acquire lock. Only use inside a with-lock wrapper.",
         )
-        if 'perfact.loggingtools' in sys.modules:
-            perfact.loggingtools.addArgs(parser, name='ZODBSync')
+        if "perfact.loggingtools" in sys.modules:
+            perfact.loggingtools.addArgs(parser, name="ZODBSync")
 
         # Add all available SubCommand classes as sub-command runners, using
         # either the property "subcommand" or the name of the class.
         # The chosen subcommand class will be available as args.command
         subs = parser.add_subparsers()
         for cls in self.commands:
-            name = getattr(cls, 'subcommand', cls.__name__.lower())
+            name = getattr(cls, "subcommand", cls.__name__.lower())
             subparser = subs.add_parser(
                 name,
                 help=cls.__doc__,
@@ -92,18 +110,16 @@ class Runner(object):
         args = self.parser.parse_args(argv if argv else None)
         self.args = args
 
-        if 'perfact.loggingtools' in sys.modules:
-            logger = perfact.loggingtools.createLogger(
-                args=args, name='ZODBSync'
-            )
+        if "perfact.loggingtools" in sys.modules:
+            logger = perfact.loggingtools.createLogger(args=args, name="ZODBSync")
         else:
-            logger = logging.getLogger('ZODBSync')
+            logger = logging.getLogger("ZODBSync")
             logger.setLevel(logging.INFO)
             logger.addHandler(logging.StreamHandler())
             logger.propagate = True
 
         self.logger = logger
-        if getattr(args.command, 'use_config', True):
+        if getattr(args.command, "use_config", True):
             config = load_config(args.config)
             if self.config is not None and config != self.config:
                 self.logger.warning("Reusing runner with different config")
@@ -112,12 +128,12 @@ class Runner(object):
 
         # Usually, each command needs a connection to the ZODB, but it might
         # explicitly disable it.
-        if self.sync is None and getattr(args.command, 'connect', True):
+        if self.sync is None and getattr(args.command, "connect", True):
             self.sync = ZODBSync(config=self.config, logger=logger)
 
         if self.config and not args.no_lock:
             self.lock = filelock.FileLock(
-                os.path.join(self.config['base_dir'], '.zodbsync.lock')
+                os.path.join(self.config["base_dir"], ".zodbsync.lock")
             )
 
         self.command = args.command(
