@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import ast
-import operator
 import importlib
+import operator
 
 
 class Namespace(object):

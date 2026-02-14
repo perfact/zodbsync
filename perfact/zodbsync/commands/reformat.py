@@ -2,8 +2,8 @@
 
 import os
 
-from ..subcommand import SubCommand
 from ..helpers import StrRepr, literal_eval
+from ..subcommand import SubCommand
 from ..zodbsync import mod_format
 
 

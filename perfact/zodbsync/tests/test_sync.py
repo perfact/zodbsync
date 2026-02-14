@@ -1,20 +1,20 @@
-import os
-import time
-import os.path
 import base64
 import io
 import json
-import subprocess
+import os
+import os.path
 import pickle
-import pytest
-import shutil
-import tempfile
-import string
 import random
+import shutil
+import string
+import subprocess
+import tempfile
+import time
 from contextlib import contextmanager
 
-import ZEO
+import pytest
 import transaction
+import ZEO
 from AccessControl.SecurityManagement import newSecurityManager
 
 try:
@@ -22,11 +22,8 @@ try:
 except ImportError:
     import mock
 
+from .. import extedit, helpers, object_types, zodbsync
 from ..main import Runner
-from .. import zodbsync
-from .. import helpers
-from .. import extedit
-from .. import object_types
 from . import environment as env
 
 

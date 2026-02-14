@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import sys
-import subprocess
+import json
 import os
 import shutil
+import subprocess
+import sys
 
 import filelock
-import json
 
 from .helpers import Namespace
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
+import argparse
 import smtplib
 import subprocess
-import argparse
 from email.mime.text import MIMEText
 
 from ..subcommand import SubCommand

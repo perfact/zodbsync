@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 
 import base64
-import signal
-import time
-import threading
-import sys
 import pickle
+import signal
 import subprocess
+import sys
+import threading
+import time
 
 # For reading the Data.FS in order to obtain affected object IDs from
 # transaction IDs
 import ZODB.FileStorage
 
-from ..subcommand import SubCommand
 from ..helpers import increment_txnid
+from ..subcommand import SubCommand
 from ..zodbsync import mod_read
 
 

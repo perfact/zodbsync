@@ -1,28 +1,34 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import logging
 import os
 import shutil
-import time  # for periodic output
-import sys
-import logging
 import subprocess as sp
+import sys
+import time  # for periodic output
+
+# for "logging in"
+import AccessControl.SecurityManagement
+import App.config
 
 # for using an explicit transaction manager
 import transaction
 
-# for "logging in"
-import AccessControl.SecurityManagement
-
 # For config loading and initial connection, possibly populating an empty ZODB
 import Zope2.App.startup
-import App.config
 from Zope2.Startup.run import configure_wsgi
 
+from .helpers import (
+    StrRepr,
+    literal_eval,
+    load_config,
+    remove_redundant_paths,
+    to_string,
+)
+
 # Plugins for handling different object types
-from .object_types import object_handlers, mod_implemented_handlers
-from .helpers import StrRepr, to_string, literal_eval, remove_redundant_paths
-from .helpers import load_config
+from .object_types import mod_implemented_handlers, object_handlers
 
 # Monkey patch ZRDB not to connect to databases immediately.
 try:

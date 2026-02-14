@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
 
 import filelock
 
@@ -12,23 +12,22 @@ try:
 except ImportError:
     pass
 
-from .helpers import load_config
-from .zodbsync import ZODBSync
-
-from .commands.record import Record
-from .commands.playback import Playback
-from .commands.watch import Watch
-from .commands.pick import Pick
-from .commands.upload import Upload
-from .commands.with_lock import WithLock
-from .commands.reset import Reset
-from .commands.execute import Exec
-from .commands.reformat import Reformat
 from .commands.checkout import Checkout
+from .commands.execute import Exec
+from .commands.fastforward import FF
 from .commands.freeze import Freeze
 from .commands.layer_init import LayerInit
 from .commands.layer_update import LayerUpdate
-from .commands.fastforward import FF
+from .commands.pick import Pick
+from .commands.playback import Playback
+from .commands.record import Record
+from .commands.reformat import Reformat
+from .commands.reset import Reset
+from .commands.upload import Upload
+from .commands.watch import Watch
+from .commands.with_lock import WithLock
+from .helpers import load_config
+from .zodbsync import ZODBSync
 
 
 class Runner(object):

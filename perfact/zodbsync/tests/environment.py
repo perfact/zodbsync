@@ -1,7 +1,7 @@
 import os
-import tempfile
 import shutil
 import subprocess
+import tempfile
 
 """
 These classes together define an environment containing of a running ZEO
