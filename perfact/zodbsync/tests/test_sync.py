@@ -924,11 +924,13 @@ class TestSync:
         )
         os.mkdir(path)
         with open(path + "/__meta__", "w") as f:
-            f.write("""[
+            f.write(
+                """[
                 ('id', '{}'),
                 ('title', ''),
                 ('type', 'Folder'),
-            ]""".format(new_folder))
+            ]""".format(new_folder)
+            )
 
         # playback changes and check if they're existent
         self.run("playback", "/")
@@ -1171,11 +1173,13 @@ class TestSync:
         )
         os.mkdir(path)
         with open(path + "/__meta__", "w") as f:
-            f.write("""[
+            f.write(
+                """[
                 ('id', '{}'),
                 ('title', ''),
                 ('type', 'Folder'),
-            ]""".format(new_folder))
+            ]""".format(new_folder)
+            )
         self.run("playback", "/")
 
         self.gitrun("add", "-A")

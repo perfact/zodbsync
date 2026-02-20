@@ -50,7 +50,8 @@ def test_StrRepr():
     is split to occupy one line for each element, reproducing the shown
     formatting.
     """
-    fmt = """
+    fmt = (
+        """
 [
     ('content', [
         'a',
@@ -77,7 +78,9 @@ def test_StrRepr():
         [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
     ]),
 ]
-    """.strip() + "\n"
+    """.strip()
+        + "\n"
+    )
 
     data = dict(helpers.literal_eval(fmt))
     rules = {
@@ -91,7 +94,8 @@ def test_StrReprLegacy():
     """
     Reproduce the shown formatting of StrRepr when using legacy mode
     """
-    fmt = """
+    fmt = (
+        """
 [
     ('content', [
         'a',
@@ -105,7 +109,9 @@ def test_StrReprLegacy():
         [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
         ]),
 ]
-    """.strip() + "\n"
+    """.strip()
+        + "\n"
+    )
     data = dict(helpers.literal_eval(fmt))
     assert fmt == helpers.StrRepr()(data, legacy=True)
 

@@ -196,8 +196,9 @@ class SubCommand(Namespace):
             returncode = proc.returncode
             if returncode:
                 raise AssertionError(
-                    "Error calling playback hook, returncode "
-                    "{}, [[{}]] on {}".format(returncode, playback_hook, out)
+                    "Error calling playback hook, returncode {}, [[{}]] on {}".format(
+                        returncode, playback_hook, out
+                    )
                 )
             phases = json.loads(out)
         else:
@@ -314,7 +315,7 @@ class SubCommand(Namespace):
                         line for line in output.strip().split("\n") if line
                     ]
                     self.logger.error(
-                        "The cherry-pick failed due to the" " following difference:"
+                        "The cherry-pick failed due to the following difference:"
                     )
                     try:
                         self.gitcmd_run(

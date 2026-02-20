@@ -56,10 +56,12 @@ class Runner(object):
         """
         Set up the argument parser with the possible subcommands
         """
-        parser = argparse.ArgumentParser(description="""
+        parser = argparse.ArgumentParser(
+            description="""
             Tool to sync objects between a ZODB and a git-controlled folder on
             the file system.
-        """)
+        """
+        )
         default_configfile = "/etc/perfact/modsync/zodb.py"
         parser.add_argument(
             "--config",
