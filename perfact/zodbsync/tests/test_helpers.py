@@ -9,13 +9,13 @@ def test_remove_redundant_paths():
     Check that redundant subpaths are actually removed
     """
     paths = [
-        '/test',
-        '/test/sub',
-        '/another',
+        "/test",
+        "/test/sub",
+        "/another",
     ]
     target = [
-        '/another',
-        '/test',
+        "/another",
+        "/test",
     ]
     helpers.remove_redundant_paths(paths)
     assert paths == target
@@ -26,7 +26,7 @@ def test_remove_redundant_paths_only_real_subpaths():
     Check that paths are only recognized as redundant if they are actually
     subpaths, not if the last path component starts with the other.
     """
-    paths = ['/test', '/test2']
+    paths = ["/test", "/test2"]
     new_paths = paths[:]
     helpers.remove_redundant_paths(new_paths)
     assert paths == new_paths
@@ -36,12 +36,12 @@ def test_converters():
     """
     Several tests for to_* methods
     """
-    for value in ['test', b'test']:
-        assert helpers.to_bytes(value) == b'test'
-        assert helpers.to_string(value) == 'test'
-    assert helpers.to_string([1]) == '[1]'
-    assert helpers.to_bytes([1]) == b'[1]'
-    assert helpers.to_bytes(memoryview(b'test')) == b'test'
+    for value in ["test", b"test"]:
+        assert helpers.to_bytes(value) == b"test"
+        assert helpers.to_string(value) == "test"
+    assert helpers.to_string([1]) == "[1]"
+    assert helpers.to_bytes([1]) == b"[1]"
+    assert helpers.to_bytes(memoryview(b"test")) == b"test"
 
 
 def test_StrRepr():
@@ -50,7 +50,8 @@ def test_StrRepr():
     is split to occupy one line for each element, reproducing the shown
     formatting.
     """
-    fmt = """
+    fmt = (
+        """
 [
     ('content', [
         'a',
@@ -77,12 +78,14 @@ def test_StrRepr():
         [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
     ]),
 ]
-    """.strip() + '\n'
+    """.strip()
+        + "\n"
+    )
 
     data = dict(helpers.literal_eval(fmt))
     rules = {
-        'perms': [4],
-        'props': [5],
+        "perms": [4],
+        "props": [5],
     }
     assert fmt == helpers.StrRepr()(data, rules)
 
@@ -91,7 +94,8 @@ def test_StrReprLegacy():
     """
     Reproduce the shown formatting of StrRepr when using legacy mode
     """
-    fmt = """
+    fmt = (
+        """
 [
     ('content', [
         'a',
@@ -105,14 +109,16 @@ def test_StrReprLegacy():
         [('id', 'scalar'), ('type', 'string'), ('value', 'test')],
         ]),
 ]
-    """.strip() + '\n'
+    """.strip()
+        + "\n"
+    )
     data = dict(helpers.literal_eval(fmt))
     assert fmt == helpers.StrRepr()(data, legacy=True)
 
 
 def test_literal_eval():
     tests = [
-        ["b'test'", b'test'],
+        ["b'test'", b"test"],
         ["{1: 2}", {1: 2}],
         ["[1, 2, 3]", [1, 2, 3]],
         ["None", None],
@@ -122,21 +128,21 @@ def test_literal_eval():
     assert helpers.literal_eval("1 + 2") == 3
     assert helpers.literal_eval("-True") == -1
     with pytest.raises(Exception):
-        helpers.literal_eval('f(1)')
+        helpers.literal_eval("f(1)")
 
 
 def test_path_diff():
     """Check that path_diff also handles cases where the last element is not
     the same in both lists."""
     old = [
-        ('Abc', '1234'),
-        ('Def', 'afaf'),
-        ('Xyz', 'yzyz'),
+        ("Abc", "1234"),
+        ("Def", "afaf"),
+        ("Xyz", "yzyz"),
     ]
     new = [
-        ('Abc', '1234'),
-        ('Def', 'axax'),
-        ('Yyy', 'yzyz'),
+        ("Abc", "1234"),
+        ("Def", "axax"),
+        ("Yyy", "yzyz"),
     ]
     result = helpers.path_diff(old, new)
-    assert result == {'Def', 'Xyz', 'Yyy'}
+    assert result == {"Def", "Xyz", "Yyy"}
