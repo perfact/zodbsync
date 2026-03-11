@@ -1,3 +1,6 @@
+26.2.0
+  * Use ruff for formatting and linting
+
 26.1.0
   * Fail playback if a folder has no meta on any layer
 
