@@ -134,11 +134,7 @@ class Runner(object):
 
         if self.config and not args.no_lock:
             self.lock = filelock.FileLock(
-                os.path.join(self.config["base_dir"], ".zodbsync.lock"),
-                # using the default from later versions of filelock to prevent
-                # issues on multi-user systems see
-                # https://github.com/tox-dev/filelock/pull/483
-                mode=0o666,
+                os.path.join(self.config["base_dir"], ".zodbsync.lock")
             )
 
         self.command = args.command(
