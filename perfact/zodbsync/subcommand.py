@@ -138,6 +138,7 @@ class SubCommand(Namespace):
                     "-C",
                     f"{tgt}/{basename}/",
                     "--recursive-unlink",
+                    "-m",
                 ]
             subprocess.run(cmd, check=True)
         for entry in os.listdir(tgt):
