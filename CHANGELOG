@@ -1,3 +1,8 @@
+26.2.0
+  * Do not unpack timestamps from tar on layer update
+  * Use later version of filelock to correctly work with groups instead
+  * Use ruff for formatting and linting
+
 26.1.0
   * Fail playback if a folder has no meta on any layer
 
