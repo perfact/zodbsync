@@ -1,3 +1,6 @@
+26.2.1
+  * Compare property values by their repr instead of their implicit value
+
 26.2.0
   * Do not unpack timestamps from tar on layer update
   * Use later version of filelock to correctly work with groups instead
