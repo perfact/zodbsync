@@ -226,7 +226,9 @@ class PropertiesObj(MixinModObj):
         chg = {
             p: vals[p]
             for p in ids
-            if p not in del_ids and p in cur and vals[p] != obj.getProperty(p)
+            if p not in del_ids
+            and p in cur
+            and repr(vals[p]) != repr(obj.getProperty(p))
         }
         if chg:
             obj.manage_changeProperties(**chg)
