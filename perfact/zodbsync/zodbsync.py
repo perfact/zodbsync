@@ -464,7 +464,7 @@ class ZODBSync:
                     children.add(entry)
         missing = candidates - children
         if missing:
-            raise AssertionError(f"No __meta__ file on any layer: {path}/{children}")
+            raise AssertionError(f"No __meta__ file on any layer: {path}/{missing}")
 
         result["children"] = sorted(children)
         return result
