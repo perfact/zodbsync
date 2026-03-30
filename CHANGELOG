@@ -1,3 +1,5 @@
+26.2.2
+  * Notify VSCode to use ruff
   * Only show missing children if no __meta__ on any layer, instead of all
     children
 
