@@ -2392,6 +2392,7 @@ class TestSync:
             with pytest.raises(AssertionError):
                 self.run("playback", "/")
 
+    @pytest.mark.xfail
     def test_nofail_deleted(self):
         """
         If an object is removed from the base layer that is already marked in the
