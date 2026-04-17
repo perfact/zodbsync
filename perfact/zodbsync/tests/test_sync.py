@@ -2391,3 +2391,16 @@ class TestSync:
             os.mkdir(f"{layer}/workdir/__root__/newfolder")
             with pytest.raises(AssertionError):
                 self.run("playback", "/")
+
+    @pytest.mark.xfail
+    def test_nofail_deleted(self):
+        """
+        If an object is removed from the base layer that is already marked in the
+        custom layer as __deleted__, this does *not* yield an error because there is
+        no __meta__ file in any layer
+        """
+        with self.addlayer():
+            os.mkdir(f"{self.repo.path}/__root__/delfolder/")
+            with open(f"{self.repo.path}/__root__/delfolder/__deleted__", "w"):
+                pass
+            self.run("playback", "/")
