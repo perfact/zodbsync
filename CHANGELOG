@@ -1,3 +1,6 @@
+26.3.0
+  * Do not fail due to missing __meta__ if object is marked as deleted
+
 26.2.2
   * Notify VSCode to use ruff
   * Only show missing children if no __meta__ on any layer, instead of all
