@@ -19,10 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "filelock>=3.24.0",
-    # As long as
-    # https://github.com/zopefoundation/Zope/commit/57cedf666d55e5378cc2c26d330db468a3efdeed
-    # is not in the newest Zope release, ZODB needs to be kept at a lower version
-    "ZODB<6.3",
+    "ZODB",
     "Zope",
 ]
 dynamic = ["version"]
