@@ -447,6 +447,7 @@ class ZODBSync:
         path = path.lstrip("/")
         candidates = set()  # subfolders on any layer
         children = set()  # those with a __meta__ file on a some layer
+        deleted = set()  # those with a __deleted__ marker on some layer
         for idx, layer in enumerate(layers):
             fspath = os.path.join(layer["workdir"], self.site, path)
             if not os.path.isdir(fspath):
@@ -462,7 +463,9 @@ class ZODBSync:
                 candidates.add(entry)
                 if os.path.exists(os.path.join(fspath, entry, "__meta__")):
                     children.add(entry)
-        missing = candidates - children
+                elif os.path.exists(os.path.join(fspath, entry, "__deleted__")):
+                    deleted.add(entry)
+        missing = candidates - children - deleted
         if missing:
             raise AssertionError(f"No __meta__ file on any layer: {path}/{missing}")
 
