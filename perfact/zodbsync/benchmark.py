@@ -142,11 +142,68 @@ def count_repo_objects(root):
     return total
 
 
-def populate_dataset(app, depth, breadth, blobs_per_folder, blob_size):
-    payload = "x" * blob_size
+def dataset_object_types(object_type):
+    if object_type == "mixed":
+        return ("page_template", "python_script")
+    return (object_type,)
+
+
+def build_payload(object_type, blob_size):
+    if object_type == "page_template":
+        return "x" * blob_size
+    if object_type == "python_script":
+        return (
+            "## Script (Python)\n"
+            "##bind container=container\n"
+            "##bind context=context\n"
+            "##bind namespace=\n"
+            "##bind script=script\n"
+            "##bind subpath=traverse_subpath\n"
+            "##parameters=\n"
+            "##title=\n"
+            "##\n"
+            'return "' + ("x" * blob_size) + '"\n'
+        )
+    raise ValueError(f"Unsupported benchmark object type: {object_type}")
+
+
+def populate_object(parent, object_type, obj_id, payload):
+    if object_type == "page_template":
+        parent.manage_addProduct["PageTemplates"].manage_addPageTemplate(
+            id=obj_id,
+            title=obj_id,
+            text=payload,
+        )
+        return "page_templates"
+    if object_type == "python_script":
+        parent.manage_addProduct["PythonScripts"].manage_addPythonScript(
+            id=obj_id,
+            title=obj_id,
+            file=payload,
+        )
+        return "python_scripts"
+    raise ValueError(f"Unsupported benchmark object type: {object_type}")
+
+
+def populate_dataset(
+    app,
+    depth,
+    breadth,
+    blobs_per_folder,
+    blob_size,
+    object_type,
+):
+    object_types = dataset_object_types(object_type)
+    payloads = {
+        current_type: build_payload(current_type, blob_size)
+        for current_type in object_types
+    }
 
     total_folders = 0
-    total_templates = 0
+    total_objects = {
+        "page_templates": 0,
+        "python_scripts": 0,
+    }
     stack = [(app, 0, "")]
     while stack:
         parent, level, prefix = stack.pop()
@@ -158,18 +215,21 @@ def populate_dataset(app, depth, breadth, blobs_per_folder, blob_size):
             child = getattr(parent, folder_id)
             total_folders += 1
             for blob_idx in range(blobs_per_folder):
-                page_id = f"pt_{level}_{folder_idx}_{blob_idx}"
-                child.manage_addProduct["PageTemplates"].manage_addPageTemplate(
-                    id=page_id,
-                    title=page_id,
-                    text=payload,
+                current_type = object_types[blob_idx % len(object_types)]
+                obj_prefix = "pt" if current_type == "page_template" else "py"
+                obj_id = f"{obj_prefix}_{level}_{folder_idx}_{blob_idx}"
+                stat_key = populate_object(
+                    child,
+                    current_type,
+                    obj_id,
+                    payloads[current_type],
                 )
-                total_templates += 1
+                total_objects[stat_key] += 1
             stack.append((child, level + 1, prefix + f"{folder_idx}_"))
 
     return {
         "folders": total_folders,
-        "page_templates": total_templates,
+        **total_objects,
         "payload_bytes": blob_size,
     }
 
@@ -182,7 +242,9 @@ def runner_cmd(runner, config_path, *cmd):
     return runner.parse("--config", config_path, *cmd)
 
 
-def benchmark_once(config_path, depth, breadth, blobs_per_folder, blob_size):
+def benchmark_once(
+    config_path, depth, breadth, blobs_per_folder, blob_size, object_type
+):
     runner = build_runner()
 
     runner_cmd(runner, config_path, "record", "/").run()
@@ -194,6 +256,7 @@ def benchmark_once(config_path, depth, breadth, blobs_per_folder, blob_size):
         breadth=breadth,
         blobs_per_folder=blobs_per_folder,
         blob_size=blob_size,
+        object_type=object_type,
     )
     tm.commit()
 
@@ -272,6 +335,7 @@ def run_benchmark(args):
             breadth=args.breadth,
             blobs_per_folder=args.blobs_per_folder,
             blob_size=args.blob_size,
+            object_type=args.object_type,
         )
 
         if args.profile_dir:
@@ -317,6 +381,7 @@ def run_benchmark(args):
         "breadth": args.breadth,
         "blobs_per_folder": args.blobs_per_folder,
         "blob_size": args.blob_size,
+        "object_type": args.object_type,
         "runs": args.runs,
         "record_seconds": record_seconds,
         "playback_seconds": playback_runs,
@@ -348,6 +413,11 @@ def main():
     parser.add_argument("--breadth", type=int, default=5)
     parser.add_argument("--blobs-per-folder", type=int, default=5)
     parser.add_argument("--blob-size", type=int, default=4096)
+    parser.add_argument(
+        "--object-type",
+        choices=["page_template", "python_script", "mixed"],
+        default="page_template",
+    )
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--output", type=str, default="")
     parser.add_argument("--profile-dir", type=str, default="")

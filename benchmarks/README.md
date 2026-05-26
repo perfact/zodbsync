@@ -53,6 +53,30 @@ tox -e benchmark -- \
 
 This produces a tree with 780 folders and 3900 page templates.
 
+### Python Script Playback
+
+Alternative workload to isolate non-template playback costs.
+
+- `depth=4`
+- `breadth=5`
+- `blobs-per-folder=5`
+- `blob-size=4096`
+- `object-type=python_script`
+- `runs=5`
+
+Command:
+
+```sh
+tox -e benchmark -- \
+  --depth 4 \
+  --breadth 5 \
+  --blobs-per-folder 5 \
+  --blob-size 4096 \
+  --object-type python_script \
+  --runs 5 \
+  --output benchmarks/results/python-script-playback.json
+```
+
 ## Workflow
 
 1. Run the `Playback` preset on the current branch and keep the JSON output.
@@ -84,6 +108,7 @@ tox -e benchmark -- \
   --breadth 5 \
   --blobs-per-folder 5 \
   --blob-size 4096 \
+  --object-type mixed \
   --runs 1 \
   --profile-dir benchmarks/results/profile \
   --output benchmarks/results/profiled-playback.json
@@ -93,6 +118,9 @@ This writes:
 
 - `benchmarks/results/profile/playback-run-1.prof`
 - `benchmarks/results/profile/playback-run-1.txt`
+
+Use `--object-type page_template`, `python_script`, or `mixed` to compare how
+playback behaves for different object mixes.
 
 The JSON output also includes `playback_fs_cache_stats` so cache hit rates can
 be compared before and after filesystem lookup changes.
