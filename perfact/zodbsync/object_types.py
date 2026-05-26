@@ -330,6 +330,12 @@ class PageTemplateObj(ModObj):
     ]
 
     @staticmethod
+    def normalize_source(source):
+        if isinstance(source, str):
+            return source.strip()
+        return source
+
+    @staticmethod
     def create(obj, data, obj_id):
         obj.manage_addProduct["PageTemplates"].manage_addPageTemplate(
             id=obj_id,
@@ -344,7 +350,7 @@ class PageTemplateObj(ModObj):
     @staticmethod
     def write(obj, data):
         obj.pt_setTitle(data["title"], "utf-8")
-        if obj._text != data["source"]:
+        if obj._text != PageTemplateObj.normalize_source(data["source"]):
             obj.write(data["source"])
 
 

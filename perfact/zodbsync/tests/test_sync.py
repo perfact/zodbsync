@@ -299,6 +299,28 @@ class TestSync:
         assert obj._text == data["source"]
         assert write_spy.call_count == 1
 
+    def test_mod_write_page_template_avoids_rewrite_after_strip(self):
+        from Products.PageTemplates.ZopePageTemplate import ZopePageTemplate
+
+        obj = self.app.manage_addProduct["PageTemplates"].manage_addPageTemplate(
+            id="existing_testpt_stripped",
+            title="Test template",
+            text="<html><body>test</body></html>",
+        )
+        data = zodbsync.mod_read(obj)
+        data["source"] += "\n"
+        self.app.manage_delObjects(ids=["existing_testpt_stripped"])
+
+        with mock.patch.object(
+            ZopePageTemplate,
+            "write",
+            autospec=True,
+            side_effect=ZopePageTemplate.write,
+        ) as write_spy:
+            obj = zodbsync.mod_write(data, parent=self.app, obj_id="testpt_stripped")
+        assert obj._text == data["source"].strip()
+        assert write_spy.call_count == 1
+
     def test_script_python_create_seeds_source_without_reedit(self):
         self.app.manage_addProduct["PythonScripts"].manage_addPythonScript(
             id="existing_testpy",
