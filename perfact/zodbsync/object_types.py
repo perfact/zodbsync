@@ -332,7 +332,9 @@ class PageTemplateObj(ModObj):
     @staticmethod
     def create(obj, data, obj_id):
         obj.manage_addProduct["PageTemplates"].manage_addPageTemplate(
-            id=obj_id, text=""
+            id=obj_id,
+            title=data["title"],
+            text=data["source"],
         )
 
     @staticmethod
@@ -342,7 +344,8 @@ class PageTemplateObj(ModObj):
     @staticmethod
     def write(obj, data):
         obj.pt_setTitle(data["title"], "utf-8")
-        obj.write(data["source"])
+        if obj._text != data["source"]:
+            obj.write(data["source"])
 
 
 class RAMCacheManagerObj(ModObj):

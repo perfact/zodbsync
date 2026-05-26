@@ -277,6 +277,24 @@ class TestSync:
         self.run("playback", "/index_html")
         assert self.app.index_html() == content
 
+    def test_mod_write_page_template_avoids_rewrite_on_create(self):
+        from Products.PageTemplates.ZopePageTemplate import ZopePageTemplate
+
+        data = {
+            "type": "Page Template",
+            "title": "Test template",
+            "source": "<html><body>test</body></html>",
+        }
+        with mock.patch.object(
+            ZopePageTemplate,
+            "write",
+            wraps=ZopePageTemplate.write,
+        ) as write_spy:
+            obj = zodbsync.mod_write(data, parent=self.app, obj_id="testpt")
+        assert obj.title == "Test template"
+        assert obj._text == data["source"]
+        assert write_spy.call_count == 1
+
     def add_folder(self, name, msg=None, parent=""):
         """
         Add a folder to the root directory and commit it if msg is given
