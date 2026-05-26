@@ -200,6 +200,9 @@ measured playback durations. Use `--output bench.json` to persist the report
 for before/after comparisons across revisions.
 
 Checked-in benchmark presets live in [benchmarks/README.md](./benchmarks/README.md).
+For replaying an existing recorded repository such as `zoperepo`, use the
+recorded-repo preset there and pass `--playback-override` when the seed data
+contains root-level type mismatches against a fresh ZODB.
 
 ### `zodbsync exec`
 

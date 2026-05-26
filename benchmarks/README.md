@@ -132,6 +132,7 @@ scripts.
 Replay an existing recorded repository tree such as `zoperepo`.
 
 - `seed-repo=zoperepo`
+- `playback-override`
 - `runs=3`
 
 Command:
@@ -139,6 +140,7 @@ Command:
 ```sh
 tox -e benchmark -- \
   --seed-repo zoperepo \
+  --playback-override \
   --runs 3 \
   --output benchmarks/results/zoperepo-playback.json
 ```
@@ -146,6 +148,10 @@ tox -e benchmark -- \
 When `--seed-repo` is set, the synthetic dataset flags such as `--depth`,
 `--breadth`, `--blobs-per-folder`, `--blob-size`, and `--object-type` are
 ignored for seeding.
+
+Use `--playback-override` when the recorded repo contains objects whose types
+do not match the default root objects created in a fresh ZODB. The current
+`zoperepo` workload requires it.
 
 ## Workflow
 

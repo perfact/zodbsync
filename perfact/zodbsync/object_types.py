@@ -172,16 +172,32 @@ class ZSQLMethodObj(ModObj):
 
     @staticmethod
     def write(obj, data):
-        obj.manage_edit(
-            title=data["title"],
-            connection_id=data["connection_id"],
-            arguments=data["args"],
-            template=helpers.to_string(data["source"]),
-        )
+        template = helpers.to_string(data["source"])
+        if (
+            obj.title != data["title"]
+            or obj.connection_id != data["connection_id"]
+            or obj.arguments_src != data["args"]
+            or obj.src != template
+        ):
+            obj.manage_edit(
+                title=data["title"],
+                connection_id=data["connection_id"],
+                arguments=data["args"],
+                template=template,
+            )
 
         # Advanced settings
         adv = dict(data["advanced"])
-        obj.manage_advanced(**adv)
+        current_adv = {
+            "connection_hook": obj.connection_hook,
+            "max_rows": obj.max_rows_,
+            "max_cache": obj.max_cache_,
+            "cache_time": obj.cache_time_,
+            "class_name": obj.class_name_,
+            "class_file": obj.class_file_,
+        }
+        if current_adv != adv:
+            obj.manage_advanced(**adv)
 
 
 class ExternalMethodObj(ModObj):

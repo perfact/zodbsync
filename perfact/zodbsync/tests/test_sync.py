@@ -361,6 +361,41 @@ class TestSync:
             object_types.ScriptPythonObj.write(obj, data)
         assert edit_spy.call_count == 0
 
+    def test_zsql_method_create_avoids_reedit(self):
+        self.app.manage_addProduct["ZSQLMethods"].manage_addZSQLMethod(
+            id="existing_testsql",
+            title="Test SQL",
+            connection_id="benchmark_db",
+            arguments="value=None",
+            template='SELECT <dtml-sqlvar value type="string" optional> AS value',
+        )
+        obj = self.app.existing_testsql
+        data = zodbsync.mod_read(obj)
+        self.app.manage_delObjects(ids=["existing_testsql"])
+
+        object_types.ZSQLMethodObj.create(self.app, data, "testsql")
+        obj = self.app.testsql
+
+        assert obj.title == "Test SQL"
+        assert obj.connection_id == "benchmark_db"
+        assert obj.arguments_src == "value=None"
+        assert helpers.to_bytes(obj.src) == data["source"]
+
+        with mock.patch.object(
+            obj,
+            "manage_edit",
+            autospec=True,
+            side_effect=obj.manage_edit,
+        ) as edit_spy, mock.patch.object(
+            obj,
+            "manage_advanced",
+            autospec=True,
+            side_effect=obj.manage_advanced,
+        ) as advanced_spy:
+            object_types.ZSQLMethodObj.write(obj, data)
+        assert edit_spy.call_count == 0
+        assert advanced_spy.call_count == 0
+
     def test_script_python_create_records_broken_source_errors(self):
         data = {
             "title": "Broken script",
