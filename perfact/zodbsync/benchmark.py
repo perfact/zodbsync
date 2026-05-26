@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
-import cProfile
 import contextlib
+import cProfile
 import json
 import logging
 import os
@@ -22,9 +22,7 @@ def muted_stdio(enabled=True):
         return
 
     with open(os.devnull, "w") as devnull:
-        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(
-            devnull
-        ):
+        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
             yield
 
 
@@ -207,6 +205,8 @@ def count_repo_objects(root):
 def dataset_object_types(object_type):
     if object_type == "mixed":
         return ("page_template", "python_script")
+    if object_type == "folders":
+        return ()
     return (object_type,)
 
 
@@ -514,7 +514,7 @@ def main():
     parser.add_argument("--blob-size", type=int, default=4096)
     parser.add_argument(
         "--object-type",
-        choices=["page_template", "python_script", "mixed"],
+        choices=["page_template", "python_script", "mixed", "folders"],
         default="page_template",
     )
     parser.add_argument("--runs", type=int, default=3)

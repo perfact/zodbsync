@@ -77,6 +77,32 @@ tox -e benchmark -- \
   --output benchmarks/results/python-script-playback.json
 ```
 
+### Folder-Heavy Playback
+
+Structural workload to isolate generic playback overhead with deep folder
+creation and no leaf objects.
+
+- `depth=5`
+- `breadth=6`
+- `blobs-per-folder=0`
+- `object-type=folders`
+- `runs=5`
+
+Command:
+
+```sh
+tox -e benchmark -- \
+  --depth 5 \
+  --breadth 6 \
+  --blobs-per-folder 0 \
+  --object-type folders \
+  --runs 5 \
+  --output benchmarks/results/folder-heavy-playback.json
+```
+
+This produces a tree with 9330 folders and no page templates or Python
+scripts.
+
 ## Workflow
 
 1. Run the `Playback` preset on the current branch and keep the JSON output.
@@ -119,8 +145,9 @@ This writes:
 - `benchmarks/results/profile/playback-run-1.prof`
 - `benchmarks/results/profile/playback-run-1.txt`
 
-Use `--object-type page_template`, `python_script`, or `mixed` to compare how
-playback behaves for different object mixes.
+Use `--object-type page_template`, `python_script`, `mixed`, or `folders` to
+compare how playback behaves for different object mixes and traversal-heavy
+trees.
 
 The JSON output also includes `playback_fs_cache_stats` so cache hit rates can
 be compared before and after filesystem lookup changes.
