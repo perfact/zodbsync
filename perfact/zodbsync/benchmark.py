@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
 import argparse
+import cProfile
 import json
 import os
+import pstats
 import shutil
 import subprocess
 import tempfile
@@ -218,7 +220,25 @@ def playback_once(config_path):
     start = time.perf_counter()
     runner_cmd(runner, config_path, "playback", "/").run()
     elapsed = time.perf_counter() - start
-    return elapsed
+    return elapsed, getattr(runner.sync, "_v_last_playback_fs_cache_stats", None)
+
+
+def profiled_playback_once(
+    config_path, profile_prefix, profile_sort="cumulative", profile_lines=30
+):
+    profiler = cProfile.Profile()
+    runner = build_runner()
+    start = time.perf_counter()
+    profiler.runcall(runner_cmd(runner, config_path, "playback", "/").run)
+    elapsed = time.perf_counter() - start
+
+    profiler.dump_stats(profile_prefix + ".prof")
+    with open(profile_prefix + ".txt", "w") as f:
+        stats = pstats.Stats(profiler, stream=f)
+        stats.sort_stats(profile_sort)
+        stats.print_stats(profile_lines)
+
+    return elapsed, getattr(runner.sync, "_v_last_playback_fs_cache_stats", None)
 
 
 def create_environment():
@@ -254,8 +274,12 @@ def run_benchmark(args):
             blob_size=args.blob_size,
         )
 
+        if args.profile_dir:
+            os.makedirs(args.profile_dir, exist_ok=True)
+
         playback_runs = []
-        for _ in range(args.runs):
+        playback_fs_cache_stats = []
+        for run_idx in range(args.runs):
             env = create_environment()
             try:
                 shutil.copytree(
@@ -269,7 +293,20 @@ def run_benchmark(args):
                     git_run(env["repo"].path, "commit", "-m", "benchmark copy")
                 except subprocess.CalledProcessError:
                     pass
-                playback_runs.append(playback_once(env["config"].path))
+                if args.profile_dir:
+                    profile_prefix = os.path.join(
+                        args.profile_dir, f"playback-run-{run_idx + 1}"
+                    )
+                    elapsed, fs_cache_stats = profiled_playback_once(
+                        env["config"].path,
+                        profile_prefix=profile_prefix,
+                        profile_sort=args.profile_sort,
+                        profile_lines=args.profile_lines,
+                    )
+                else:
+                    elapsed, fs_cache_stats = playback_once(env["config"].path)
+                playback_runs.append(elapsed)
+                playback_fs_cache_stats.append(fs_cache_stats)
             finally:
                 cleanup_environment(env)
     finally:
@@ -286,6 +323,7 @@ def run_benchmark(args):
         "playback_min_seconds": min(playback_runs),
         "playback_max_seconds": max(playback_runs),
         "playback_avg_seconds": sum(playback_runs) / len(playback_runs),
+        "playback_fs_cache_stats": playback_fs_cache_stats,
         "dataset": dataset_stats,
         "git_head": git_output(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
@@ -312,6 +350,9 @@ def main():
     parser.add_argument("--blob-size", type=int, default=4096)
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--output", type=str, default="")
+    parser.add_argument("--profile-dir", type=str, default="")
+    parser.add_argument("--profile-sort", type=str, default="cumulative")
+    parser.add_argument("--profile-lines", type=int, default=30)
     args = parser.parse_args()
     run_benchmark(args)
 

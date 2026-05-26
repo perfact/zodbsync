@@ -9,3 +9,4 @@ build
 dist
 tags*
 benchmarks/results/*.json
+benchmarks/results/profile/

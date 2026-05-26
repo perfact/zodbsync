@@ -75,3 +75,24 @@ is the canonical artifact.
 The benchmark tox environment exists to ensure that Zope, `zope.mkzeoinstance`,
 and the project itself are installed together and executed with the correct
 `PATH`. Use it instead of invoking the module manually.
+
+To inspect hot paths, enable profiling output:
+
+```sh
+tox -e benchmark -- \
+  --depth 4 \
+  --breadth 5 \
+  --blobs-per-folder 5 \
+  --blob-size 4096 \
+  --runs 1 \
+  --profile-dir benchmarks/results/profile \
+  --output benchmarks/results/profiled-playback.json
+```
+
+This writes:
+
+- `benchmarks/results/profile/playback-run-1.prof`
+- `benchmarks/results/profile/playback-run-1.txt`
+
+The JSON output also includes `playback_fs_cache_stats` so cache hit rates can
+be compared before and after filesystem lookup changes.
