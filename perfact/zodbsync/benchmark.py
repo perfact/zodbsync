@@ -2,7 +2,9 @@
 
 import argparse
 import cProfile
+import contextlib
 import json
+import logging
 import os
 import pstats
 import shutil
@@ -13,10 +15,51 @@ import time
 from .main import Runner
 
 
+@contextlib.contextmanager
+def muted_stdio(enabled=True):
+    if not enabled:
+        yield
+        return
+
+    with open(os.devnull, "w") as devnull:
+        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(
+            devnull
+        ):
+            yield
+
+
+@contextlib.contextmanager
+def muted_logger(logger, enabled=True, level=logging.ERROR):
+    if not enabled or logger is None:
+        yield
+        return
+
+    old_level = logger.level
+    old_disabled = logger.disabled
+    old_propagate = logger.propagate
+    old_handler_levels = [handler.level for handler in logger.handlers]
+    logger.disabled = False
+    logger.setLevel(level)
+    logger.propagate = False
+    for handler in logger.handlers:
+        handler.setLevel(level)
+    try:
+        yield
+    finally:
+        logger.setLevel(old_level)
+        logger.disabled = old_disabled
+        logger.propagate = old_propagate
+        for handler, handler_level in zip(logger.handlers, old_handler_levels):
+            handler.setLevel(handler_level)
+
+
 class ZeoInstance:
-    def __init__(self):
+    def __init__(self, quiet=True):
         self.path = tempfile.mkdtemp(prefix="zodbsync-bench-zeo-")
-        subprocess.check_call(["mkzeoinstance", self.path])
+        subprocess.check_call(
+            ["mkzeoinstance", self.path],
+            **subprocess_stdio(quiet),
+        )
 
         fname = os.path.join(self.path, "etc", "zeo.conf")
         with open(fname) as f:
@@ -26,7 +69,12 @@ class ZeoInstance:
         with open(fname, "w") as f:
             f.writelines(lines)
 
-        self.zeo = subprocess.Popen([os.path.join(self.path, "bin", "runzeo")])
+        self._devnull = open(os.devnull, "w") if quiet else None
+        self.zeo = subprocess.Popen(
+            [os.path.join(self.path, "bin", "runzeo")],
+            stdout=self._devnull if quiet else None,
+            stderr=self._devnull if quiet else None,
+        )
         self._wait_ready()
 
     def sockpath(self):
@@ -45,11 +93,13 @@ class ZeoInstance:
     def cleanup(self):
         self.zeo.terminate()
         self.zeo.wait()
+        if self._devnull is not None:
+            self._devnull.close()
         shutil.rmtree(self.path)
 
 
 class Repository:
-    def __init__(self):
+    def __init__(self, quiet=True):
         self.path = tempfile.mkdtemp(prefix="zodbsync-bench-repo-")
         commands = [
             ["init"],
@@ -58,7 +108,7 @@ class Repository:
             ["config", "user.name", "zodbsync-benchmark"],
         ]
         for cmd in commands:
-            subprocess.check_call(["git", "-C", self.path] + cmd)
+            git_run(self.path, *cmd, quiet=quiet)
 
     def cleanup(self):
         shutil.rmtree(self.path)
@@ -130,8 +180,20 @@ def git_output(repo, *args):
     )
 
 
-def git_run(repo, *args):
-    subprocess.check_call(["git", "-C", repo] + list(args))
+def subprocess_stdio(quiet):
+    if not quiet:
+        return {}
+    return {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+
+def git_run(repo, *args, quiet=True):
+    subprocess.check_call(
+        ["git", "-C", repo] + list(args),
+        **subprocess_stdio(quiet),
+    )
 
 
 def count_repo_objects(root):
@@ -243,30 +305,47 @@ def runner_cmd(runner, config_path, *cmd):
 
 
 def benchmark_once(
-    config_path, depth, breadth, blobs_per_folder, blob_size, object_type
+    config_path,
+    depth,
+    breadth,
+    blobs_per_folder,
+    blob_size,
+    object_type,
+    quiet=True,
 ):
     runner = build_runner()
 
-    runner_cmd(runner, config_path, "record", "/").run()
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        command = runner_cmd(runner, config_path, "record", "/")
+        command.run()
 
-    tm = runner.sync.start_transaction(note="/benchmark-seed")
-    stats = populate_dataset(
-        app=runner.sync.app,
-        depth=depth,
-        breadth=breadth,
-        blobs_per_folder=blobs_per_folder,
-        blob_size=blob_size,
-        object_type=object_type,
-    )
-    tm.commit()
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        tm = runner.sync.start_transaction(note="/benchmark-seed")
+        stats = populate_dataset(
+            app=runner.sync.app,
+            depth=depth,
+            breadth=breadth,
+            blobs_per_folder=blobs_per_folder,
+            blob_size=blob_size,
+            object_type=object_type,
+        )
+        tm.commit()
 
     start = time.perf_counter()
-    runner_cmd(runner, config_path, "record", "/").run()
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        command = runner_cmd(runner, config_path, "record", "/")
+        command.run()
     record_seconds = time.perf_counter() - start
 
-    git_run(runner.sync.base_dir, "add", ".")
+    git_run(runner.sync.base_dir, "add", ".", quiet=quiet)
     try:
-        git_run(runner.sync.base_dir, "commit", "-m", "benchmark seed")
+        git_run(
+            runner.sync.base_dir,
+            "commit",
+            "-m",
+            "benchmark seed",
+            quiet=quiet,
+        )
     except subprocess.CalledProcessError:
         pass
 
@@ -274,25 +353,34 @@ def benchmark_once(
     stats["repo_files"] = count_repo_objects(runner.sync.base_dir)
     stats["object_dirs"] = sum(1 for _ in os.walk(object_root))
 
-    runner.sync.tm.abort()
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        runner.sync.tm.abort()
     return stats, record_seconds
 
 
-def playback_once(config_path):
+def playback_once(config_path, quiet=True):
     runner = build_runner()
     start = time.perf_counter()
-    runner_cmd(runner, config_path, "playback", "/").run()
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        command = runner_cmd(runner, config_path, "playback", "/")
+        command.run()
     elapsed = time.perf_counter() - start
     return elapsed, getattr(runner.sync, "_v_last_playback_fs_cache_stats", None)
 
 
 def profiled_playback_once(
-    config_path, profile_prefix, profile_sort="cumulative", profile_lines=30
+    config_path,
+    profile_prefix,
+    profile_sort="cumulative",
+    profile_lines=30,
+    quiet=True,
 ):
     profiler = cProfile.Profile()
     runner = build_runner()
     start = time.perf_counter()
-    profiler.runcall(runner_cmd(runner, config_path, "playback", "/").run)
+    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+        command = runner_cmd(runner, config_path, "playback", "/")
+        profiler.runcall(command.run)
     elapsed = time.perf_counter() - start
 
     profiler.dump_stats(profile_prefix + ".prof")
@@ -304,9 +392,9 @@ def profiled_playback_once(
     return elapsed, getattr(runner.sync, "_v_last_playback_fs_cache_stats", None)
 
 
-def create_environment():
-    repo = Repository()
-    zeo = ZeoInstance()
+def create_environment(quiet=True):
+    repo = Repository(quiet=quiet)
+    zeo = ZeoInstance(quiet=quiet)
     zopeconfig = ZopeConfig(zeosock=zeo.sockpath())
     zodbconfig = ZODBSyncConfig(
         repo=repo.path,
@@ -327,7 +415,8 @@ def cleanup_environment(env):
 
 
 def run_benchmark(args):
-    seed_env = create_environment()
+    quiet = not args.verbose
+    seed_env = create_environment(quiet=quiet)
     try:
         dataset_stats, record_seconds = benchmark_once(
             config_path=seed_env["config"].path,
@@ -336,6 +425,7 @@ def run_benchmark(args):
             blobs_per_folder=args.blobs_per_folder,
             blob_size=args.blob_size,
             object_type=args.object_type,
+            quiet=quiet,
         )
 
         if args.profile_dir:
@@ -344,7 +434,7 @@ def run_benchmark(args):
         playback_runs = []
         playback_fs_cache_stats = []
         for run_idx in range(args.runs):
-            env = create_environment()
+            env = create_environment(quiet=quiet)
             try:
                 shutil.copytree(
                     seed_env["repo"].path,
@@ -352,9 +442,15 @@ def run_benchmark(args):
                     dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns(".git"),
                 )
-                git_run(env["repo"].path, "add", ".")
+                git_run(env["repo"].path, "add", ".", quiet=quiet)
                 try:
-                    git_run(env["repo"].path, "commit", "-m", "benchmark copy")
+                    git_run(
+                        env["repo"].path,
+                        "commit",
+                        "-m",
+                        "benchmark copy",
+                        quiet=quiet,
+                    )
                 except subprocess.CalledProcessError:
                     pass
                 if args.profile_dir:
@@ -366,9 +462,12 @@ def run_benchmark(args):
                         profile_prefix=profile_prefix,
                         profile_sort=args.profile_sort,
                         profile_lines=args.profile_lines,
+                        quiet=quiet,
                     )
                 else:
-                    elapsed, fs_cache_stats = playback_once(env["config"].path)
+                    elapsed, fs_cache_stats = playback_once(
+                        env["config"].path, quiet=quiet
+                    )
                 playback_runs.append(elapsed)
                 playback_fs_cache_stats.append(fs_cache_stats)
             finally:
@@ -423,6 +522,11 @@ def main():
     parser.add_argument("--profile-dir", type=str, default="")
     parser.add_argument("--profile-sort", type=str, default="cumulative")
     parser.add_argument("--profile-lines", type=int, default=30)
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show setup, git, and playback progress output during benchmark runs.",
+    )
     args = parser.parse_args()
     run_benchmark(args)
 
