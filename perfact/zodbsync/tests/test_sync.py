@@ -280,15 +280,19 @@ class TestSync:
     def test_mod_write_page_template_avoids_rewrite_on_create(self):
         from Products.PageTemplates.ZopePageTemplate import ZopePageTemplate
 
-        data = {
-            "type": "Page Template",
-            "title": "Test template",
-            "source": "<html><body>test</body></html>",
-        }
+        obj = self.app.manage_addProduct["PageTemplates"].manage_addPageTemplate(
+            id="existing_testpt",
+            title="Test template",
+            text="<html><body>test</body></html>",
+        )
+        data = zodbsync.mod_read(obj)
+        self.app.manage_delObjects(ids=["existing_testpt"])
+
         with mock.patch.object(
             ZopePageTemplate,
             "write",
-            wraps=ZopePageTemplate.write,
+            autospec=True,
+            side_effect=ZopePageTemplate.write,
         ) as write_spy:
             obj = zodbsync.mod_write(data, parent=self.app, obj_id="testpt")
         assert obj.title == "Test template"
