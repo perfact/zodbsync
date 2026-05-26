@@ -11,6 +11,7 @@ class _DummyFolder:
             "OFSP": _DummyFolderManager(self),
             "PageTemplates": _UnsupportedManager(),
             "PythonScripts": _UnsupportedManager(),
+            "ZSQLMethods": _DummySqlMethodManager(self),
         }
 
     def __getattr__(self, name):
@@ -31,6 +32,20 @@ class _DummyFolderManager:
 class _UnsupportedManager:
     def __getattr__(self, name):
         raise AssertionError("Leaf object manager should not be used")
+
+
+class _DummySqlMethodManager:
+    def __init__(self, parent):
+        self.parent = parent
+
+    def manage_addZSQLMethod(self, id, title, connection_id, arguments, template):
+        self.parent._children[id] = {
+            "id": id,
+            "title": title,
+            "connection_id": connection_id,
+            "arguments": arguments,
+            "template": template,
+        }
 
 
 def test_remove_redundant_paths():
@@ -192,5 +207,32 @@ def test_populate_dataset_folders_only():
         "folders": 14,
         "page_templates": 0,
         "python_scripts": 0,
+        "sql_methods": 0,
         "payload_bytes": 4096,
+    }
+
+
+def test_populate_dataset_sql_methods():
+    root = _DummyFolder()
+    stats = benchmark.populate_dataset(
+        app=root,
+        depth=2,
+        breadth=2,
+        blobs_per_folder=3,
+        blob_size=16,
+        object_type="sql_method",
+    )
+
+    folder = root._children["f0_0"]
+    created = folder._children["sql_0_0_0"]
+
+    assert created["connection_id"] == "benchmark_db"
+    assert created["arguments"] == ""
+    assert "SELECT '" in created["template"]
+    assert stats == {
+        "folders": 6,
+        "page_templates": 0,
+        "python_scripts": 0,
+        "sql_methods": 18,
+        "payload_bytes": 16,
     }

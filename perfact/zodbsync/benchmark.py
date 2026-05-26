@@ -226,6 +226,13 @@ def build_payload(object_type, blob_size):
             "##\n"
             'return "' + ("x" * blob_size) + '"\n'
         )
+    if object_type == "sql_method":
+        return (
+            "<dtml-comment>\n"
+            "benchmark sql method\n"
+            "</dtml-comment>\n"
+            "SELECT '" + ("x" * blob_size) + "' AS payload\n"
+        )
     raise ValueError(f"Unsupported benchmark object type: {object_type}")
 
 
@@ -244,6 +251,15 @@ def populate_object(parent, object_type, obj_id, payload):
             file=payload,
         )
         return "python_scripts"
+    if object_type == "sql_method":
+        parent.manage_addProduct["ZSQLMethods"].manage_addZSQLMethod(
+            id=obj_id,
+            title=obj_id,
+            connection_id="benchmark_db",
+            arguments="",
+            template=payload,
+        )
+        return "sql_methods"
     raise ValueError(f"Unsupported benchmark object type: {object_type}")
 
 
@@ -265,6 +281,7 @@ def populate_dataset(
     total_objects = {
         "page_templates": 0,
         "python_scripts": 0,
+        "sql_methods": 0,
     }
     stack = [(app, 0, "")]
     while stack:
@@ -278,7 +295,11 @@ def populate_dataset(
             total_folders += 1
             for blob_idx in range(blobs_per_folder):
                 current_type = object_types[blob_idx % len(object_types)]
-                obj_prefix = "pt" if current_type == "page_template" else "py"
+                obj_prefix = {
+                    "page_template": "pt",
+                    "python_script": "py",
+                    "sql_method": "sql",
+                }[current_type]
                 obj_id = f"{obj_prefix}_{level}_{folder_idx}_{blob_idx}"
                 stat_key = populate_object(
                     child,
@@ -514,7 +535,13 @@ def main():
     parser.add_argument("--blob-size", type=int, default=4096)
     parser.add_argument(
         "--object-type",
-        choices=["page_template", "python_script", "mixed", "folders"],
+        choices=[
+            "page_template",
+            "python_script",
+            "sql_method",
+            "mixed",
+            "folders",
+        ],
         default="page_template",
     )
     parser.add_argument("--runs", type=int, default=3)

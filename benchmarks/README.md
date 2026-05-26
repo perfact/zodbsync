@@ -77,6 +77,30 @@ tox -e benchmark -- \
   --output benchmarks/results/python-script-playback.json
 ```
 
+### SQL Method Playback
+
+Alternative workload to measure playback cost for `Z SQL Method` objects.
+
+- `depth=4`
+- `breadth=5`
+- `blobs-per-folder=5`
+- `blob-size=4096`
+- `object-type=sql_method`
+- `runs=5`
+
+Command:
+
+```sh
+tox -e benchmark -- \
+  --depth 4 \
+  --breadth 5 \
+  --blobs-per-folder 5 \
+  --blob-size 4096 \
+  --object-type sql_method \
+  --runs 5 \
+  --output benchmarks/results/sql-method-playback.json
+```
+
 ### Folder-Heavy Playback
 
 Structural workload to isolate generic playback overhead with deep folder
@@ -145,9 +169,9 @@ This writes:
 - `benchmarks/results/profile/playback-run-1.prof`
 - `benchmarks/results/profile/playback-run-1.txt`
 
-Use `--object-type page_template`, `python_script`, `mixed`, or `folders` to
-compare how playback behaves for different object mixes and traversal-heavy
-trees.
+Use `--object-type page_template`, `python_script`, `sql_method`, `mixed`, or
+`folders` to compare how playback behaves for different object mixes and
+traversal-heavy trees.
 
 The JSON output also includes `playback_fs_cache_stats` so cache hit rates can
 be compared before and after filesystem lookup changes.
