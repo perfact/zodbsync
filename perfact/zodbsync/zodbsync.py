@@ -174,7 +174,8 @@ def mod_write(
         obj = None
 
     # ID is new? Create a minimal object (depending on type)
-    if obj is None:
+    created = obj is None
+    if created:
         object_handlers[meta_type].create(parent, data, obj_id)
         if hasattr(parent, "aq_explicit"):
             obj = getattr(parent.aq_explicit, obj_id, None)
@@ -182,8 +183,10 @@ def mod_write(
             obj = getattr(parent, obj_id, None)
 
     # Send an update (depending on type)
+    handler_data = dict(d)
+    handler_data["_created"] = created
     for handler in mod_implemented_handlers(obj, meta_type):
-        handler.write(obj, d)
+        handler.write(obj, handler_data)
 
     # Also write zodbsync layer information
     obj.zodbsync_layer = layer

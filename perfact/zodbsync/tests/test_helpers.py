@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pytest
 
-from .. import benchmark, helpers
+from .. import benchmark, helpers, object_mixins
 
 
 class _DummyFolder:
@@ -46,6 +46,36 @@ class _DummySqlMethodManager:
             "arguments": arguments,
             "template": template,
         }
+
+
+class _PermissionProbe:
+    def __init__(self):
+        self._owner = (["acl_users"], "perfact")
+        self.roles_added = []
+        self.roles_deleted = []
+        self.local_roles_deleted = []
+        self.local_roles_set = []
+
+    def userdefined_roles(self):
+        return ()
+
+    def get_local_roles(self):
+        return ()
+
+    def _addRole(self, role):
+        self.roles_added.append(role)
+
+    def _delRoles(self, roles):
+        self.roles_deleted.append(tuple(roles))
+
+    def manage_delLocalRoles(self, users):
+        self.local_roles_deleted.append(tuple(users))
+
+    def manage_setLocalRoles(self, user, roles):
+        self.local_roles_set.append((user, tuple(roles)))
+
+    def ac_inherited_permissions(self, _all):
+        raise AssertionError("Permission reset path should be skipped")
 
 
 def test_remove_redundant_paths():
@@ -236,3 +266,19 @@ def test_populate_dataset_sql_methods():
         "sql_methods": 18,
         "payload_bytes": 16,
     }
+
+
+def test_accesscontrol_write_skips_default_reset_on_create():
+    obj = _PermissionProbe()
+
+    object_mixins.AccessControlObj.write(
+        obj,
+        {
+            "_created": True,
+        },
+    )
+
+    assert obj.roles_added == []
+    assert obj.roles_deleted == []
+    assert obj.local_roles_deleted == []
+    assert obj.local_roles_set == []

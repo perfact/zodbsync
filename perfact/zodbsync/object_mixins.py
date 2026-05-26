@@ -104,6 +104,7 @@ class AccessControlObj(MixinModObj):
 
     @staticmethod
     def write(obj, data):
+        created = data.get("_created", False)
 
         # Set userdef roles
         cur = AccessControlObj.roles(obj)
@@ -124,6 +125,24 @@ class AccessControlObj(MixinModObj):
                 obj.manage_delLocalRoles([user])
             elif cur.get(user) != tgt[user]:
                 obj.manage_setLocalRoles(user, tgt[user])
+
+        # Freshly created objects already start with default inherited
+        # permissions and no explicit role configuration.
+        if (
+            created
+            and "roles" not in data
+            and "local_roles" not in data
+            and "perms" not in data
+        ):
+            if "owner" in data:
+                owner = data["owner"]
+                if isinstance(owner, str):
+                    # backward compatibility for older behavior, where the
+                    # corresponding UserFolder was not included
+                    owner = (["acl_users"], owner)
+                if getattr(obj, "_owner", None) != owner:
+                    obj._owner = owner
+            return
 
         # Permission settings
         # permissions that are not stored are understood to be acquired, with
@@ -157,7 +176,8 @@ class AccessControlObj(MixinModObj):
                 # corresponding UserFolder was not included
                 owner = (["acl_users"], owner)
 
-            obj._owner = data["owner"]
+            if getattr(obj, "_owner", None) != owner:
+                obj._owner = owner
 
 
 class PropertiesObj(MixinModObj):
