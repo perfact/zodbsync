@@ -181,6 +181,26 @@ marked as `unsupported`, which are ignored if found in the ZODB. If only a
 given object itself should be updated (properties, security settings etc.),
 `--no-recurse` can be used.
 
+### `zodbsync-benchmark`
+
+For playback performance work, the repository now includes a dedicated
+benchmark entrypoint. It creates a disposable ZEO instance, generates a
+synthetic ZODB tree, records that tree into a repository, and then measures the
+time needed to play the repository back into a fresh `Data.fs`.
+
+It depends on the same external tooling as the test setup, especially
+`mkzeoinstance`.
+
+Example:
+
+    tox -e benchmark -- --depth 4 --breadth 5 --blobs-per-folder 5 --blob-size 4096 --runs 3
+
+The command prints a JSON report containing dataset size details and the
+measured playback durations. Use `--output bench.json` to persist the report
+for before/after comparisons across revisions.
+
+Checked-in benchmark presets live in [benchmarks/README.md](./benchmarks/README.md).
+
 ### `zodbsync exec`
 
 This command requires the base directory to be a git repository and provides a
