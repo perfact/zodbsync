@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 
+from .helpers import literal_eval
 from .main import Runner
 
 
@@ -202,6 +203,44 @@ def count_repo_objects(root):
     return total
 
 
+def copy_seed_repo(source, target):
+    for entry in os.listdir(source):
+        if entry == ".git":
+            continue
+        src_path = os.path.join(source, entry)
+        dst_path = os.path.join(target, entry)
+        if os.path.isdir(src_path):
+            shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src_path, dst_path)
+
+
+def analyze_recorded_repo(repo_root):
+    object_root = os.path.join(repo_root, "__root__")
+    stats = {
+        "folders": 0,
+        "page_templates": 0,
+        "python_scripts": 0,
+        "sql_methods": 0,
+        "other_objects": 0,
+        "payload_bytes": None,
+    }
+    type_map = {
+        "Folder": "folders",
+        "Folder (Ordered)": "folders",
+        "Page Template": "page_templates",
+        "Script (Python)": "python_scripts",
+        "Z SQL Method": "sql_methods",
+    }
+    for root, _, files in os.walk(object_root):
+        if "__meta__" not in files:
+            continue
+        with open(os.path.join(root, "__meta__"), "rb") as f:
+            meta = dict(literal_eval(f.read()))
+        stats[type_map.get(meta.get("type"), "other_objects")] += 1
+    return stats
+
+
 def dataset_object_types(object_type):
     if object_type == "mixed":
         return ("page_template", "python_script")
@@ -325,6 +364,14 @@ def runner_cmd(runner, config_path, *cmd):
     return runner.parse("--config", config_path, *cmd)
 
 
+def playback_command(runner, config_path, override=False):
+    cmd = ["playback"]
+    if override:
+        cmd.append("--override")
+    cmd.append("/")
+    return runner_cmd(runner, config_path, *cmd)
+
+
 def benchmark_once(
     config_path,
     depth,
@@ -332,31 +379,39 @@ def benchmark_once(
     blobs_per_folder,
     blob_size,
     object_type,
+    seed_repo="",
     quiet=True,
 ):
     runner = build_runner()
 
-    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
-        command = runner_cmd(runner, config_path, "record", "/")
-        command.run()
+    if seed_repo:
+        runner_cmd(runner, config_path, "playback", "/")
+        start = time.perf_counter()
+        copy_seed_repo(seed_repo, runner.sync.base_dir)
+        record_seconds = time.perf_counter() - start
+        stats = analyze_recorded_repo(runner.sync.base_dir)
+    else:
+        with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+            command = runner_cmd(runner, config_path, "record", "/")
+            command.run()
 
-    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
-        tm = runner.sync.start_transaction(note="/benchmark-seed")
-        stats = populate_dataset(
-            app=runner.sync.app,
-            depth=depth,
-            breadth=breadth,
-            blobs_per_folder=blobs_per_folder,
-            blob_size=blob_size,
-            object_type=object_type,
-        )
-        tm.commit()
+        with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+            tm = runner.sync.start_transaction(note="/benchmark-seed")
+            stats = populate_dataset(
+                app=runner.sync.app,
+                depth=depth,
+                breadth=breadth,
+                blobs_per_folder=blobs_per_folder,
+                blob_size=blob_size,
+                object_type=object_type,
+            )
+            tm.commit()
 
-    start = time.perf_counter()
-    with muted_stdio(quiet), muted_logger(runner.logger, quiet):
-        command = runner_cmd(runner, config_path, "record", "/")
-        command.run()
-    record_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        with muted_stdio(quiet), muted_logger(runner.logger, quiet):
+            command = runner_cmd(runner, config_path, "record", "/")
+            command.run()
+        record_seconds = time.perf_counter() - start
 
     git_run(runner.sync.base_dir, "add", ".", quiet=quiet)
     try:
@@ -379,11 +434,11 @@ def benchmark_once(
     return stats, record_seconds
 
 
-def playback_once(config_path, quiet=True):
+def playback_once(config_path, override=False, quiet=True):
     runner = build_runner()
     start = time.perf_counter()
     with muted_stdio(quiet), muted_logger(runner.logger, quiet):
-        command = runner_cmd(runner, config_path, "playback", "/")
+        command = playback_command(runner, config_path, override=override)
         command.run()
     elapsed = time.perf_counter() - start
     return elapsed, getattr(runner.sync, "_v_last_playback_fs_cache_stats", None)
@@ -394,13 +449,14 @@ def profiled_playback_once(
     profile_prefix,
     profile_sort="cumulative",
     profile_lines=30,
+    override=False,
     quiet=True,
 ):
     profiler = cProfile.Profile()
     runner = build_runner()
     start = time.perf_counter()
     with muted_stdio(quiet), muted_logger(runner.logger, quiet):
-        command = runner_cmd(runner, config_path, "playback", "/")
+        command = playback_command(runner, config_path, override=override)
         profiler.runcall(command.run)
     elapsed = time.perf_counter() - start
 
@@ -446,6 +502,7 @@ def run_benchmark(args):
             blobs_per_folder=args.blobs_per_folder,
             blob_size=args.blob_size,
             object_type=args.object_type,
+            seed_repo=args.seed_repo,
             quiet=quiet,
         )
 
@@ -483,11 +540,14 @@ def run_benchmark(args):
                         profile_prefix=profile_prefix,
                         profile_sort=args.profile_sort,
                         profile_lines=args.profile_lines,
+                        override=args.playback_override,
                         quiet=quiet,
                     )
                 else:
                     elapsed, fs_cache_stats = playback_once(
-                        env["config"].path, quiet=quiet
+                        env["config"].path,
+                        override=args.playback_override,
+                        quiet=quiet,
                     )
                 playback_runs.append(elapsed)
                 playback_fs_cache_stats.append(fs_cache_stats)
@@ -502,6 +562,7 @@ def run_benchmark(args):
         "blobs_per_folder": args.blobs_per_folder,
         "blob_size": args.blob_size,
         "object_type": args.object_type,
+        "seed_repo": os.path.abspath(args.seed_repo) if args.seed_repo else "",
         "runs": args.runs,
         "record_seconds": record_seconds,
         "playback_seconds": playback_runs,
@@ -534,6 +595,15 @@ def main():
     parser.add_argument("--blobs-per-folder", type=int, default=5)
     parser.add_argument("--blob-size", type=int, default=4096)
     parser.add_argument(
+        "--seed-repo",
+        type=str,
+        default="",
+        help=(
+            "Copy an existing recorded repository tree into the benchmark repo "
+            "instead of generating a synthetic dataset."
+        ),
+    )
+    parser.add_argument(
         "--object-type",
         choices=[
             "page_template",
@@ -549,6 +619,11 @@ def main():
     parser.add_argument("--profile-dir", type=str, default="")
     parser.add_argument("--profile-sort", type=str, default="cumulative")
     parser.add_argument("--profile-lines", type=int, default=30)
+    parser.add_argument(
+        "--playback-override",
+        action="store_true",
+        help="Pass --override to playback so recorded type mismatches are replaced.",
+    )
     parser.add_argument(
         "--verbose",
         action="store_true",

@@ -127,6 +127,26 @@ tox -e benchmark -- \
 This produces a tree with 9330 folders and no page templates or Python
 scripts.
 
+### Recorded Repo Playback
+
+Replay an existing recorded repository tree such as `zoperepo`.
+
+- `seed-repo=zoperepo`
+- `runs=3`
+
+Command:
+
+```sh
+tox -e benchmark -- \
+  --seed-repo zoperepo \
+  --runs 3 \
+  --output benchmarks/results/zoperepo-playback.json
+```
+
+When `--seed-repo` is set, the synthetic dataset flags such as `--depth`,
+`--breadth`, `--blobs-per-folder`, `--blob-size`, and `--object-type` are
+ignored for seeding.
+
 ## Workflow
 
 1. Run the `Playback` preset on the current branch and keep the JSON output.

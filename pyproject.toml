@@ -40,6 +40,9 @@ universal = 1
 [tool.setuptools]
 include-package-data = false
 
+[tool.setuptools.packages.find]
+include = ["perfact*"]
+
 [tool.setuptools_scm]
 
 [tool.ruff]

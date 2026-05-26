@@ -282,3 +282,33 @@ def test_accesscontrol_write_skips_default_reset_on_create():
     assert obj.roles_deleted == []
     assert obj.local_roles_deleted == []
     assert obj.local_roles_set == []
+
+
+def test_analyze_recorded_repo(tmp_path):
+    root = tmp_path / "__root__"
+    root.mkdir()
+
+    script = root / "script"
+    script.mkdir()
+    (script / "__meta__").write_text("[('type', 'Script (Python)')]")
+
+    folder = root / "folder"
+    folder.mkdir()
+    (folder / "__meta__").write_text("[('type', 'Folder')]")
+
+    sql = folder / "query"
+    sql.mkdir()
+    (sql / "__meta__").write_text("[('type', 'Z SQL Method')]")
+
+    unknown = root / "other"
+    unknown.mkdir()
+    (unknown / "__meta__").write_text("[('type', 'Image')]")
+
+    assert benchmark.analyze_recorded_repo(str(tmp_path)) == {
+        "folders": 1,
+        "page_templates": 0,
+        "python_scripts": 1,
+        "sql_methods": 1,
+        "other_objects": 1,
+        "payload_bytes": None,
+    }
