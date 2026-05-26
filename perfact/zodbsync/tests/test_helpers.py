@@ -55,6 +55,7 @@ class _PermissionProbe:
         self.roles_deleted = []
         self.local_roles_deleted = []
         self.local_roles_set = []
+        self.isTopLevelPrincipiaApplicationObject = False
 
     def userdefined_roles(self):
         return ()
@@ -75,7 +76,7 @@ class _PermissionProbe:
         self.local_roles_set.append((user, tuple(roles)))
 
     def ac_inherited_permissions(self, _all):
-        raise AssertionError("Permission reset path should be skipped")
+        return [("View", [])]
 
 
 def test_remove_redundant_paths():
@@ -282,6 +283,33 @@ def test_accesscontrol_write_skips_default_reset_on_create():
     assert obj.roles_deleted == []
     assert obj.local_roles_deleted == []
     assert obj.local_roles_set == []
+
+
+def test_accesscontrol_write_skips_unchanged_permissions(monkeypatch):
+    obj = _PermissionProbe()
+
+    class _FakePermission:
+        def __init__(self, name, _roles, _obj):
+            self.name = name
+
+        def getRoles(self, default=None):
+            return []
+
+        def setRoles(self, roles):
+            raise AssertionError("Permission reset path should be skipped")
+
+    monkeypatch.setattr(
+        object_mixins.AccessControl.Permission,
+        "Permission",
+        _FakePermission,
+    )
+
+    object_mixins.AccessControlObj.write(
+        obj,
+        {
+            "owner": (["acl_users"], "perfact"),
+        },
+    )
 
 
 def test_analyze_recorded_repo(tmp_path):
