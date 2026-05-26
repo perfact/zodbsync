@@ -299,6 +299,67 @@ class TestSync:
         assert obj._text == data["source"]
         assert write_spy.call_count == 1
 
+    def test_script_python_create_seeds_source_without_reedit(self):
+        self.app.manage_addProduct["PythonScripts"].manage_addPythonScript(
+            id="existing_testpy",
+            file=(
+                '## Script (Python) "existing_testpy"\n'
+                "##title=Test script\n"
+                "##parameters=value=None\n"
+                "##bind container=container\n"
+                "##bind context=context\n"
+                "##bind namespace=\n"
+                "##bind script=script\n"
+                "##bind subpath=traverse_subpath\n"
+                "##\n"
+                "return value\n"
+            ),
+        )
+        script = self.app.existing_testpy
+        data = zodbsync.mod_read(script)
+        self.app.manage_delObjects(ids=["existing_testpy"])
+
+        object_types.ScriptPythonObj.create(self.app, data, "testpy")
+        obj = self.app.testpy
+
+        assert obj.title == "Test script"
+        assert obj.params() == "value=None"
+        assert helpers.to_bytes(obj.body()) == data["source"]
+        assert (
+            sorted(obj.getBindingAssignments().getAssignedNames().items())
+            == data["bindings"]
+        )
+
+        with mock.patch.object(
+            obj,
+            "ZPythonScript_edit",
+            autospec=True,
+            side_effect=obj.ZPythonScript_edit,
+        ) as edit_spy:
+            object_types.ScriptPythonObj.write(obj, data)
+        assert edit_spy.call_count == 0
+
+    def test_script_python_create_records_broken_source_errors(self):
+        data = {
+            "title": "Broken script",
+            "args": "",
+            "bindings": [
+                ("container", "container"),
+                ("context", "context"),
+                ("namespace", ""),
+                ("script", "script"),
+                ("subpath", "traverse_subpath"),
+            ],
+            "proxy_roles": [],
+            "source": b"return (\n",
+        }
+
+        object_types.ScriptPythonObj.create(self.app, data, "broken_testpy")
+        obj = self.app.broken_testpy
+
+        assert obj.errors
+        assert obj._code is None
+
     def add_folder(self, name, msg=None, parent=""):
         """
         Add a folder to the root directory and commit it if msg is given

@@ -388,9 +388,46 @@ class ScriptPythonObj(ModObj):
         "Script (Python)",
     ]
 
+    binding_header_names = {
+        "name_container": "container",
+        "name_context": "context",
+        "name_m_self": "script",
+        "name_ns": "namespace",
+        "name_subpath": "subpath",
+    }
+
+    default_bindings = [
+        ("name_container", "container"),
+        ("name_context", "context"),
+        ("name_m_self", "script"),
+        ("name_ns", ""),
+        ("name_subpath", "traverse_subpath"),
+    ]
+
+    @staticmethod
+    def source_with_metadata(data, obj_id):
+        title = data.get("title", "")
+        params = data.get("args", "")
+        bindings = data.get("bindings", ScriptPythonObj.default_bindings)
+        headers = [
+            f'## Script (Python) "{obj_id}"',
+            f"##title={title}",
+            f"##parameters={params}",
+        ]
+        for key, value in bindings:
+            key = ScriptPythonObj.binding_header_names.get(key, key)
+            headers.append(f"##bind {key}={value}")
+        headers.append("##")
+        body = helpers.to_string(data.get("source", ""))
+        return "\n".join(headers) + "\n" + body
+
     @staticmethod
     def create(obj, data, obj_id):
-        obj.manage_addProduct["PythonScripts"].manage_addPythonScript(id=obj_id)
+        obj.manage_addProduct["PythonScripts"].manage_addPythonScript(
+            id=obj_id,
+            title=data.get("title", ""),
+            file=ScriptPythonObj.source_with_metadata(data, obj_id),
+        )
 
     @staticmethod
     def read(obj):
@@ -403,12 +440,20 @@ class ScriptPythonObj(ModObj):
 
     @staticmethod
     def write(obj, data):
-        obj.ZPythonScript_setTitle(title=data["title"])
-        obj.ZPythonScript_edit(
-            params=data["args"], body=helpers.to_string(data["source"])
-        )
-        obj.ZBindings_edit(mapping=dict(data["bindings"]))
-        obj.manage_proxy(roles=data["proxy_roles"])
+        title = data["title"]
+        params = data["args"]
+        source = helpers.to_string(data["source"])
+        bindings = sorted(obj.getBindingAssignments().getAssignedNames().items())
+        proxy_roles = sorted(list(obj._proxy_roles))
+
+        if obj.title != title:
+            obj.ZPythonScript_setTitle(title=title)
+        if obj.params() != params or obj.body() != source:
+            obj.ZPythonScript_edit(params=params, body=source)
+        if bindings != data["bindings"]:
+            obj.ZBindings_edit(mapping=dict(data["bindings"]))
+        if proxy_roles != data["proxy_roles"]:
+            obj.manage_proxy(roles=data["proxy_roles"])
 
 
 class ZPsycopgDAObj(ModObj):
