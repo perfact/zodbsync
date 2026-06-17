@@ -278,9 +278,8 @@ def load_layer_config(config=None, path=None):
     """
     Load layer configuration. Returns list of layers, where each has an "ident"
     and more keys like "workdir" and "source" from the layer configuration
-    file. The topmost fallback layer is also added, with ident="" (empty
-    string). Order of returned entries is such that the topmost fallback layer
-    is the first.
+    file. The topmost fallback layer is also added, with ident=None. Order of
+    returned entries is such that the topmost fallback layer is the first.
     """
     if config is None:
         config = load_config(path)
