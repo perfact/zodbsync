@@ -58,7 +58,8 @@ class TestSync:
     """
 
     @pytest.fixture(scope="class", autouse=True)
-    def environment(self, request):
+    @classmethod
+    def environment(cls, request):
         """
         Fixture that is automatically used by all tests. Initializes
         environment and injects the elements of it into the class.
@@ -73,13 +74,14 @@ class TestSync:
 
         # inject items into class so methods can use them
         for key, value in myenv.items():
-            setattr(request.cls, key, value)
+            setattr(cls, key, value)
 
         # Initially record everything and commit it
-        self.run("record", "/")
-        self.gitrun("add", ".")
-        self.gitrun("commit", "-m", "init")
-        request.cls.initial_commit = self.get_head_id()
+        me = cls()
+        me.run("record", "/")
+        me.gitrun("add", ".")
+        me.gitrun("commit", "-m", "init")
+        cls.initial_commit = me.get_head_id()
 
         # at this point, the test is called
         yield
