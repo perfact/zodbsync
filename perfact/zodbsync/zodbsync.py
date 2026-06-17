@@ -395,17 +395,26 @@ class ZODBSync:
         }
         """
         layers = self.layers
-        check = self.base_dir
-        markers = ["__frozen__", "__deleted__"]
+        markers = {"__frozen__", "__deleted__"}
+        partial = ""
         for part in [self.site] + path.split("/"):
             if not part:
                 continue
-            check = os.path.join(check, part)
-            if not os.path.isdir(check):
-                break
-            if any([item in markers for item in os.listdir(check)]):
-                # Only keep custom layer
-                layers = layers[:1]
+            partial = os.path.join(partial, part) if partial else part
+            restricted = False
+            any_dir = False
+            for idx, layer in enumerate(layers):
+                check = os.path.join(layer["workdir"], partial)
+                try:
+                    entries = set(os.listdir(check))
+                except OSError:
+                    continue
+                any_dir = True
+                if markers & entries:
+                    layers = layers[: idx + 1]
+                    restricted = True
+                    break
+            if restricted or not any_dir:
                 break
 
         result = {

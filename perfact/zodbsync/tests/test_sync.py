@@ -1784,6 +1784,62 @@ class TestSync:
             self.run("record", "/")
         assert not os.path.exists("{}/__root__/Test".format(self.repo.path))
 
+    def test_layer_named_freeze_restricts(self):
+        """
+        __frozen__ in a named layer restricts layers to that layer and above.
+        Object visible in Zope but only in an excluded layer must be recorded
+        into the custom layer.
+        """
+        self.add_folder("Test", "Test")
+        self.run("playback", "/Test")
+        # layerB (seqnum="00") -> index 2 (lower priority)
+        # layerA (seqnum="01") -> index 1 (higher priority)
+        with self.addlayer("00") as layerB:
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Test",
+                f"{layerB}/workdir/__root__/Test",
+            )
+            with self.addlayer("01") as layerA:
+                # Remove /Test from custom layer so only layerB has it
+                shutil.rmtree(f"{self.repo.path}/__root__/Test")
+                # Place __frozen__ in layerA's __root__ (index 1)
+                # -> layers[:2] = [custom, layerA]; layerB excluded
+                open(f"{layerA}/workdir/__root__/__frozen__", "w").close()
+                self.run("record", "/")
+        # layerB excluded by freeze -> /Test not seen in consulted layers
+        # -> recorded to custom layer
+        assert os.path.exists(f"{self.repo.path}/__root__/Test/__meta__")
+
+    def test_layer_named_freeze_sibling_unaffected(self):
+        """
+        __frozen__ in a named layer at a subtree path does not restrict
+        sibling paths outside that subtree.
+        """
+        self.add_folder("Test", "Test")
+        self.add_folder("Other", "Other")
+        self.run("playback", "/Test")
+        self.run("playback", "/Other")
+        with self.addlayer("00") as layerB:
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Test",
+                f"{layerB}/workdir/__root__/Test",
+            )
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Other",
+                f"{layerB}/workdir/__root__/Other",
+            )
+            with self.addlayer("01") as layerA:
+                # Remove both from custom layer
+                shutil.rmtree(f"{self.repo.path}/__root__/Test")
+                shutil.rmtree(f"{self.repo.path}/__root__/Other")
+                # Place __frozen__ inside layerA's __root__/Test/ subtree only
+                os.makedirs(f"{layerA}/workdir/__root__/Test")
+                open(f"{layerA}/workdir/__root__/Test/__frozen__", "w").close()
+                self.run("record", "/")
+        # /Other is outside the frozen subtree -> layerB still serves it
+        # -> custom layer must NOT have /Other
+        assert not os.path.exists(f"{self.repo.path}/__root__/Other")
+
     def test_layer_record_compress_simple(self):
         """
         Test record compression: Create a folder on custom layer,
