@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: done
 
 # HITL Review: `__frozen__` semantics generalisation
 
