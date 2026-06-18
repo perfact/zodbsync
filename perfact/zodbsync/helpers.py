@@ -311,3 +311,24 @@ def load_layer_config(config=None, path=None):
     )
     # Reverse order - index zero is the topmost fallback layer
     return list(reversed(layers))
+
+
+def set_zodbsync_layer(obj, layer_ident):
+    """
+    Set zodbsync_layer on a Zope object.
+
+    Intended to be imported and called from Zope Python Scripts (requires
+    allow_module for the perfact namespace). Python Scripts cannot set
+    attributes directly (RestrictedPython raises TypeError), but calling
+    a module function bypasses that restriction.
+
+    Pass an empty string or None to clear the attribute so that record/watch
+    fall back to FS-presence and parent-layer resolution on the next run.
+    """
+    if layer_ident:
+        obj.zodbsync_layer = layer_ident
+    else:
+        try:
+            del obj.zodbsync_layer
+        except AttributeError:
+            pass
