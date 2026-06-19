@@ -609,10 +609,11 @@ class TestSync:
 
     def test_cacheable(self):
         "Add a RamCacheManager and use it for index_html"
-        self.app.manage_addProduct["StandardCacheManagers"].manage_addRAMCacheManager(
-            id="http_cache"
-        )
-        self.app.index_html.ZCacheable_setManagerId("http_cache")
+        with self.runner.sync.tm:
+            self.app.manage_addProduct[
+                "StandardCacheManagers"
+            ].manage_addRAMCacheManager(id="http_cache")
+            self.app.index_html.ZCacheable_setManagerId("http_cache")
         self.run("record", "/")
         fname = self.repo.path + "/__root__/index_html/__meta__"
         assert "http_cache" in open(fname).read()
@@ -1385,9 +1386,9 @@ class TestSync:
             self.app.manage_addProduct["OFSP"].manage_addFolder(id="test")
 
         folder = self.app.test
-        mtime1 = folder._p_mtime
 
         self.run("record", "/test")
+        mtime1 = folder._p_mtime
         self.run("playback", "/test")
         mtime2 = folder._p_mtime
         assert mtime1 == mtime2
@@ -2016,6 +2017,8 @@ class TestSync:
                 os.path.join(layer, "workdir/__root__/index_html"),
             )
             watcher = self.mkrunner("watch")
+            with self.runner.sync.tm:
+                del self.app.index_html.zodbsync_layer
             watcher.setup()
 
             # Somehow, we need to initialize the connection here and can not
@@ -2053,6 +2056,10 @@ class TestSync:
             os.rename(src, tgt)
             os.mkdir(src)
             watcher = self.mkrunner("watch")
+            with self.runner.sync.tm:
+                del self.app.Test1.zodbsync_layer
+                del self.app.Test2.zodbsync_layer
+                del self.app.Test1.Sub.zodbsync_layer
             watcher.setup()
             with self.newconn() as conn:
                 with conn.tm:
@@ -2288,6 +2295,7 @@ class TestSync:
                 "{}/workdir/__root__/blob".format(layer),
             )
             with self.runner.sync.tm:
+                del self.app.blob.zodbsync_layer
                 self.app.blob.manage_edit(
                     filedata="text_content", content_type="text/plain", title="BLOB"
                 )
@@ -2415,12 +2423,14 @@ class TestSync:
 
         with self.addlayer() as layer:
             self.run("record", "/blob")
-            assert getattr(self.app.blob, "zodbsync_layer", None) is None
-            # Move file to layer and check that layer info is stored in Data.FS
+            assert getattr(self.app.blob, "zodbsync_layer", None) == ""
+            # Move file to layer; clear attr so rule 2 detects new FS location
             shutil.move(
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
+            with self.runner.sync.tm:
+                del self.app.blob.zodbsync_layer
             self.run("record", "/")
             assert getattr(self.app.blob, "zodbsync_layer") is not None
             # Change file in Data.FS and verify that layer info is preserved
@@ -2429,7 +2439,7 @@ class TestSync:
                     filedata="text_content", content_type="text/plain", title="BLOB"
                 )
             self.run("record", "/")
-            # layer attribute stays because rule 1 routes it back to the named layer
+            # rule 1 routes back to named layer because zodbsync_layer was set above
             ident = self.runner.sync.layers[-1]["ident"]
             assert getattr(self.app.blob, "zodbsync_layer") == ident
 
@@ -2442,20 +2452,21 @@ class TestSync:
             self.run("record", "/blob")
             custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
             assert os.path.exists(custom_meta)
-            assert getattr(self.app.blob, "zodbsync_layer", None) is None
+            assert getattr(self.app.blob, "zodbsync_layer", None) == ""
 
     def test_layer_record_rule2_fs_presence(self):
         """Rule 2: existing __meta__ in named layer -> record writes there."""
         with self.runner.sync.tm:
             self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
         with self.addlayer() as layer:
-            self.run("record", "/blob")  # custom layer, zodbsync_layer=None
+            self.run("record", "/blob")  # custom layer
             shutil.move(
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
-            # edit and re-record — rule 2 fires (FS in named layer, zodbsync_layer=None)
+            # rule 2 fires: own zodbsync_layer absent, FS now in named layer
             with self.runner.sync.tm:
+                del self.app.blob.zodbsync_layer
                 self.app.blob.manage_edit(
                     filedata="new_content", content_type="text/plain", title=""
                 )
@@ -2515,7 +2526,9 @@ class TestSync:
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
-            self.run("record", "/blob")  # sets zodbsync_layer to named ident
+            with self.runner.sync.tm:
+                del self.app.blob.zodbsync_layer
+            self.run("record", "/blob")  # rule 2 detects named layer, sets attr
 
             watcher = self.mkrunner("watch")
             watcher.setup()

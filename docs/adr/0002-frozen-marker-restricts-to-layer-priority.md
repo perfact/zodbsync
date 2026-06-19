@@ -26,6 +26,10 @@ Keeping `__frozen__` as a custom-layer-only concept and introducing a new marker
 
 ## Consequences
 
-- `fs_pathinfo` performance: O(layers × path_depth) filesystem checks for `__frozen__`, up from O(path_depth).
+- `fs_pathinfo` performance: O(layers × path_depth) filesystem checks for `__frozen__`, up from O(path_depth). In practice this is expected to be negligible: `__frozen__` is the exception, so most checks are ENOENT hits served from the kernel dentry cache.
 - `layer-update` may remove `__frozen__` markers when syncing source → workdir. This is intentional: `__frozen__` is local workdir state not owned by the source.
 - `zodbsync move` removes `__frozen__` from the source layer when an object moves away, preventing stale markers.
+
+### Future optimization
+
+If profiling shows the stat overhead is measurable, a per-layer index file (e.g. `__frozen_index__`) listing all frozen paths could replace per-path stat checks, reducing runtime cost to a single small-file read per session or watch cycle. This would require a one-time migration to build the index from existing `__frozen__` marker files and is deferred until there is evidence it is needed.

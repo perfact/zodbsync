@@ -37,4 +37,4 @@ The attribute must be set (not absent). An absent attribute (`getattr` returns `
 
 ## Blocked by
 
-`04-review-layer-aware-write.md`
+`03-layer-aware-write-infrastructure.md`

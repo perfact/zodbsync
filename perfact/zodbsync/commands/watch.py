@@ -11,6 +11,7 @@ import time
 # For reading the Data.FS in order to obtain affected object IDs from
 # transaction IDs
 import ZODB.FileStorage
+from Acquisition import aq_base
 
 from ..helpers import increment_txnid
 from ..subcommand import SubCommand
@@ -185,11 +186,9 @@ class Watch(SubCommand):
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
         target_layer_idx = self.sync.resolve_target_layer(path, obj)
-        pathinfo = self.sync.fs_write(
-            path=path, data=data, target_layer_idx=target_layer_idx
-        )
-        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
-        current_layer = getattr(obj, "zodbsync_layer", None)
+        self.sync.fs_write(path=path, data=data, target_layer_idx=target_layer_idx)
+        path_layer = self.sync.layers[target_layer_idx]["ident"]
+        current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
         if current_layer != path_layer:
             with self.sync.tm:
                 obj.zodbsync_layer = path_layer

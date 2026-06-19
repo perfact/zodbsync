@@ -34,4 +34,4 @@ Intended use: the source layer has uncommitted changes. After copy, the source r
 
 ## Blocked by
 
-`06-review-divergence-handling.md`
+`05-layer-divergence-handling.md`
