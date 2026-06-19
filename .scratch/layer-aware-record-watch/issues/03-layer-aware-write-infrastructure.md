@@ -36,6 +36,11 @@ This issue covers **only** the normal case where the resolved target layer match
 - [ ] New objects created under a parent are recorded into the parent's layer.
 - [ ] Root-level objects with no `obj.zodbsync_layer` and no FS presence fall back to the custom layer.
 - [ ] `test_layer_change_into_top` is inverted: asserts object lands in named layer, not custom layer.
+- [ ] `load_layer_config` sets `ident=""` (not `None`) for the custom layer (see ADR 0003).
+- [ ] `set_zodbsync_layer` uses `if layer_ident is not None:` so `""` sets the attribute rather than deleting it.
+- [ ] Tests using "record → FS rename → record" to simulate named-layer membership are updated: `playback` is inserted after the FS rename so `obj.zodbsync_layer` is set to the named layer ident before the second record.
+- [ ] `test_layer_record_rule4_fallback_custom` assertion updated from `is None` to `== ""`.
+- [ ] `test_layer_record_rule2_fs_presence` setup ensures `obj.zodbsync_layer` is absent before the FS move (either omit the initial record or delete the attribute after).
 - [ ] All other existing layer tests pass.
 
 ## Blocked by
