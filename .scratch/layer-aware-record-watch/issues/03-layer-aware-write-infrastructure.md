@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Layer-aware write infrastructure (`record` and `watch`)
 
@@ -45,4 +45,4 @@ This issue covers **only** the normal case where the resolved target layer match
 
 ## Blocked by
 
-`02-review-frozen-semantics.md`
+`01-frozen-semantics-generalisation.md`

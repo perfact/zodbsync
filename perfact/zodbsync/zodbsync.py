@@ -17,6 +17,7 @@ import transaction
 
 # For config loading and initial connection, possibly populating an empty ZODB
 import Zope2.App.startup
+from Acquisition import aq_base
 from Zope2.Startup.run import configure_wsgi
 
 from .helpers import (
@@ -460,7 +461,7 @@ class ZODBSync:
         Rule 3: parent object on FS in some layer.
         Rule 4: fallback to custom layer (index 0).
         """
-        ident = getattr(obj, "zodbsync_layer", None)
+        ident = getattr(aq_base(obj), "zodbsync_layer", None)
         if ident is not None:
             for idx, layer in enumerate(self.layers):
                 if layer["ident"] == ident:
@@ -719,9 +720,9 @@ class ZODBSync:
 
         target_layer_idx = self.resolve_target_layer(path, obj)
         pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
-        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+        path_layer = self.layers[target_layer_idx]["ident"]
 
-        current_layer = getattr(obj, "zodbsync_layer", None)
+        current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
         if current_layer != path_layer:
             with self.tm:
                 obj.zodbsync_layer = path_layer

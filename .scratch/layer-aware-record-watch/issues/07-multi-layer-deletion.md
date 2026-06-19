@@ -29,4 +29,4 @@ The multi-layer case arises when `zodbsync copy` has been used — the object ex
 
 ## Blocked by
 
-`04-review-layer-aware-write.md`
+`03-layer-aware-write-infrastructure.md`
