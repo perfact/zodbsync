@@ -37,4 +37,4 @@ Because `record`/`watch` now detect layer divergence (issue #05) and move files 
 
 ## Blocked by
 
-`06-review-divergence-handling.md`
+`05-layer-divergence-handling.md`

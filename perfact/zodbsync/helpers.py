@@ -278,8 +278,9 @@ def load_layer_config(config=None, path=None):
     """
     Load layer configuration. Returns list of layers, where each has an "ident"
     and more keys like "workdir" and "source" from the layer configuration
-    file. The topmost fallback layer is also added, with ident=None. Order of
-    returned entries is such that the topmost fallback layer is the first.
+    file. The topmost fallback layer is also added, with ident="" (empty
+    string). Order of returned entries is such that the topmost fallback layer
+    is the first.
     """
     if config is None:
         config = load_config(path)
@@ -305,7 +306,7 @@ def load_layer_config(config=None, path=None):
     # Append default top-level layer
     layers.append(
         {
-            "ident": None,
+            "ident": "",
             "workdir": config["base_dir"],
         }
     )
@@ -322,10 +323,11 @@ def set_zodbsync_layer(obj, layer_ident):
     attributes directly (RestrictedPython raises TypeError), but calling
     a module function bypasses that restriction.
 
-    Pass an empty string or None to clear the attribute so that record/watch
-    fall back to FS-presence and parent-layer resolution on the next run.
+    Pass None to clear the attribute so that record/watch fall back to
+    FS-presence and parent-layer resolution on the next run. Pass "" to set
+    sticky fallback (routes to the top-level custom layer via Rule 1).
     """
-    if layer_ident:
+    if layer_ident is not None:
         obj.zodbsync_layer = layer_ident
     else:
         try:
