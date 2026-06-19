@@ -452,7 +452,30 @@ class ZODBSync:
         result["children"] = sorted(children)
         return result
 
-    def fs_write(self, path, data):
+    def resolve_target_layer(self, path, obj):
+        """Return layer index for writing obj at path (rules 1-4).
+
+        Rule 1: obj.zodbsync_layer is a known named-layer ident.
+        Rule 2: object already on FS in some layer.
+        Rule 3: parent object on FS in some layer.
+        Rule 4: fallback to custom layer (index 0).
+        """
+        ident = getattr(obj, "zodbsync_layer", None)
+        if ident is not None:
+            for idx, layer in enumerate(self.layers):
+                if layer["ident"] == ident:
+                    return idx
+        pathinfo = self.fs_pathinfo(path)
+        if pathinfo["layeridx"] is not None:
+            return pathinfo["layeridx"]
+        parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        if parent != path:
+            pinfo = self.fs_pathinfo(parent)
+            if pinfo["layeridx"] is not None:
+                return pinfo["layeridx"]
+        return 0
+
+    def fs_write(self, path, data, target_layer_idx=0):
         """
         Write object data out to a folder with the given path.
         """
@@ -502,9 +525,11 @@ class ZODBSync:
             new_data["source"] = source
 
         if old_data != new_data:
-            # Path in top layer, might be different than the one where we read
-            # the content
-            write_base = self.fs_path(path)
+            write_base = os.path.join(
+                self.layers[target_layer_idx]["workdir"],
+                self.site,
+                path.lstrip("/"),
+            )
             os.makedirs(write_base, exist_ok=True)
 
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
@@ -525,9 +550,7 @@ class ZODBSync:
                 with open(os.path.join(write_base, src_fname), "wb") as f:
                     f.write(source)
 
-            # We wrote the object to the topmost layer, so the index where the
-            # current representation can be found is zero.
-            pathinfo["layeridx"] = 0
+            pathinfo["layeridx"] = target_layer_idx
 
         # Compress if possible: Compare object with its representation on disk
         # if the current layer is ignored. If it is the same, remove it in the
@@ -694,7 +717,8 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        pathinfo = self.fs_write(path, data)
+        target_layer_idx = self.resolve_target_layer(path, obj)
+        pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
         path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
 
         current_layer = getattr(obj, "zodbsync_layer", None)
