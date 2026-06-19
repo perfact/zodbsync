@@ -29,15 +29,11 @@ This logic must be present in both `record_obj` and `watch._record_object` — a
 - [ ] Test: set `obj.zodbsync_layer` then run `zodbsync record` → same result as above.
 - [ ] Test: divergence move removes a pre-existing `__frozen__` marker from the old layer.
 
-## Scope limitation: moving to the custom layer via attribute
+## Moving to the custom layer via attribute
 
-Divergence detection fires when `obj.zodbsync_layer` holds a **named layer ident** (non-`None`) that differs from the object's current FS location. It does not fire when the attribute is `None`, because `None` is indistinguishable from "attribute not set" (see ADR 0001).
+Divergence detection fires whenever `obj.zodbsync_layer` holds any ident (including `""` for the custom layer) that differs from the object's current FS location. Setting `obj.zodbsync_layer = ""` from the Zope management interface is therefore sufficient to trigger a move-to-custom-layer on the next `watch` or `record` cycle — the same mechanism as moves to named layers (see ADR 0003).
 
-Consequence: a developer cannot trigger a move-to-custom-layer by setting `obj.zodbsync_layer = None` from the Zope UI. Divergence detection would not see it as a move instruction; rule 2 (FS presence in named layer) would win and write back to the named layer unchanged.
-
-Moving an object to the custom layer is therefore only supported via `zodbsync move <path> ""`, which physically moves FS files and sets the attribute atomically. Attribute-only moves to the custom layer are out of scope here.
-
-If attribute-only moves to the custom layer become a requirement in a future issue, the prerequisite is changing the custom layer ident from `None` to `""` throughout `load_layer_config`, the resolution algorithm, and the `__meta__` format (see ADR 0001 for the full scope of that change).
+The attribute must be set (not absent). An absent attribute (`getattr` returns `None`) still skips rule 1 and falls through to rules 2–4.
 
 ## Blocked by
 

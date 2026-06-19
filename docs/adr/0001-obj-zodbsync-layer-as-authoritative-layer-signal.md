@@ -26,15 +26,15 @@ Making FS location authoritative and requiring `zodbsync move` (a CLI command) a
 - The `zodbsync move` and `zodbsync copy` commands must update `obj.zodbsync_layer` atomically with their filesystem operations, or `watch` will immediately re-move the object back.
 - `__frozen__` markers left in the old layer must be cleaned up when an object is moved away.
 
-## Custom layer ident and the `None` ambiguity
+## Custom layer ident
 
-`load_layer_config` assigns `ident=None` to the custom (fallback) layer. This means `obj.zodbsync_layer` returns `None` in two distinct states:
+`load_layer_config` assigns `ident=""` (empty string) to the custom (fallback) layer. This means `obj.zodbsync_layer` carries two distinct states:
 
-1. Attribute absent — object never recorded or layer unresolved.
-2. Attribute set to `None` — object was recorded into the custom layer.
+1. Attribute absent — object never recorded or layer unresolved. Rule 1 is skipped; rules 2–4 apply.
+2. Attribute set to `""` — object was recorded into the custom layer. Rule 1 fires and routes back to the custom layer.
 
-These two states are intentionally treated identically. The layer resolution algorithm skips rule 1 (attribute lookup) when the value is `None` and falls through to rule 2 (FS presence), which correctly distinguishes them: if the object is on the filesystem in the custom layer, rule 2 routes it there; if it has no FS presence at all, rules 3/4 apply.
+The `if ident is not None` guard in `resolve_target_layer` distinguishes these cleanly: absent returns `None` via `getattr` default, which skips rule 1; `""` is not `None`, so rule 1 runs and matches the custom layer entry.
 
-**Limitation:** A developer cannot express "move this object to the custom layer" by setting `obj.zodbsync_layer` alone. Setting the attribute to `None` looks identical to "not set", so rule 1 never fires for the custom layer. Moving an object to the custom layer therefore requires `zodbsync move` (which moves both the FS files and sets the attribute), not a bare attribute assignment.
+Setting `obj.zodbsync_layer = ""` from the Zope management interface is therefore sufficient to trigger a move-to-custom-layer on the next `watch` or `record` cycle, consistent with how moves to named layers work.
 
-**If this limitation must be lifted** — i.e., if it becomes a requirement to trigger a move-to-custom-layer via attribute assignment from the Zope UI — the correct fix is to change the custom layer ident from `None` to `""` (empty string), matching the `zodbsync move ""` convention. This would require updating `load_layer_config`, all `ident is None` guards, and the `__meta__` serialisation format. That change should be done as a standalone migration, not folded into an individual feature issue.
+See ADR 0003 for the rationale behind `""` over `None` or a sentinel object.

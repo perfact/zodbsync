@@ -133,6 +133,7 @@ class TestSync:
         yield helpers.Namespace({"tm": tm, "app": app})
         tm.abort()
         conn.close()
+        db.close()
 
     @pytest.fixture(scope="function")
     def conn(self, request):
@@ -2007,8 +2008,7 @@ class TestSync:
     def test_layer_watch_rename(self):
         """
         Rename an object in the Data.FS that is recorded in a lower layer.
-        Check that the watcher does the right thing, marking the original
-        object as deleted and creating the new object.
+        The renamed object keeps the layer assignment of its OID (rule 1).
         """
         with self.addlayer() as layer:
             os.rename(
@@ -2028,8 +2028,10 @@ class TestSync:
             assert os.path.exists(
                 os.path.join(self.repo.path, "__root__/index_html/__deleted__")
             )
+            # object was in named layer (setup recorded it there via rule 2);
+            # after rename the OID keeps zodbsync_layer so rule 1 routes to named
             assert os.path.exists(
-                os.path.join(self.repo.path, "__root__/something/__meta__")
+                os.path.join(layer, "workdir/__root__/something/__meta__")
             )
 
     def test_layer_watch_paste(self):
@@ -2056,9 +2058,10 @@ class TestSync:
                 with conn.tm:
                     cp = conn.app.Test1.manage_cutObjects(["Sub"])
                     conn.app.Test2._pasteObjects(cp)
+            layer_root = "{}/workdir/__root__".format(layer)
             paths = [
-                os.path.join(self.repo.path, "__root__", path)
-                for path in ["Test1/Sub/__deleted__", "Test2/Sub/__meta__"]
+                os.path.join(self.repo.path, "__root__", "Test1/Sub/__deleted__"),
+                os.path.join(layer_root, "Test2/Sub/__meta__"),
             ]
             self.watcher_step_until(watcher, lambda: all(map(os.path.exists, paths)))
             with self.newconn() as conn:
@@ -2066,12 +2069,19 @@ class TestSync:
                     cp = conn.app.Test2.manage_cutObjects(["Sub"])
                     conn.app.Test1._pasteObjects(cp)
 
-            paths = [
-                os.path.join(self.repo.path, "__root__", path)
-                for path in ["Test1", "Test2"]
-            ]
-            # Both folders must be removed
-            self.watcher_step_until(watcher, lambda: not any(map(os.path.isdir, paths)))
+            # After paste back, Test1 custom dir is pruned (no overrides needed).
+            # Test2 retains Sub/__deleted__ to mask the stale named-layer entry.
+            custom_test1 = os.path.join(self.repo.path, "__root__", "Test1")
+            custom_test2_deleted = os.path.join(
+                self.repo.path, "__root__", "Test2/Sub/__deleted__"
+            )
+            self.watcher_step_until(
+                watcher,
+                lambda: (
+                    not os.path.isdir(custom_test1)
+                    and os.path.exists(custom_test2_deleted)
+                ),
+            )
 
     def test_layer_recreate_deleted(self):
         """
@@ -2229,12 +2239,10 @@ class TestSync:
     def test_layer_update_warn(self, caplog):
         """
         Set up a layer and initialize it. Change an object that is provided by
-        this layer and record the change into the custom layer. Update the base
-        layer such that this object would change and make sure that we are
-        warned that the change is ignored due to a collision.
-        Also check that deletion of an object in the base layer that is not
-        masked in the custom layer, but that has a masked subobject, also leads
-        to a warning.
+        this layer and record it (now routes to named layer via rule 2). Update
+        the base layer so that the object changes and ToDelete is removed.
+        Verify no AttributeError occurs and that playback applies the source
+        changes to the ZODB (Test uploaded, ToDelete removed).
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2257,18 +2265,18 @@ class TestSync:
                 f.write(zodbsync.mod_format({"title": "Changed", "type": "Folder"}))
             shutil.rmtree(os.path.join(tgt, "ToDelete"))
             self.run("layer-update", ident)
-            expect = "Conflict with object in custom layer: "
-            assert expect + "/Test" in caplog.text
+            # With issue-3 layer routing, edits go to named layer (not custom),
+            # so no custom-layer conflict fires. Verify no errors and that
+            # playback happened (Test uploaded, ToDelete removed from ZODB).
             assert "AttributeError" not in caplog.text
-            assert expect + "/ToDelete/Sub" in caplog.text
+            assert "Uploading /Test/" in caplog.text
+            assert "Removing object /ToDelete/" in caplog.text
 
     def test_layer_change_into_top(self):
         """
-        Verify that changed files are written into the top layer.
-        Note that this is not what we want in the long run, but until we have
-        methods for moving objects between layers and there is a frontend for
-        showing unstaged changes in all layers, everything is written into the
-        top layer.
+        After record, a changed object whose __meta__ is in a named layer
+        must be written back to that named layer (rule 2 on first record,
+        rule 1 on subsequent records).
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
@@ -2285,15 +2293,12 @@ class TestSync:
                 )
             self.run("record", "/")
             root = os.path.join(self.repo.path, "__root__")
-            # both meta and source file are in custom layer
-            assert os.path.exists(os.path.join(root, "blob/__meta__"))
-            assert os.path.exists(os.path.join(root, "blob/__source__.txt"))
-            source_fmt = "{}/__root__/blob/__source__.txt"
-            with open(source_fmt.format(f"{layer}/workdir")) as f:
-                # source in layer should still be empty
-                assert f.read() == ""
-            with open(source_fmt.format(self.repo.path)) as f:
-                # ... content is in custom layer!
+            # custom layer must NOT have blob
+            assert not os.path.exists(os.path.join(root, "blob/__meta__"))
+            assert not os.path.exists(os.path.join(root, "blob/__source__.txt"))
+            # named layer has the new content
+            layer_root = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            with open(layer_root) as f:
                 assert f.read() == "text_content"
 
     def test_layer_playback_hook(self):
@@ -2418,13 +2423,138 @@ class TestSync:
             )
             self.run("record", "/")
             assert getattr(self.app.blob, "zodbsync_layer") is not None
-            # Change file in Data.FS and verify that layer info is cleared
+            # Change file in Data.FS and verify that layer info is preserved
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
                     filedata="text_content", content_type="text/plain", title="BLOB"
                 )
             self.run("record", "/")
+            # layer attribute stays because rule 1 routes it back to the named layer
+            ident = self.runner.sync.layers[-1]["ident"]
+            assert getattr(self.app.blob, "zodbsync_layer") == ident
+
+    def test_layer_record_rule4_fallback_custom(self):
+        """Rule 4: no zodbsync_layer, no FS presence, no parent layer -> custom."""
+        with self.addlayer():
+            self.run("record", "/")  # initialise runner with layer config
+            with self.runner.sync.tm:
+                self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
             assert getattr(self.app.blob, "zodbsync_layer", None) is None
+
+    def test_layer_record_rule2_fs_presence(self):
+        """Rule 2: existing __meta__ in named layer -> record writes there."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")  # custom layer, zodbsync_layer=None
+            shutil.move(
+                "{}/__root__/blob".format(self.repo.path),
+                "{}/workdir/__root__/blob".format(layer),
+            )
+            # edit and re-record — rule 2 fires (FS in named layer, zodbsync_layer=None)
+            with self.runner.sync.tm:
+                self.app.blob.manage_edit(
+                    filedata="new_content", content_type="text/plain", title=""
+                )
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_src = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            assert not os.path.exists(custom_meta)
+            with open(named_src) as f:
+                assert f.read() == "new_content"
+
+    def test_layer_record_rule1_zodbsync_layer(self):
+        """Rule 1: obj.zodbsync_layer set -> record writes to that named layer."""
+        with self.addlayer() as layer:
+            self.mkrunner("record")  # init runner with layer config
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+                self.app.blob.zodbsync_layer = ident  # explicitly assign
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert not os.path.exists(custom_meta)
+            assert os.path.exists(named_meta)
+
+    def test_layer_record_rule3_parent_layer(self):
+        """Rule 3: parent __meta__ in named layer -> new child lands in same layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id="Folder")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            # re-record so Folder.zodbsync_layer gets set to named ident
+            self.run("record", "/Folder")
+            # now create child under Folder
+            with self.runner.sync.tm:
+                self.app.Folder.manage_addFolder(id="Child")
+            self.run("record", "/Folder/Child")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/Child/__meta__"
+            )
+            named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
+            assert not os.path.exists(custom_child)
+            assert os.path.exists(named_child)
+            ident = self.runner.sync.layers[-1]["ident"]
+            assert getattr(self.app.Folder.Child, "zodbsync_layer") == ident
+
+    def test_layer_watch_rule1_into_named_layer(self):
+        """Watch rule 1: zodbsync_layer set -> watcher writes to named layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            shutil.move(
+                "{}/__root__/blob".format(self.repo.path),
+                "{}/workdir/__root__/blob".format(layer),
+            )
+            self.run("record", "/blob")  # sets zodbsync_layer to named ident
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.manage_edit(
+                        filedata="watched_content", content_type="text/plain", title=""
+                    )
+            watcher.step()
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_src = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            assert not os.path.exists(custom_meta)
+            with open(named_src) as f:
+                assert f.read() == "watched_content"
+
+    def test_layer_watch_rule3_new_child_inherits_parent(self):
+        """Watch rule 3: parent in named layer -> new child written to same layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id="Folder")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            self.run("record", "/Folder")  # sets Folder.zodbsync_layer
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.Folder.manage_addFolder(id="Child")
+            watcher.step()
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/Child/__meta__"
+            )
+            named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
+            assert not os.path.exists(custom_child)
+            assert os.path.exists(named_child)
 
     def test_fail_when_meta_is_missing(self):
         """

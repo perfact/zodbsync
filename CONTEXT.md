@@ -3,7 +3,7 @@
 ## Layer
 
 A named filesystem workdir that stores recorded Zope objects. Each layer has:
-- `ident`: string identifier derived from the config filename (e.g. `"10-base"`), or `None` for the custom layer
+- `ident`: string identifier derived from the config filename (e.g. `"10-base"`), or `""` for the custom layer
 - `workdir`: writable filesystem path where object representations are stored
 - `source` (optional): read-only origin that `layer-update` syncs from into `workdir`
 
@@ -11,7 +11,7 @@ Layers are ordered by priority. Lower list index = higher priority (wins over lo
 
 ## Custom Layer
 
-The fallback layer with `ident=None` and `workdir=base_dir`. Always present as the topmost layer. Used when no named layer can be determined for an object.
+The fallback layer with `ident=""` and `workdir=base_dir`. Always present as the topmost layer. Used when no named layer can be determined for an object.
 
 ## Named Layer
 
