@@ -589,30 +589,49 @@ class ZODBSync:
     def fs_prune(self, pathinfo, contents):
         """
         Remove all subfolders from path that are not in contents.
-        Removes the folder from the top-level directory, but if the effective
-        folder that defines the object (in a multi-layer setup) still would
-        provide it, recreate the directory and add a __deleted__ file.
+        If the object exists in exactly one layer, delete it from that layer.
+        If it exists in multiple layers, place a __deleted__ marker in the
+        topmost layer to shadow the lower ones.
         """
         relpath = os.path.join(self.site, pathinfo["path"].lstrip("/"))
-        base_dir = self.fs_path(pathinfo["path"])
+        markers = {"__frozen__", "__deleted__"}
         for item in pathinfo["children"]:
             if item in contents:
                 continue
-            tgt = os.path.join(base_dir, item)
-            if os.path.isdir(tgt):
-                self.logger.info("Removing old item %s from filesystem" % item)
-                shutil.rmtree(tgt)
-            meta = os.path.join(relpath, item, "__meta__")
-            # Omit topmost (custom) layer
-            for layer in pathinfo["layers"][1:]:
-                if not os.path.exists(os.path.join(layer["workdir"], meta)):
+            item_relpath = os.path.join(relpath, item)
+            # Mirror the fs_pathinfo layer-restriction logic: if item's own
+            # directory has a __frozen__ or __deleted__ marker in layer X,
+            # layers with higher indices are invisible for this subtree.
+            visible_layers = pathinfo["layers"]
+            for idx, layer in enumerate(visible_layers):
+                item_dir = os.path.join(layer["workdir"], item_relpath)
+                try:
+                    entries = set(os.listdir(item_dir))
+                except OSError:
                     continue
-                # Mask the path as deleted because it is also present
-                # in a lower layer
+                if markers & entries:
+                    visible_layers = visible_layers[: idx + 1]
+                    break
+            meta_relpath = os.path.join(item_relpath, "__meta__")
+            item_layers = [
+                layer
+                for layer in visible_layers
+                if os.path.exists(os.path.join(layer["workdir"], meta_relpath))
+            ]
+            self.logger.info("Removing old item %s from filesystem" % item)
+            if len(item_layers) <= 1:
+                for layer in item_layers:
+                    tgt = os.path.join(layer["workdir"], relpath, item)
+                    if os.path.isdir(tgt):
+                        shutil.rmtree(tgt)
+            else:
+                topmost = item_layers[0]
+                tgt = os.path.join(topmost["workdir"], relpath, item)
+                if os.path.isdir(tgt):
+                    shutil.rmtree(tgt)
                 os.makedirs(tgt, exist_ok=True)
                 with open(os.path.join(tgt, "__deleted__"), "wb"):
                     pass
-                break
 
     def _delete_layer_files(self, fspath):
         """Remove __meta__, __source* and __frozen__ files from fspath."""

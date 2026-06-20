@@ -1974,11 +1974,10 @@ class TestSync:
             self.run("record", "/Test")
             assert not os.path.isdir(os.path.join(root[1], "Test"))
 
-    def test_layer_record_deletion(self):
+    def test_layer_prune_single_named_layer(self):
         """
-        Have an object with subobjects defined in the lower layer, but not in
-        the Data.FS. Record it. The top-level layer needs to recreate the
-        folder and mark it as deleted.
+        Object exists only in the named layer (not in Data.FS). Recording
+        should remove the named-layer directory without creating __deleted__.
         """
         self.add_folder("Test")
         self.add_folder("Sub", parent="Test")
@@ -1987,8 +1986,52 @@ class TestSync:
             tgtroot = os.path.join(layer, "workdir/__root__")
             os.rename(os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test"))
             self.run("record", "/")
-            assert os.path.isdir(os.path.join(srcroot, "Test"))
+            # Named-layer dir removed; no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(tgtroot, "Test"))
+            assert not os.path.isdir(os.path.join(srcroot, "Test"))
+
+    def test_layer_prune_multi_layer(self):
+        """
+        Object exists in both the fallback layer and a named layer (not in
+        Data.FS). Recording should place __deleted__ in the topmost (fallback)
+        layer to shadow the named-layer copy.
+        """
+        self.add_folder("Test")
+        self.add_folder("Sub", parent="Test")
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, "__root__")
+            tgtroot = os.path.join(layer, "workdir/__root__")
+            shutil.copytree(
+                os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test")
+            )
+            self.run("record", "/")
+            # Fallback layer gets __deleted__ to shadow the named-layer copy
             assert os.path.exists(os.path.join(srcroot, "Test/__deleted__"))
+
+    def test_layer_prune_frozen_masks_lower(self):
+        """
+        Object exists in both the fallback layer (with __frozen__) and a named
+        layer. The frozen marker in the fallback layer makes the named layer
+        invisible for that subtree. Pruning should treat this as single-layer
+        (only fallback counts) and delete from fallback — NOT create __deleted__.
+        """
+        self.add_folder("Test")
+        self.add_folder("Sub", parent="Test")
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, "__root__")
+            tgtroot = os.path.join(layer, "workdir/__root__")
+            # Copy Test into named layer (so it exists in both layers)
+            shutil.copytree(
+                os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test")
+            )
+            # Freeze Test in the fallback layer (marks named layer as invisible)
+            with open(os.path.join(srcroot, "Test/__frozen__"), "w"):
+                pass
+            self.run("record", "/")
+            # Frozen masks named layer -> only 1 visible layer (fallback) ->
+            # single-layer delete, no __deleted__ marker
+            assert not os.path.isdir(os.path.join(srcroot, "Test"))
+            assert not os.path.exists(os.path.join(srcroot, "Test/__deleted__"))
 
     def test_layer_record_prune(self):
         """
@@ -2028,8 +2071,11 @@ class TestSync:
                 with conn.tm:
                     conn.app.manage_renameObject("index_html", "something")
             watcher.step()
-            assert os.path.exists(
-                os.path.join(self.repo.path, "__root__/index_html/__deleted__")
+            # index_html was only in the named layer; single-layer prune removes
+            # it directly without creating __deleted__ in the fallback layer
+            assert not os.path.isdir(os.path.join(layer, "workdir/__root__/index_html"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__/index_html")
             )
             # object was in named layer (setup recorded it there via rule 2);
             # after rename the OID keeps zodbsync_layer so rule 1 routes to named
@@ -2066,35 +2112,35 @@ class TestSync:
                     cp = conn.app.Test1.manage_cutObjects(["Sub"])
                     conn.app.Test2._pasteObjects(cp)
             layer_root = "{}/workdir/__root__".format(layer)
-            paths = [
-                os.path.join(self.repo.path, "__root__", "Test1/Sub/__deleted__"),
-                os.path.join(layer_root, "Test2/Sub/__meta__"),
-            ]
-            self.watcher_step_until(watcher, lambda: all(map(os.path.exists, paths)))
+            # Sub was only in named layer; single-layer prune removes it from
+            # named Test1 directly; no __deleted__ in fallback layer.
+            self.watcher_step_until(
+                watcher,
+                lambda: (
+                    os.path.exists(os.path.join(layer_root, "Test2/Sub/__meta__"))
+                    and not os.path.isdir(os.path.join(layer_root, "Test1/Sub"))
+                ),
+            )
             with self.newconn() as conn:
                 with conn.tm:
                     cp = conn.app.Test2.manage_cutObjects(["Sub"])
                     conn.app.Test1._pasteObjects(cp)
 
-            # After paste back, Test1 custom dir is pruned (no overrides needed).
-            # Test2 retains Sub/__deleted__ to mask the stale named-layer entry.
-            custom_test1 = os.path.join(self.repo.path, "__root__", "Test1")
-            custom_test2_deleted = os.path.join(
-                self.repo.path, "__root__", "Test2/Sub/__deleted__"
-            )
+            # After paste back: named Test2/Sub removed (single layer), Sub
+            # re-recorded to named Test1/Sub.
             self.watcher_step_until(
                 watcher,
                 lambda: (
-                    not os.path.isdir(custom_test1)
-                    and os.path.exists(custom_test2_deleted)
+                    not os.path.isdir(os.path.join(layer_root, "Test2/Sub"))
+                    and os.path.exists(os.path.join(layer_root, "Test1/Sub/__meta__"))
                 ),
             )
 
     def test_layer_recreate_deleted(self):
         """
-        Delete an object from the custom layer s.t. it obtains a __deleted__
-        marker. Recreate it and make sure that it is no longer present in the
-        custom layer since it is the same as below.
+        Object recorded to fallback, then moved to named layer (single-layer).
+        Delete from ZODB: named-layer dir is removed, no __deleted__ created.
+        Recreate in ZODB: re-recorded to named layer, fallback stays clean.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2102,23 +2148,27 @@ class TestSync:
         with self.addlayer() as layer:
             self.run("record", "/Test")
             root = os.path.join(self.repo.path, "__root__")
+            named_root = os.path.join(layer, "workdir/__root__")
             os.rename(
                 os.path.join(root, "Test"),
-                os.path.join(layer, "workdir/__root__/Test"),
+                os.path.join(named_root, "Test"),
             )
             self.app.manage_delObjects(ids=["Test"])
             self.run("record", "/")
-            assert os.path.exists(os.path.join(root, "Test/__deleted__"))
+            # Single-layer: named dir removed, no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(named_root, "Test"))
+            assert not os.path.isdir(os.path.join(root, "Test"))
             self.app.manage_addFolder(id="Test")
             self.run("record", "/Test")
-            assert not os.path.isdir(os.path.join(root, "Test"))
+            # Recreated: root.__meta__ is in fallback (rule 3), so Test goes there
+            assert os.path.exists(os.path.join(root, "Test/__meta__"))
+            assert not os.path.isdir(os.path.join(named_root, "Test"))
 
     def test_layer_remove_subfolder(self):
         """
-        Set up a folder with a subfolder, both only defined in the lower layer.
-        Remove the subfolder. Check that both folders are created in the custom
-        folder, without __meta__ but in order to correctly place the
-        __deleted__ marker.
+        Set up a folder with a subfolder, both only in the named layer.
+        Remove the subfolder. Single-layer prune removes Sub from named layer
+        directly; no __deleted__ marker is created in the fallback layer.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2127,16 +2177,20 @@ class TestSync:
         with self.addlayer() as layer:
             self.run("record", "/")
             root = os.path.join(self.repo.path, "__root__")
+            named_root = os.path.join(layer, "workdir/__root__")
             os.rename(
                 os.path.join(root, "Test"),
-                os.path.join(layer, "workdir/__root__/Test"),
+                os.path.join(named_root, "Test"),
             )
             with self.runner.sync.tm:
                 self.app.Test.manage_delObjects(ids=["Sub"])
             self.run("record", "/")
+            # Test still in named layer (still in ZODB); fallback has no Test
             assert not os.path.exists(os.path.join(root, "Test/__meta__"))
             assert not os.path.exists(os.path.join(root, "Test/Sub/__meta__"))
-            assert os.path.exists(os.path.join(root, "Test/Sub/__deleted__"))
+            # Sub deleted from named layer; no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(named_root, "Test/Sub"))
+            assert not os.path.isdir(os.path.join(root, "Test/Sub"))
 
     def test_layer_update(self, caplog):
         """
