@@ -2569,6 +2569,60 @@ class TestSync:
             assert not os.path.exists(custom_child)
             assert os.path.exists(named_child)
 
+    def test_layer_divergence_record(self):
+        """Divergence: file in fallback, zodbsync_layer=named -> moves to named."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+
+    def test_layer_divergence_watch(self):
+        """Divergence: file in fallback, zodbsync_layer set via watch -> named."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.zodbsync_layer = ident
+            watcher.step()
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+
+    def test_layer_divergence_clears_frozen(self):
+        """Divergence move removes __frozen__ marker from old layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_blob_dir = os.path.join(self.repo.path, "__root__/blob")
+            frozen = os.path.join(custom_blob_dir, "__frozen__")
+            with open(frozen, "wb"):
+                pass
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            assert not os.path.exists(frozen)
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+
     def test_fail_when_meta_is_missing(self):
         """
         Check that playing back a structure where no layer has a meta file for
