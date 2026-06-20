@@ -67,7 +67,8 @@ class SubCommand(Namespace):
 
     def gitcmd(self, *args):
         # use "--no-pager" instead of "-P" for compatibility / readability
-        return ["git", "--no-pager", "-C", self.config["base_dir"]] + list(args)
+        workdir = getattr(self, "_git_workdir", self.config["base_dir"])
+        return ["git", "--no-pager", "-C", workdir] + list(args)
 
     def gitcmd_run(self, *args):
         """Wrapper to run a git command."""
@@ -178,6 +179,8 @@ class SubCommand(Namespace):
         self.orig_branch, self.branches = self._branch_info()
 
         if self.unstaged_changes:
+            if getattr(self, "_no_stash", False):
+                raise SystemExit("Named-layer workdir has unstaged changes; aborting.")
             self.logger.warning("Unstaged changes found. Moving them out of the way.")
             self.gitcmd_run("stash", "push", "--include-untracked")
 
@@ -272,8 +275,9 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
+                git_workdir = getattr(self, "_git_workdir", self.config["base_dir"])
                 for fname in self.git_state_indicators:
-                    path = os.path.join(self.sync.base_dir, ".git", fname)
+                    path = os.path.join(git_workdir, ".git", fname)
                     assert not os.path.exists(path), "Git state not clean"
 
                 files = {
@@ -305,7 +309,8 @@ class SubCommand(Namespace):
 
                 # Special handling in case of interrupted cherry-pick: show
                 # differences in affected files
-                cpfname = os.path.join(self.sync.base_dir, ".git/CHERRY_PICK_HEAD")
+                git_workdir = getattr(self, "_git_workdir", self.config["base_dir"])
+                cpfname = os.path.join(git_workdir, ".git/CHERRY_PICK_HEAD")
                 if os.path.exists(cpfname):
                     with open(cpfname) as f:
                         failed_commit = f.read().strip()

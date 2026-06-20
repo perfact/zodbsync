@@ -6,8 +6,30 @@ from ..subcommand import SubCommand
 class Pick(SubCommand):
     """Cherry-pick commits, apply them and play back affected objects"""
 
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        layer_ident = getattr(self.args, "layer", None)
+        if layer_ident is not None:
+            layer = next(
+                (la for la in self.sync.layers if la["ident"] == layer_ident),
+                None,
+            )
+            if layer is None:
+                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
+            self._git_workdir = layer["workdir"]
+            self._no_stash = True
+
     @staticmethod
     def add_args(parser):
+        parser.add_argument(
+            "--layer",
+            type=str,
+            default=None,
+            help=(
+                "Named layer ident to cherry-pick into"
+                " (empty string for fallback layer)"
+            ),
+        )
         parser.add_argument(
             "--skip-errors",
             action="store_true",

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Layer-scoped `pick` and multi-layer `reset`
 
@@ -65,20 +65,20 @@ layer's own unstaged file set. If any conflict is found, abort before touching a
 
 ## Acceptance criteria
 
-- [ ] `pick --layer <ident>` cherry-picks in the named layer's workdir; custom layer workdir unchanged.
-- [ ] `pick` with no `--layer` is identical to current behavior.
-- [ ] `pick --layer <ident>` with dirty named-layer workdir fails before cherry-pick.
-- [ ] `reset <ident>:<commit>` resets named layer's repo; plays back changed objects; custom layer unchanged.
-- [ ] `reset <ident1>:<commit1> <ident2>:<commit2>` resets both repos; union of changed paths played back in one pass.
-- [ ] `reset <commit>` (bare) is identical to current behavior.
-- [ ] Multi-layer `reset` rolls back all layers if any step fails.
-- [ ] Multi-layer `reset` stashes and restores unstaged changes in each target layer.
-- [ ] Test: `pick --layer` in named layer — FS state and played-back objects correct; custom layer untouched.
-- [ ] Test: `pick --layer` dirty workdir — clean failure, no cherry-pick attempted.
-- [ ] Test: `reset <ident>:<commit>` single named layer.
-- [ ] Test: `reset <ident1>:<commit1> <ident2>:<commit2>` — atomic playback.
-- [ ] Test: `reset <commit>` bare — unchanged behavior.
-- [ ] Test: multi-layer reset mid-failure — all layers restored to orig commits.
+- [x] `pick --layer <ident>` cherry-picks in the named layer's workdir; custom layer workdir unchanged.
+- [x] `pick` with no `--layer` is identical to current behavior.
+- [x] `pick --layer <ident>` with dirty named-layer workdir fails before cherry-pick.
+- [x] `reset <ident>:<commit>` resets named layer's repo; plays back changed objects; custom layer unchanged.
+- [x] `reset <ident1>:<commit1> <ident2>:<commit2>` resets both repos; union of changed paths played back in one pass.
+- [x] `reset <commit>` (bare) is identical to current behavior.
+- [x] Multi-layer `reset` rolls back all layers if any step fails.
+- [x] Multi-layer `reset` stashes and restores unstaged changes in each target layer.
+- [x] Test: `pick --layer` in named layer — FS state and played-back objects correct; custom layer untouched.
+- [x] Test: `pick --layer` dirty workdir — clean failure, no cherry-pick attempted.
+- [x] Test: `reset <ident>:<commit>` single named layer.
+- [x] Test: `reset <ident1>:<commit1> <ident2>:<commit2>` — atomic playback.
+- [x] Test: `reset <commit>` bare — unchanged behavior.
+- [x] Test: multi-layer reset mid-failure — all layers restored to orig commits.
 
 ## Blocked by
 

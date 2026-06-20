@@ -200,7 +200,25 @@ This allows commands like the following:
 
 ### `zodbsync reset`
 
-Shorthand for `zodbsync exec "git reset --hard COMMIT"`
+Resets one or more layer repos to target commits and plays back the union of
+changed paths in a single pass.
+
+```
+zodbsync reset [--dry-run] [--skip-errors] <commit>
+zodbsync reset [--dry-run] [--skip-errors] <ident>:<commit> [<ident>:<commit> ...]
+```
+
+The bare `<commit>` form is a shorthand for `zodbsync exec "git reset --hard
+<commit>"` and operates on the fallback layer only.
+
+The `<ident>:<commit>` form resets the named layer identified by `<ident>` to
+the given commit. Multiple targets may be listed; they are reset in order and
+the union of all changed paths is played back in a single pass. An empty
+`<ident>` addresses the fallback layer.
+
+Multi-layer reset is all-or-nothing: if any step fails, every already-reset
+layer is rolled back to its original commit. Unstaged changes in each target
+layer are stashed before resetting and restored on success or failure.
 
 ### `zodbsync checkout`
 
@@ -233,6 +251,13 @@ that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
 practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts and a rollback of the
 operation.
+
+The optional `--layer <ident>` flag cherry-picks into the named layer's
+`workdir` instead of the fallback layer. The named layer's workdir must be
+clean before picking; dirty workdirs cause an immediate error with no
+cherry-pick attempted. Changed paths are collected from the named layer's git
+diff and played back as usual. The fallback layer's repo and workdir are
+untouched.
 
 
 ### `zodbsync upload` (DEPRECATED)
@@ -462,22 +487,6 @@ in order to build the test environment from `pyproject.toml` instead of
 just upgrade `tox` to latest version and retry.
 
 ## To Do / Roadmap
-
-### Layer-scoped `pick` and multi-layer `reset`
-
-`pick` and `reset` currently always operate on the fallback layer's git
-repository. The following extensions are planned:
-
-- **`zodbsync pick --layer <ident> [commits...]`** — cherry-picks in the named
-  layer's `workdir` instead of `base_dir`. Named-layer workdirs must be clean
-  before picking. Changed paths are collected from the named layer's git diff
-  and played back as usual.
-
-- **`zodbsync reset <ident>:<targetref> [<ident>:<targetref> ...]`** — resets
-  one or more layer repos to target commits and plays back the union of changed
-  paths in a single pass. The bare `zodbsync reset <commit>` syntax (fallback
-  layer only) remains backward-compatible. Multi-layer reset is atomic: if any
-  step fails, all layers are rolled back to their original commits.
 
 ### Migration path for non-layered systems
 
