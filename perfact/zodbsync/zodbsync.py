@@ -525,12 +525,14 @@ class ZODBSync:
             new_data["src_fnames"] = [src_fname]
             new_data["source"] = source
 
-        if old_data != new_data:
-            write_base = os.path.join(
-                self.layers[target_layer_idx]["workdir"],
-                self.site,
-                path.lstrip("/"),
-            )
+        target_base = os.path.join(
+            self.layers[target_layer_idx]["workdir"],
+            self.site,
+            path.lstrip("/"),
+        )
+        target_missing = not os.path.exists(os.path.join(target_base, "__meta__"))
+        if old_data != new_data or target_missing:
+            write_base = target_base
             os.makedirs(write_base, exist_ok=True)
 
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
@@ -611,6 +613,16 @@ class ZODBSync:
                 with open(os.path.join(tgt, "__deleted__"), "wb"):
                     pass
                 break
+
+    def _delete_layer_files(self, fspath):
+        """Remove __meta__, __source* and __frozen__ files from fspath."""
+        for name in os.listdir(fspath):
+            if (
+                name == "__meta__"
+                or name.startswith("__source")
+                or name == "__frozen__"
+            ):
+                os.remove(os.path.join(fspath, name))
 
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
@@ -719,8 +731,13 @@ class ZODBSync:
                 raise
 
         target_layer_idx = self.resolve_target_layer(path, obj)
+        old_pathinfo = self.fs_pathinfo(path)
         pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
         path_layer = self.layers[target_layer_idx]["ident"]
+
+        old_idx = old_pathinfo["layeridx"]
+        if old_idx is not None and old_idx < target_layer_idx:
+            self._delete_layer_files(old_pathinfo["fspath"])
 
         current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
         if current_layer != path_layer:
