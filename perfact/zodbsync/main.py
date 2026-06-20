@@ -18,6 +18,7 @@ from .commands.fastforward import FF
 from .commands.freeze import Freeze
 from .commands.layer_init import LayerInit
 from .commands.layer_update import LayerUpdate
+from .commands.copy import Copy
 from .commands.move import Move
 from .commands.pick import Pick
 from .commands.playback import Playback
@@ -51,6 +52,7 @@ class Runner(object):
         LayerInit,
         LayerUpdate,
         Move,
+        Copy,
         FF,
     ]
 
