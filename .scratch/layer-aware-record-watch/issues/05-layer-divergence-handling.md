@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Layer divergence handling in `record` and `watch`
 
@@ -21,13 +21,13 @@ This logic must be present in both `record_obj` and `watch._record_object` — a
 
 ## Acceptance criteria
 
-- [ ] When `obj.zodbsync_layer` names a layer that differs from the object's current FS location, `record` writes to the new layer and deletes from the old layer.
-- [ ] `watch` detects the same divergence and performs the same file operations on the next cycle.
-- [ ] A `__frozen__` marker in the old layer's directory is removed as part of the move.
-- [ ] `obj.zodbsync_layer` is updated to the new layer ident after the move.
-- [ ] Test: set `obj.zodbsync_layer` on a Zope object via the management interface → `watch` moves the file to the new layer's workdir and removes it from the old one.
-- [ ] Test: set `obj.zodbsync_layer` then run `zodbsync record` → same result as above.
-- [ ] Test: divergence move removes a pre-existing `__frozen__` marker from the old layer.
+- [x] When `obj.zodbsync_layer` names a layer that differs from the object's current FS location, `record` writes to the new layer and deletes from the old layer.
+- [x] `watch` detects the same divergence and performs the same file operations on the next cycle.
+- [x] A `__frozen__` marker in the old layer's directory is removed as part of the move.
+- [x] `obj.zodbsync_layer` is updated to the new layer ident after the move.
+- [x] Test: set `obj.zodbsync_layer` on a Zope object via the management interface → `watch` moves the file to the new layer's workdir and removes it from the old one.
+- [x] Test: set `obj.zodbsync_layer` then run `zodbsync record` → same result as above.
+- [x] Test: divergence move removes a pre-existing `__frozen__` marker from the old layer.
 
 ## Moving to the custom layer via attribute
 
