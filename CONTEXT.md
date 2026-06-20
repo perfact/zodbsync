@@ -50,6 +50,14 @@ When an object is deleted from Zope:
 
 Command that moves an object's filesystem representation from its current layer to a target layer. Updates `obj.zodbsync_layer` in the ZODB. Removes any `__frozen__` marker left in the source layer. Recursive by default; `--no-recurse` available. Skips descendants whose `obj.zodbsync_layer` differs from the source layer (preserves intentional cross-layer assignments). Custom layer is addressed with an empty string as ident.
 
+## `zodbsync pick`
+
+Command that cherry-picks one or more commits in a specific layer's git repo and plays back the changed objects. Accepts an optional `--layer <ident>` flag to target a named layer's `workdir`; defaults to the custom layer (backward-compatible). Named-layer workdirs must be clean before picking — unstaged changes cause an immediate failure. Each layer has an independent git history; cross-layer picks are not supported.
+
+## `zodbsync reset`
+
+Command that resets one or more layer repos to target commits and plays back the union of changed paths in one operation. Accepts positionals in `<ident>:<targetref>` form; a bare `<commit>` (no `:`) targets the custom layer (backward-compatible). Multiple targets are reset atomically — if any git reset or playback step fails, all layers are rolled back to their original commits. Unstaged changes in each target layer's workdir are stashed before reset and restored on completion.
+
 ## `zodbsync copy`
 
 Command that copies an object's current state to a target layer and resets the source layer's workdir to its last git-committed state. Updates `obj.zodbsync_layer` to the target layer. Does not place a `__frozen__` marker automatically. Useful when a base-layer object needs a permanent customer-specific override in a higher-priority layer.

@@ -1,14 +1,18 @@
 Status: ready-for-agent
 
-# PRD: Layer-aware record/watch and zodbsync move/copy
+# PRD: Layer-aware record/watch, zodbsync move/copy, layer-scoped pick/reset
 
 ## Problem Statement
 
 When working across multiple named layers simultaneously — for example to prepare independent pull requests for separate features — `zodbsync record` and `zodbsync watch` always write changed objects into the custom layer (the topmost fallback workdir), regardless of which named layer the object belongs to. This makes it impossible to keep changes separated by layer. There is also no command to deliberately move an object from one layer to another, or to promote an object from a base layer into a higher-priority override layer.
 
+Additionally, `zodbsync pick` and `zodbsync reset` are hardcoded to operate on the custom layer's git repo (`base_dir`). Attempting to cherry-pick commits from a named layer's history into the custom layer (or vice versa) produces conflicts or wrong results because the two repos have independent histories. There is no way to reset multiple named layers atomically to known states in a single playback operation.
+
 ## Solution
 
 `record` and `watch` determine the correct target layer for each object before writing, using the object's `zodbsync_layer` attribute as the authoritative signal. A new `zodbsync move` command moves an object's filesystem representation between layers and updates the attribute. A new `zodbsync copy` command copies an object's current state to a higher-priority layer (for permanent customer-specific overrides) while resetting the source layer to its last committed state. The `__frozen__` marker is generalised so it works across named layers, not just the custom layer.
+
+`zodbsync pick` gains a `--layer <ident>` flag that routes the cherry-pick to the named layer's own git repo. `zodbsync reset` gains a `<ident>:<targetref>` positional syntax that allows resetting one or more named layers in a single atomic operation — git-resetting each, collecting the union of changed paths across all reset repos, and playing them back in one pass.
 
 ## User Stories
 
@@ -34,6 +38,14 @@ When working across multiple named layers simultaneously — for example to prep
 20. As a developer, I want the existing `__frozen__`-in-custom-layer behaviour to remain unchanged, so that existing workdirs do not need migration.
 21. As a developer, I want `zodbsync move` to not commit git changes itself, so that I control the commit message and scope across both old and new layer workdirs.
 22. As a developer, I want `zodbsync copy` to not commit git changes itself, for the same reason.
+
+23. As a developer, I want `zodbsync pick --layer <ident> <commits>` to cherry-pick those commits in the named layer's own git repo and play back the changed objects, so that I can apply layer-specific commits without confusion with other layers' histories.
+24. As a developer, I want `zodbsync pick <commits>` (no `--layer`) to continue operating on the custom layer exactly as before, so that existing usage is not broken.
+25. As a developer, I want `pick --layer <ident>` to fail immediately if the named layer's workdir has unstaged changes, so that I cannot accidentally cherry-pick into a dirty state.
+26. As a developer, I want `zodbsync reset <ident1>:<commit1> [<ident2>:<commit2> ...]` to reset each named layer's repo to its target commit and play back the union of all changed paths in one operation, so that I can atomically snap multiple layers to known states.
+27. As a developer, I want `zodbsync reset <commit>` (bare, no `:`) to continue resetting the custom layer exactly as before, so that existing usage is not broken.
+28. As a developer, I want multi-layer `reset` to stash and restore unstaged changes in each affected layer's workdir, so that local work is preserved across the reset.
+29. As a developer, I want multi-layer `reset` to roll back ALL layers to their original commits if any step fails (git reset or playback), so that the system is never left in a partial reset state.
 
 ## Implementation Decisions
 
@@ -100,6 +112,55 @@ When `fs_prune` or watch processes a deletion:
 - If one layer: delete the directory from that workdir.
 - If more than one layer: place `__deleted__` in the workdir of the topmost (lowest index) layer that held the object.
 
+### Layer-scoped `pick`
+
+```
+zodbsync pick [--layer <ident>] [--skip-errors] [--dry-run] [--grep ...] [--since ...] [--until ...] [commit ...]
+```
+
+- `--layer <ident>` resolves the ident to a layer config entry (empty string = custom layer).
+- When `--layer` is absent or `ident=""`, behaviour is identical to current: operates on `base_dir`.
+- When a named layer is specified, all `gitcmd` calls are routed to that layer's `workdir` instead of `base_dir`.
+- Before starting, the named layer's workdir is checked for unstaged changes. If any exist, `pick` exits with an error — no stash/restore for named layers.
+- After cherry-pick, changed paths are collected by diffing `orig_commit..HEAD` in the named layer's repo. Paths are resolved relative to that layer's workdir before playback.
+- Abort logic resets the named layer's repo to its original commit.
+
+### Layer-aware `gitcmd` infrastructure
+
+`SubCommand.gitcmd` (and its siblings `gitcmd_run`, `gitcmd_try`, `gitcmd_output`) must be made layer-aware. Implementation approach: introduce `self._git_workdir` (defaults to `self.config["base_dir"]`). Layer-scoped commands set this before calling the `gitexec`-decorated method. All `gitcmd` variants read from `self._git_workdir`.
+
+`check_repo` and `abort` operate on `self._git_workdir`. For named-layer `pick`, `self._git_workdir` is set to the named layer's `workdir`; for multi-layer `reset` it iterates over all target layers.
+
+### Multi-layer `reset`
+
+```
+zodbsync reset <ident>:<targetref> [<ident>:<targetref> ...]   # new multi-target form
+zodbsync reset <commit>                                         # existing form — custom layer
+```
+
+Parsing: if an argument contains `:`, split on the first `:` to extract `(ident, targetref)`. A bare argument (no `:`) is treated as `("", argument)` — custom layer, backward-compatible.
+
+Execution order (all-or-nothing):
+
+1. For each target layer, record `orig_commit` (current HEAD of that layer's repo) and stash any unstaged changes.
+2. For each target layer in order, run `git reset --hard <targetref>` in that layer's `workdir`.
+3. For each target layer, diff `orig_commit..HEAD` to collect changed paths. Accumulate the union across all layers.
+4. Run `_playback_paths` once on the union.
+5. On any failure at steps 2–4: `git reset --hard <orig_commit>` in every target layer that was already reset, then restore all stashes. Re-raise the exception.
+6. On success: pop stashes for all layers that had unstaged changes.
+
+Conflict detection (`unstaged_changes & files`) is performed per layer with that layer's own set of unstaged files.
+
+### Modules to test (additions)
+
+- `pick --layer <ident>` — cherry-picks in named layer's repo; objects from that layer played back; custom layer unchanged.
+- `pick` with no `--layer` — unchanged behavior on `base_dir`.
+- `pick --layer <ident>` with dirty named-layer workdir — fails before cherry-pick.
+- `reset <ident>:<commit>` single named layer — repo reset, objects played back, custom layer unchanged.
+- `reset <ident1>:<commit1> <ident2>:<commit2>` — both repos reset, union of changed paths played back atomically.
+- `reset <commit>` bare — unchanged behavior on `base_dir`.
+- Multi-layer `reset` failure mid-way — all layers rolled back, no partial state.
+
 ## Testing Decisions
 
 ### What makes a good test
@@ -121,6 +182,8 @@ All new tests should follow the pattern of `test_layer_record`, `test_layer_watc
 
 `test_layer_change_into_top` (line 2207) explicitly documents the current wrong behaviour with the comment "this is not what we want in the long run." This test must be inverted: after the feature, the object must appear in the named layer workdir, not in the custom layer.
 
+The `pick` and `reset` additions are tested following the same pattern as existing layer tests (`self.addlayer()`, `self.run(...)`, assert on filesystem state and ZODB object state).
+
 ## Out of Scope
 
 - Git commits inside `zodbsync move` or `zodbsync copy` — the caller is responsible.
@@ -129,6 +192,9 @@ All new tests should follow the pattern of `test_layer_record`, `test_layer_watc
 - `layer-update` preserving `__frozen__` markers — `layer-update` may overwrite them; this is intentional.
 - Handling the case where `obj.zodbsync_layer` references a layer ident that no longer exists in config.
 - Moving objects to a lower-priority layer when a higher-priority layer has a source that `layer-update` would restore — this is a known operational risk, not addressed here.
+- Cross-layer `pick` (cherry-picking a commit from one layer's history into a different layer) — layers have independent git histories; this is intentionally not supported.
+- `pick --layer` with multiple layers in one invocation — call `pick --layer` twice instead.
+- Stash/restore for named-layer `pick` — named layer workdirs must be clean before picking.
 
 ## Further Notes
 
