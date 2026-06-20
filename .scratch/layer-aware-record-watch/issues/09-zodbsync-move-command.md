@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # `zodbsync move` command
 
@@ -24,16 +24,16 @@ Because `record`/`watch` now detect layer divergence (issue #05) and move files 
 
 ## Acceptance criteria
 
-- [ ] `zodbsync move <path> <layer>` moves files to the target layer's workdir and deletes from the source.
-- [ ] `obj.zodbsync_layer` is updated on the moved object(s).
-- [ ] Empty string ident moves to the custom layer.
-- [ ] Recursive by default; `--no-recurse` limits to the named object.
-- [ ] Recursive move skips descendants already in a different layer.
-- [ ] No git commits are made by the command.
-- [ ] Test: move a single object; verify FS state and `obj.zodbsync_layer`.
-- [ ] Test: recursive move of a subtree; verify all descendants moved.
-- [ ] Test: recursive move skips a child already in a different layer.
-- [ ] Test: move to custom layer using empty string ident.
+- [x] `zodbsync move <path> <layer>` moves files to the target layer's workdir and deletes from the source.
+- [x] `obj.zodbsync_layer` is updated on the moved object(s).
+- [x] Empty string ident moves to the custom layer.
+- [x] Recursive by default; `--no-recurse` limits to the named object.
+- [x] Recursive move skips descendants already in a different layer.
+- [x] No git commits are made by the command.
+- [x] Test: move a single object; verify FS state and `obj.zodbsync_layer`.
+- [x] Test: recursive move of a subtree; verify all descendants moved.
+- [x] Test: recursive move skips a child already in a different layer.
+- [x] Test: move to custom layer using empty string ident.
 
 ## Blocked by
 

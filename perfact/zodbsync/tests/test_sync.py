@@ -143,14 +143,17 @@ class TestSync:
         with self.newconn() as conn:
             yield conn
 
-    def mkrunner(self, *cmd):
+    @classmethod
+    def mkrunner(cls, *cmd):
         """
-        Create or update runner for given zodbsync command
+        Create or update runner for given zodbsync command.
+        Runner and app are stored on the class so a single ZODBSync connection
+        is shared across all test instances, avoiding per-test FD accumulation.
         """
-        if not hasattr(self, "runner"):
-            self.runner = Runner()
-        result = self.runner.parse("--config", self.config.path, *cmd)
-        self.app = self.runner.sync.app if self.runner.sync else None
+        if not hasattr(cls, "runner"):
+            cls.runner = Runner()
+        result = cls.runner.parse("--config", cls.config.path, *cmd)
+        cls.app = cls.runner.sync.app if cls.runner.sync else None
         return result
 
     def run(self, *cmd):
@@ -1728,32 +1731,36 @@ class TestSync:
             seqnum, "".join([random.choice(string.ascii_letters) for _ in range(16)])
         )
         path = "{}/layers/{}".format(self.config.folder, name)
-        with tempfile.TemporaryDirectory() as layer:
-            workdir = f"{layer}/workdir"
-            os.makedirs(f"{workdir}/__root__")
-            subprocess.run(["git", "init"], cwd=workdir)
-            subprocess.run(
-                ["git", "config", "user.email", "zodbsync-tester@perfact.de"],
-                cwd=workdir,
-            )
-            subprocess.run(
-                ["git", "config", "user.name", "ZODBSync tester"], cwd=workdir
-            )
-            source = f"{layer}/source"
-            os.makedirs(f"{source}/__root__")
-            with open(path, "w") as f:
-                f.write(f'workdir = "{layer}/workdir"\n')
-                f.write(f'source = "{source}"\n')
-                f.write(f'ident = "{name}"\n')
-            # Force re-reading config
-            if hasattr(self, "runner"):
-                del self.runner
-            try:
+        try:
+            with tempfile.TemporaryDirectory() as layer:
+                workdir = f"{layer}/workdir"
+                os.makedirs(f"{workdir}/__root__")
+                subprocess.run(["git", "init"], cwd=workdir)
+                subprocess.run(
+                    ["git", "config", "user.email", "zodbsync-tester@perfact.de"],
+                    cwd=workdir,
+                )
+                subprocess.run(
+                    ["git", "config", "user.name", "ZODBSync tester"], cwd=workdir
+                )
+                source = f"{layer}/source"
+                os.makedirs(f"{source}/__root__")
+                with open(path, "w") as f:
+                    f.write(f'workdir = "{layer}/workdir"\n')
+                    f.write(f'source = "{source}"\n')
+                    f.write(f'ident = "{name}"\n')
+                # Reload so the new layer is visible without recreating the
+                # ZODB connection (which would accumulate file descriptors).
+                if hasattr(self, "runner") and self.runner.sync:
+                    self.runner.sync.reload_layers()
                 yield layer
-            finally:
-                if hasattr(self, "runner"):
-                    del self.runner
+            # TemporaryDirectory is now gone; remove config before reloading
+            # so the stale workdir path is never added back to self.layers.
+        finally:
+            if os.path.exists(path):
                 os.remove(path)
+            if hasattr(self, "runner") and self.runner.sync:
+                self.runner.sync.reload_layers()
 
     def test_layer_record_freeze(self):
         """
@@ -2712,3 +2719,106 @@ class TestSync:
             with open(f"{self.repo.path}/__root__/delfolder/__deleted__", "w"):
                 pass
             self.run("playback", "/")
+
+    def test_move_single_object(self):
+        """Move a single object to a named layer; verify FS state and zodbsync_layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/blob", ident)
+            named_meta = f"{layer}/workdir/__root__/blob/__meta__"
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+            assert getattr(self.app.blob, "zodbsync_layer") == ident
+
+    def test_move_no_recurse(self):
+        """--no-recurse moves only the named object, not its children."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "--no-recurse", "/Folder", ident)
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/child/__meta__"
+            )
+            assert os.path.exists(named_folder)
+            assert not os.path.exists(custom_folder)
+            # child not moved: still in custom layer
+            assert os.path.exists(custom_child)
+
+    def test_move_recursive(self):
+        """Recursive move of a subtree moves all descendants to the named layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            named_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
+            custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/child/__meta__"
+            )
+            assert os.path.exists(named_folder)
+            assert os.path.exists(named_child)
+            assert not os.path.exists(custom_folder)
+            assert not os.path.exists(custom_child)
+            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+            assert getattr(self.app.Folder.child, "zodbsync_layer") == ident
+
+    def test_move_skips_different_layer_child(self):
+        """Recursive move skips descendants already assigned to a different layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer("00") as layerB:
+            with self.addlayer("01") as layerA:
+                self.run("record", "/Folder")
+                ident_a = self.runner.sync.layers[-2][
+                    "ident"
+                ]  # layerA (higher priority)
+                ident_b = self.runner.sync.layers[-1][
+                    "ident"
+                ]  # layerB (lower priority)
+                # Explicitly assign child to layerB
+                with self.runner.sync.tm:
+                    self.app.Folder.child.zodbsync_layer = ident_b
+                self.run("record", "/Folder/child")
+                # Move Folder to layerA; child should be skipped
+                self.run("move", "/Folder", ident_a)
+                named_folder = f"{layerA}/workdir/__root__/Folder/__meta__"
+                named_child_b = f"{layerB}/workdir/__root__/Folder/child/__meta__"
+                custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+                assert os.path.exists(named_folder)
+                assert not os.path.exists(custom_folder)
+                # child stays in layerB (not moved to layerA)
+                assert os.path.exists(named_child_b)
+                assert getattr(self.app.Folder.child, "zodbsync_layer") == ident_b
+
+    def test_move_to_custom_layer(self):
+        """Move a named-layer object back to the custom layer using empty string."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # First move to named layer
+            self.run("move", "/blob", ident)
+            named_meta = f"{layer}/workdir/__root__/blob/__meta__"
+            assert os.path.exists(named_meta)
+            # Now move back to custom layer
+            self.run("move", "/blob", "")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
+            assert getattr(self.app.blob, "zodbsync_layer") == ""

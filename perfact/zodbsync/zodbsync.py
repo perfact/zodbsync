@@ -272,8 +272,8 @@ class ZODBSync:
         # server!" messages (which is mostly relevant for the tests).
         self.tm = transaction.TransactionManager()
         db = App.config.getConfiguration().dbtab.getDatabase("/", is_root=1)
-        root = db.open(self.tm).root
-        self.app = root.Application
+        self._conn = db.open(self.tm)
+        self.app = self._conn.root.Application
 
         # Initialize layers
         self.layers = load_layer_config(config=self.config)
@@ -287,6 +287,33 @@ class ZODBSync:
         # Make sure the manager user exists
         if self.config.get("create_manager_user", False):
             self.create_manager_user()
+
+    def reload_layers(self):
+        """Re-read layer config and initialise any new layer workdirs.
+
+        Call this when the on-disk layer configuration has changed (e.g. a
+        layer config file was added or removed) without restarting the process.
+        The ZODB connection is left untouched.
+        """
+        site = self.site
+        self.layers = load_layer_config(config=self.config)
+        for layer in self.layers:
+            workdir = layer["workdir"]
+            root = f"{workdir}/{site}"
+            os.makedirs(root, exist_ok=True)
+            if not os.path.isdir(f"{workdir}/.git"):
+                sp.run(["git", "init"], cwd=workdir, check=True)
+
+    def close(self):
+        """Close the ZODB connection and return it to the pool."""
+        try:
+            self.tm.abort()
+        except Exception:
+            pass
+        try:
+            self._conn.close()
+        except Exception:
+            pass
 
     def create_manager_user(self):
         """
