@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # `zodbsync copy` command
 
@@ -22,15 +22,15 @@ Intended use: the source layer has uncommitted changes. After copy, the source r
 
 ## Acceptance criteria
 
-- [ ] `zodbsync copy <path> <layer>` copies files to the target layer's workdir.
-- [ ] Source layer's workdir is reset to `git checkout HEAD -- <path>` for the copied path.
-- [ ] `obj.zodbsync_layer` is updated to the target layer ident.
-- [ ] No `__frozen__` marker is placed automatically.
-- [ ] Recursive by default; `--no-recurse` limits to the named object.
-- [ ] No git commits are made.
-- [ ] Command help text documents the compression window limitation.
-- [ ] Test: copy an object with uncommitted changes; verify target has the modified content, source has the HEAD content, `obj.zodbsync_layer` is updated.
-- [ ] Test: recursive copy copies the full subtree.
+- [x] `zodbsync copy <path> <layer>` copies files to the target layer's workdir.
+- [x] Source layer's workdir is reset to `git checkout HEAD -- <path>` for the copied path.
+- [x] `obj.zodbsync_layer` is updated to the target layer ident.
+- [x] No `__frozen__` marker is placed automatically.
+- [x] Recursive by default; `--no-recurse` limits to the named object.
+- [x] No git commits are made.
+- [x] Command help text documents the compression window limitation.
+- [x] Test: copy an object with uncommitted changes; verify target has the modified content, source has the HEAD content, `obj.zodbsync_layer` is updated.
+- [x] Test: recursive copy copies the full subtree.
 
 ## Blocked by
 
