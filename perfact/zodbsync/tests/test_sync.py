@@ -378,6 +378,78 @@ class TestSync:
             assert "TestFolder" not in self.app.objectIds()
             assert not os.path.isdir(self.repo.path + "/__root__/TestFolder")
 
+    def _layer_workdir_git(self, workdir, *args, **kw):
+        """Run a git command in a named layer workdir."""
+        subprocess.run(["git"] + list(args), cwd=workdir, check=True, **kw)
+
+    def _layer_workdir_git_output(self, workdir, *args):
+        return subprocess.check_output(
+            ["git"] + list(args), cwd=workdir, text=True
+        ).strip()
+
+    def _prepare_named_layer_commit(self, workdir, obj_name):
+        """
+        Set up a named layer workdir with an initial empty commit on the main
+        branch and a feature branch containing a Folder at obj_name. Returns
+        the feature branch commit hash, leaving the workdir on the main branch.
+        """
+        self._layer_workdir_git(workdir, "commit", "--allow-empty", "-m", "init")
+        self._layer_workdir_git(workdir, "checkout", "-b", "feature")
+        folder = os.path.join(workdir, "__root__", obj_name)
+        os.makedirs(folder)
+        with open(os.path.join(folder, "__meta__"), "w") as f:
+            f.write(zodbsync.mod_format({"title": "", "type": "Folder"}))
+        self._layer_workdir_git(workdir, "add", ".")
+        self._layer_workdir_git(workdir, "commit", "-m", f"add {obj_name}")
+        commit = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+        self._layer_workdir_git(workdir, "checkout", "-")
+        return commit
+
+    def _layer_ident_from_workdir(self, workdir):
+        """Return the layer ident whose workdir matches the given path."""
+        return next(
+            la["ident"]
+            for la in self.runner.sync.layers
+            if la.get("workdir") == workdir
+        )
+
+    def test_pick_layer(self):
+        """
+        pick --layer cherry-picks in named layer workdir; custom layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            commit = self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("pick", "--layer", ident, commit)
+
+            assert "LayerObj" in self.app.objectIds()
+            # Named layer filesystem has the object; custom layer does not
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_pick_layer_dirty_workdir(self):
+        """
+        pick --layer with a dirty named-layer workdir fails before cherry-pick.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            commit = self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Dirty file in the named layer workdir
+            with open(os.path.join(workdir, "dirty_file"), "w") as f:
+                f.write("dirty")
+
+            with pytest.raises(SystemExit):
+                self.run("pick", "--layer", ident, commit)
+
+            # No cherry-pick happened: object should not be in ZODB
+            assert "LayerObj" not in self.app.objectIds()
+
     def test_upload_relpath(self):
         """
         Upload JS library from test environment and check for it in Data.fs
@@ -758,6 +830,85 @@ class TestSync:
         self.gitrun("checkout", "autotest")
         self.run("reset", "second")
         assert self.app.index_html.title == "test"
+
+    def test_reset_named_layer(self):
+        """
+        reset <ident>:<ref> resets the named layer and plays back changed objects;
+        custom layer and its git repo remain untouched.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Named layer is on main branch (no LayerObj); feature branch has it
+            self.run("reset", f"{ident}:feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_reset_multi_layer(self):
+        """
+        reset <ident1>:<ref1> <ident2>:<ref2> resets both repos and plays back
+        the union of changed paths in one pass.
+        """
+        with self.addlayer("00") as layer_a_dir:
+            with self.addlayer("01") as layer_b_dir:
+                workdir_a = f"{layer_a_dir}/workdir"
+                workdir_b = f"{layer_b_dir}/workdir"
+                ident_a = self._layer_ident_from_workdir(workdir_a)
+                ident_b = self._layer_ident_from_workdir(workdir_b)
+
+                self._prepare_named_layer_commit(workdir_a, "ObjA")
+                self._prepare_named_layer_commit(workdir_b, "ObjB")
+
+                self.run("reset", f"{ident_a}:feature", f"{ident_b}:feature")
+
+                assert "ObjA" in self.app.objectIds()
+                assert "ObjB" in self.app.objectIds()
+                assert not os.path.isdir(
+                    os.path.join(self.repo.path, "__root__", "ObjA")
+                )
+                assert not os.path.isdir(
+                    os.path.join(self.repo.path, "__root__", "ObjB")
+                )
+
+    def test_reset_multi_layer_mid_failure(self):
+        """
+        Multi-layer reset rolls back all layers when any step fails.
+        """
+        with self.addlayer("00") as layer_a_dir:
+            with self.addlayer("01") as layer_b_dir:
+                workdir_a = f"{layer_a_dir}/workdir"
+                workdir_b = f"{layer_b_dir}/workdir"
+                ident_a = self._layer_ident_from_workdir(workdir_a)
+                ident_b = self._layer_ident_from_workdir(workdir_b)
+
+                # Prepare valid feature commit on layer A
+                self._prepare_named_layer_commit(workdir_a, "ObjA")
+                orig_a = self._layer_workdir_git_output(workdir_a, "rev-parse", "HEAD")
+
+                # Layer B: only initial commit, no "feature" branch
+                self._layer_workdir_git(
+                    workdir_b, "commit", "--allow-empty", "-m", "init"
+                )
+
+                # Reset layer A to feature, layer B to non-existent ref -> failure
+                with pytest.raises(subprocess.CalledProcessError):
+                    self.run(
+                        "reset",
+                        f"{ident_a}:feature",
+                        f"{ident_b}:nonexistent",
+                    )
+
+                # Layer A must be rolled back to its original commit
+                head_a = self._layer_workdir_git_output(workdir_a, "rev-parse", "HEAD")
+                assert head_a == orig_a
+
+                # Nothing played back to ZODB
+                assert "ObjA" not in self.app.objectIds()
 
     def test_revert(self):
         """
