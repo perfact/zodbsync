@@ -778,12 +778,11 @@ class ZODBSync:
 
         target_layer_idx = self.resolve_target_layer(path, obj)
         old_pathinfo = self.fs_pathinfo(path)
+        old_idx = old_pathinfo["layeridx"]
+        if old_idx is not None and old_idx != target_layer_idx:
+            self._delete_layer_files(old_pathinfo["fspath"])
         pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
         path_layer = self.layers[target_layer_idx]["ident"]
-
-        old_idx = old_pathinfo["layeridx"]
-        if old_idx is not None and old_idx < target_layer_idx:
-            self._delete_layer_files(old_pathinfo["fspath"])
 
         current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
         if current_layer != path_layer:
