@@ -1997,6 +1997,11 @@ class TestSync:
                 # Place __frozen__ inside layerA's __root__/Test/ subtree only
                 os.makedirs(f"{layerA}/workdir/__root__/Test")
                 open(f"{layerA}/workdir/__root__/Test/__frozen__", "w").close()
+                # Clear attr so rule 2 finds each object in layerB (not rule 1
+                # routing to fallback via stale zodbsync_layer="").
+                with self.runner.sync.tm:
+                    del self.app.Test.zodbsync_layer
+                    del self.app.Other.zodbsync_layer
                 self.run("record", "/")
         # /Other is outside the frozen subtree -> layerB still serves it
         # -> custom layer must NOT have /Other
@@ -2116,9 +2121,9 @@ class TestSync:
 
     def test_layer_record(self):
         """
-        Add an object and move it to the lower layer. Record again. The object
-        must not be added to the top layer since it is already present in the
-        lower layer.
+        Add an object and move it to the lower layer. Clear zodbsync_layer so
+        rule 2 detects the new FS location. Record again — must stay in named
+        layer and not appear in the fallback layer.
         """
         self.add_folder("Test")
         self.run("playback", "/Test")
@@ -2129,6 +2134,8 @@ class TestSync:
                 os.path.join(self.repo.path, "__root__"),
             ]
             os.rename(os.path.join(root[1], "Test"), os.path.join(root[0], "Test"))
+            with self.runner.sync.tm:
+                del self.app.Test.zodbsync_layer
             self.run("record", "/Test")
             assert not os.path.isdir(os.path.join(root[1], "Test"))
 
@@ -2341,6 +2348,8 @@ class TestSync:
                 os.path.join(named_root, "Test"),
             )
             with self.runner.sync.tm:
+                del self.app.Test.zodbsync_layer
+                del self.app.Test.Sub.zodbsync_layer
                 self.app.Test.manage_delObjects(ids=["Sub"])
             self.run("record", "/")
             # Test still in named layer (still in ZODB); fallback has no Test
@@ -2477,6 +2486,11 @@ class TestSync:
             os.mkdir(src)
             self.run("layer-init", "*")
             with self.runner.sync.tm:
+                # Clear stale zodbsync_layer attrs so rule 2 routes edits to
+                # the named layer (not back to fallback via rule 1).
+                del self.app.Test.zodbsync_layer
+                del self.app.ToDelete.zodbsync_layer
+                del self.app.ToDelete.Sub.zodbsync_layer
                 self.app.Test._setProperty("nav_hidden", True, "boolean")
                 self.app.ToDelete.Sub._setProperty("nav_hidden", True, "boolean")
             self.run("record", "/")
@@ -2713,7 +2727,10 @@ class TestSync:
                 "{}/__root__/Folder".format(self.repo.path),
                 "{}/workdir/__root__/Folder".format(layer),
             )
-            # re-record so Folder.zodbsync_layer gets set to named ident
+            # Clear stale attr so rule 2 detects named-layer location and
+            # sets Folder.zodbsync_layer to the named ident.
+            with self.runner.sync.tm:
+                del self.app.Folder.zodbsync_layer
             self.run("record", "/Folder")
             # now create child under Folder
             with self.runner.sync.tm:
@@ -2766,6 +2783,10 @@ class TestSync:
                 "{}/__root__/Folder".format(self.repo.path),
                 "{}/workdir/__root__/Folder".format(layer),
             )
+            # Clear stale attr so rule 2 detects named-layer location and
+            # sets Folder.zodbsync_layer to the named ident.
+            with self.runner.sync.tm:
+                del self.app.Folder.zodbsync_layer
             self.run("record", "/Folder")  # sets Folder.zodbsync_layer
 
             watcher = self.mkrunner("watch")
@@ -2834,6 +2855,49 @@ class TestSync:
             assert not os.path.exists(frozen)
             named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
             assert os.path.exists(named_meta)
+
+    def test_layer_divergence_record_back(self):
+        """Divergence: file in named layer, zodbsync_layer="" -> moves to fallback."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            # Now move back to fallback layer
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ""
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
+
+    def test_layer_divergence_watch_back(self):
+        """Divergence: file in named layer, zodbsync_layer="" via watch -> fallback."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            # Move back to fallback via watch
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.zodbsync_layer = ""
+            watcher.step()
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
 
     def test_fail_when_meta_is_missing(self):
         """

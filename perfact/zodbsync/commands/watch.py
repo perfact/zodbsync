@@ -187,12 +187,11 @@ class Watch(SubCommand):
 
         target_layer_idx = self.sync.resolve_target_layer(path, obj)
         old_pathinfo = self.sync.fs_pathinfo(path)
+        old_idx = old_pathinfo["layeridx"]
+        if old_idx is not None and old_idx != target_layer_idx:
+            self.sync._delete_layer_files(old_pathinfo["fspath"])
         self.sync.fs_write(path=path, data=data, target_layer_idx=target_layer_idx)
         path_layer = self.sync.layers[target_layer_idx]["ident"]
-
-        old_idx = old_pathinfo["layeridx"]
-        if old_idx is not None and old_idx < target_layer_idx:
-            self.sync._delete_layer_files(old_pathinfo["fspath"])
 
         current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
         if current_layer != path_layer:
