@@ -28,6 +28,7 @@ This logic must be present in both `record_obj` and `watch._record_object` — a
 - [x] Test: set `obj.zodbsync_layer` on a Zope object via the management interface → `watch` moves the file to the new layer's workdir and removes it from the old one.
 - [x] Test: set `obj.zodbsync_layer` then run `zodbsync record` → same result as above.
 - [x] Test: divergence move removes a pre-existing `__frozen__` marker from the old layer.
+- [x] Divergence detection works in both directions: lower-priority → higher-priority layer (e.g. named → fallback) as well as higher → lower. The old implementation only deleted the old copy when `old_idx < target_idx`, so moving back to a higher-priority layer was silently undone by the compress step. Fixed by deleting the old copy before `fs_write` so compress cannot restore it. Tests: `test_layer_divergence_record_back`, `test_layer_divergence_watch_back`.
 
 ## Moving to the custom layer via attribute
 
