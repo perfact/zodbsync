@@ -967,6 +967,52 @@ class TestSync:
         title = self.app.index_html.title
         assert title != "test"
 
+    def test_exec_layer(self):
+        """
+        exec --layer runs command in named layer workdir and plays back
+        changed objects; fallback layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("exec", "--layer", ident, "git checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_exec_layer_nocd(self):
+        """
+        exec --layer --nocd runs command without cd but diff-checks named
+        layer workdir.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run(
+                "exec",
+                "--layer",
+                ident,
+                "--nocd",
+                f"git -C {workdir} checkout feature",
+            )
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+
+    def test_exec_layer_unknown_ident(self):
+        """
+        exec --layer with unknown ident raises SystemExit.
+        """
+        with pytest.raises(SystemExit):
+            self.run("exec", "--layer", "no-such-layer", "true")
+
     def test_withlock(self):
         "Running with-lock and, inside that, --no-lock, works"
         self.run(
