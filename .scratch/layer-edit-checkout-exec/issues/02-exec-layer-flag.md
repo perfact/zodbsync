@@ -1,6 +1,6 @@
 # exec: add --layer flag
 
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -16,3 +16,7 @@ Add `--layer <ident>` to `zodbsync exec` so it can run a command in a named laye
 ## Blocked by
 
 None — can start immediately.
+
+## Comments
+
+Implemented in `perfact/zodbsync/commands/execute.py`: added `__init__` (same layer resolution pattern as `checkout`/`pick`), `--layer` arg, and updated `run()` to use `_git_workdir` as cwd when `--layer` set and `--nocd` not given. Tests: `test_exec_layer`, `test_exec_layer_nocd`, `test_exec_layer_unknown_ident`.
