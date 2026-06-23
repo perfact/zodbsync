@@ -3,15 +3,15 @@
 ## Layer
 
 A named filesystem workdir that stores recorded Zope objects. Each layer has:
-- `ident`: string identifier derived from the config filename (e.g. `"10-base"`), or `""` for the custom layer
+- `ident`: string identifier derived from the config filename (e.g. `"10-base"`), or `""` for the fallback layer
 - `workdir`: writable filesystem path where object representations are stored
 - `source` (optional): read-only origin that `layer-update` syncs from into `workdir`
 
-Layers are ordered by priority. Lower list index = higher priority (wins over lower layers). The custom layer is always index 0 (highest priority).
+Layers are ordered by priority. Lower list index = higher priority (wins over lower layers). The fallback layer is always index 0 (highest priority).
 
-## Custom Layer
+## Fallback Layer
 
-The fallback layer with `ident=""` and `workdir=base_dir`. Always present as the topmost layer. Used when no named layer can be determined for an object.
+The layer with `ident=""` and `workdir=base_dir`. Always present as the topmost layer. Used when no named layer can be determined for an object.
 
 ## Named Layer
 
@@ -28,7 +28,7 @@ The algorithm used by `record` and `watch` to determine which layer's workdir an
 1. `obj.zodbsync_layer` attribute (if set)
 2. Where the object already exists on the filesystem (highest-priority layer containing a `__meta__` file)
 3. Where the parent object exists on the filesystem
-4. Custom layer (ultimate fallback — only reached for root-level objects with no prior recording)
+4. Fallback layer (ultimate fallback — only reached for root-level objects with no prior recording)
 
 ## `__frozen__` Marker
 
@@ -48,15 +48,23 @@ When an object is deleted from Zope:
 
 ## `zodbsync move`
 
-Command that moves an object's filesystem representation from its current layer to a target layer. Updates `obj.zodbsync_layer` in the ZODB. Removes any `__frozen__` marker left in the source layer. Recursive by default; `--no-recurse` available. Skips descendants whose `obj.zodbsync_layer` differs from the source layer (preserves intentional cross-layer assignments). Custom layer is addressed with an empty string as ident.
+Command that moves an object's filesystem representation from its current layer to a target layer. Updates `obj.zodbsync_layer` in the ZODB. Removes any `__frozen__` marker left in the source layer. Recursive by default; `--no-recurse` available. Skips descendants whose `obj.zodbsync_layer` differs from the source layer (preserves intentional cross-layer assignments). Fallback layer is addressed with an empty string as ident.
 
 ## `zodbsync pick`
 
-Command that cherry-picks one or more commits in a specific layer's git repo and plays back the changed objects. Accepts an optional `--layer <ident>` flag to target a named layer's `workdir`; defaults to the custom layer (backward-compatible). Named-layer workdirs must be clean before picking — unstaged changes cause an immediate failure. Each layer has an independent git history; cross-layer picks are not supported.
+Command that cherry-picks one or more commits in a specific layer's git repo and plays back the changed objects. Accepts an optional `--layer <ident>` flag to target a named layer's `workdir`; defaults to the fallback layer (backward-compatible). Named-layer workdirs must be clean before picking — unstaged changes cause an immediate failure. Each layer has an independent git history; cross-layer picks are not supported.
 
 ## `zodbsync reset`
 
-Command that resets one or more layer repos to target commits and plays back the union of changed paths in one operation. Accepts positionals in `<ident>:<targetref>` form; a bare `<commit>` (no `:`) targets the custom layer (backward-compatible). Multiple targets are reset atomically — if any git reset or playback step fails, all layers are rolled back to their original commits. Unstaged changes in each target layer's workdir are stashed before reset and restored on completion.
+Command that resets one or more layer repos to target commits and plays back the union of changed paths in one operation. Accepts positionals in `<ident>:<targetref>` form; a bare `<commit>` (no `:`) targets the fallback layer (backward-compatible). Multiple targets are reset atomically — if any git reset or playback step fails, all layers are rolled back to their original commits. Unstaged changes in each target layer's workdir are stashed before reset and restored on completion.
+
+## `zodbsync checkout`
+
+Command that switches branch in one layer's git repo and plays back changed objects. Accepts optional `--layer <ident>` to target a named layer; defaults to the fallback layer (backward-compatible). Supports `--reset <commit>` (hard reset after checkout), `--rebase <commit>`, `-b` (create branch), and `--track`. Multi-layer branch switching requires separate sequential calls.
+
+## `zodbsync exec`
+
+Command that executes a shell command and plays back objects changed between old and new HEAD. Without flags: cd to fallback layer workdir, check fallback layer only. `--layer <ident>`: cd to named layer workdir, check that layer only. `--nocd`: skip cd, check ALL layers for changes — unstaged changes in each layer are stashed before the command runs and restored after; any failure rolls back all layers.
 
 ## `zodbsync copy`
 
