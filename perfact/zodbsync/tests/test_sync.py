@@ -450,6 +450,32 @@ class TestSync:
             # No cherry-pick happened: object should not be in ZODB
             assert "LayerObj" not in self.app.objectIds()
 
+    def test_checkout_layer(self):
+        """
+        checkout --layer switches named layer workdir to branch; fallback
+        layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Named layer is on main branch (no LayerObj); feature branch has it
+            self.run("checkout", "--layer", ident, "feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_checkout_layer_unknown_ident(self):
+        """
+        checkout --layer with unknown ident raises SystemExit.
+        """
+        with pytest.raises(SystemExit):
+            self.run("checkout", "--layer", "no-such-layer", "feature")
+
     def test_upload_relpath(self):
         """
         Upload JS library from test environment and check for it in Data.fs
