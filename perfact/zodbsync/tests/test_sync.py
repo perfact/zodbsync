@@ -1013,6 +1013,70 @@ class TestSync:
         with pytest.raises(SystemExit):
             self.run("exec", "--layer", "no-such-layer", "true")
 
+    def test_exec_nocd_all_layers(self):
+        """
+        exec --nocd (no --layer) diffs all layers and plays back union of
+        changed paths.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("exec", "--nocd", f"git -C {workdir} checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_exec_nocd_no_changes(self):
+        """
+        exec --nocd with no changes in any layer is a no-op (no exception).
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            before = list(self.app.objectIds())
+
+            self.run("exec", "--nocd", "true")
+
+            assert list(self.app.objectIds()) == before
+
+    def test_exec_nocd_stash(self):
+        """
+        exec --nocd stashes unstaged changes in named layer, runs cmd, pops
+        stash; dirty file still present after.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            dirty = os.path.join(workdir, "dirty_file")
+            with open(dirty, "w") as f:
+                f.write("dirty")
+
+            self.run("exec", "--nocd", f"git -C {workdir} checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.exists(dirty)
+
+    def test_exec_nocd_failure(self):
+        """
+        exec --nocd rolls back all layers when cmd fails.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            orig_head = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+
+            with pytest.raises(subprocess.CalledProcessError):
+                self.run("exec", "--nocd", "false")
+
+            assert (
+                self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+                == orig_head
+            )
+            assert "LayerObj" not in self.app.objectIds()
+
     def test_withlock(self):
         "Running with-lock and, inside that, --no-lock, works"
         self.run(
