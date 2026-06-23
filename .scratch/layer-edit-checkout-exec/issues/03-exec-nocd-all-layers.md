@@ -1,6 +1,6 @@
 # exec --nocd: check all layers
 
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -20,3 +20,7 @@ This is a multi-layer transaction held under the existing lock. The implementati
 ## Blocked by
 
 - `.scratch/layer-edit-checkout-exec/issues/02-exec-layer-flag.md`
+
+## Comments
+
+Implemented in `perfact/zodbsync/commands/execute.py`: `run()` dispatches to `_run_all_layers()` (decorated `@with_lock`, bypasses `@gitexec`) when `--nocd` and no `--layer`. Snapshots HEAD + unstaged changes for all layers, stashes dirty ones, runs cmd, diffs all layers, plays back union of changed paths. Rolls back all layers + pops stashes on failure; best-effort playback for partially applied objects. Tests: `test_exec_nocd_all_layers`, `test_exec_nocd_no_changes`, `test_exec_nocd_stash`, `test_exec_nocd_failure`.

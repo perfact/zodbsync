@@ -1,6 +1,6 @@
 # checkout: add --layer flag
 
-Status: ready-for-agent
+Status: done
 
 ## What to build
 
@@ -19,3 +19,7 @@ Follow the same pattern as `zodbsync pick`: resolve the layer in `__init__`, set
 ## Blocked by
 
 None — can start immediately.
+
+## Comments
+
+Implemented in `perfact/zodbsync/commands/checkout.py`: added `__init__` (resolves layer by ident, sets `self._git_workdir`, raises `SystemExit` on unknown ident) and `--layer` arg in `add_args`. `run()` unchanged — `@gitexec` handles stash/diff/playback via `self._git_workdir`. Tests: `test_checkout_layer`, `test_checkout_layer_unknown_ident`.

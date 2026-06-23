@@ -198,6 +198,20 @@ This allows commands like the following:
     zodbsync exec "git reset --hard COMMIT"
     zodbsync exec "git revert COMMIT"
 
+The optional `--layer <ident>` flag runs the command in the named layer's
+workdir (instead of cding to the fallback layer workdir) and diffs only that
+layer. Omitting `--layer` keeps fallback-layer behavior.
+
+The optional `--nocd` flag skips the `cd` into the git workdir, so the command
+runs in the caller's working directory. When `--nocd` is given without
+`--layer`, all layers are snapshotted before the command runs; after it
+completes, the union of all changed paths across every layer is played back in
+a single pass. Unstaged changes in each layer are stashed before the command
+and restored after. On failure, all layers are rolled back to their original
+commits and stashes are popped; a best-effort playback is attempted for any
+objects already written. With `--nocd --layer <ident>` only the named layer is
+checked (existing scoped behavior).
+
 ### `zodbsync reset`
 
 Resets one or more layer repos to target commits and plays back the union of
@@ -222,7 +236,14 @@ layer are stashed before resetting and restored on success or failure.
 
 ### `zodbsync checkout`
 
-Wrapper for `git checkout` with some of its functionality.
+Wrapper for `git checkout` with some of its functionality. Supports `--reset`
+to hard-reset after checkout, `--rebase` to rebase onto a commit, and `-b` /
+`--track` to create or track branches.
+
+The optional `--layer <ident>` flag operates on the named layer's workdir
+instead of the fallback layer. Unstaged changes in the target workdir are
+stashed before checkout and restored after. Omitting `--layer` keeps existing
+fallback-layer behavior.
 
 ### `zodbsync pick`
 
