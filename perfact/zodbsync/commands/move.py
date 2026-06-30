@@ -44,14 +44,31 @@ class Move(SubCommand):
             return pathinfo["layers"][pathinfo["layeridx"]]["ident"]
         return ""
 
-    def _clear_src_attrs(self, obj, src_ident):
-        """Recursively clear zodbsync_layer on descendants where it equals src_ident."""
+    def _clear_src_attrs(self, obj, src_ident, tgt_ident, acquired_ident=None):
+        """Recursively update zodbsync_layer on descendants moving from src_ident to tgt_ident.
+
+        acquired_ident tracks what a child with no explicit attr would inherit from its
+        ancestor chain. When that equals tgt_ident, deleting the attr is sufficient.
+        When an intermediate ancestor has a different explicit layer, deletion would cause
+        wrong acquisition, so the attr is set explicitly to tgt_ident instead.
+        """
+        if acquired_ident is None:
+            acquired_ident = tgt_ident
         for item in obj_contents(obj):
             child = getattr(obj, item)
             child_base = aq_base(child)
-            if getattr(child_base, "zodbsync_layer", None) == src_ident:
-                del child_base.zodbsync_layer
-            self._clear_src_attrs(child, src_ident)
+            child_ident = getattr(child_base, "zodbsync_layer", None)
+            if child_ident == src_ident:
+                if acquired_ident == tgt_ident:
+                    del child_base.zodbsync_layer
+                else:
+                    child_base.zodbsync_layer = tgt_ident
+                child_acquired = tgt_ident
+            elif child_ident is not None:
+                child_acquired = child_ident
+            else:
+                child_acquired = acquired_ident
+            self._clear_src_attrs(child, src_ident, tgt_ident, child_acquired)
 
     @SubCommand.with_lock
     def run(self):
@@ -87,7 +104,7 @@ class Move(SubCommand):
                         shutil.copytree(src_dir, tgt_dir, dirs_exist_ok=True)
                         shutil.rmtree(src_dir)
                 obj.zodbsync_layer = tgt_ident
-                self._clear_src_attrs(obj, src_ident)
+                self._clear_src_attrs(obj, src_ident, tgt_ident)
             else:
                 pathinfo = self.sync.fs_pathinfo(path)
                 if pathinfo["fspath"] is not None:
