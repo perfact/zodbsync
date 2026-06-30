@@ -44,43 +44,14 @@ class Move(SubCommand):
             return pathinfo["layers"][pathinfo["layeridx"]]["ident"]
         return ""
 
-    def _move_obj(self, obj, path, src_ident, tgt_ident, tgt_workdir, recurse, is_root):
-        obj_base = aq_base(obj)
-        pathinfo = self.sync.fs_pathinfo(path)
-        if not is_root:
-            if pathinfo["layeridx"] is not None:
-                child_ident = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
-                if child_ident != src_ident:
-                    return
-        if pathinfo["fspath"] is not None:
-            src_dir = pathinfo["fspath"]
-            rel_path = os.path.join(self.sync.site, path.lstrip("/"))
-            tgt_dir = os.path.join(tgt_workdir, rel_path)
-            if src_dir != tgt_dir:
-                os.makedirs(tgt_dir, exist_ok=True)
-                for name in os.listdir(src_dir):
-                    if name == "__meta__" or name.startswith("__source"):
-                        shutil.copy2(
-                            os.path.join(src_dir, name), os.path.join(tgt_dir, name)
-                        )
-                self.sync._delete_layer_files(src_dir)
-
-        obj_base.zodbsync_layer = tgt_ident
-
-        if not recurse:
-            return
-
+    def _clear_src_attrs(self, obj, src_ident):
+        """Recursively clear zodbsync_layer on descendants where it equals src_ident."""
         for item in obj_contents(obj):
             child = getattr(obj, item)
-            self._move_obj(
-                child,
-                os.path.join(path, item),
-                src_ident,
-                tgt_ident,
-                tgt_workdir,
-                recurse,
-                is_root=False,
-            )
+            child_base = aq_base(child)
+            if getattr(child_base, "zodbsync_layer", None) == src_ident:
+                del child_base.zodbsync_layer
+            self._clear_src_attrs(child, src_ident)
 
     @SubCommand.with_lock
     def run(self):
@@ -101,9 +72,36 @@ class Move(SubCommand):
 
         src_ident = self._source_ident(obj, path)
 
+        rel_path = os.path.join(self.sync.site, path.lstrip("/"))
+
         with self.sync.tm:
-            self._move_obj(
-                obj, path, src_ident, tgt_ident, tgt_workdir, recurse, is_root=True
-            )
+            if recurse:
+                src_idx = self._find_layer_idx(src_ident)
+                if src_idx is not None:
+                    src_dir = os.path.join(
+                        self.sync.layers[src_idx]["workdir"], rel_path
+                    )
+                    tgt_dir = os.path.join(tgt_workdir, rel_path)
+                    if src_dir != tgt_dir and os.path.isdir(src_dir):
+                        os.makedirs(os.path.dirname(tgt_dir), exist_ok=True)
+                        shutil.copytree(src_dir, tgt_dir, dirs_exist_ok=True)
+                        shutil.rmtree(src_dir)
+                obj.zodbsync_layer = tgt_ident
+                self._clear_src_attrs(obj, src_ident)
+            else:
+                pathinfo = self.sync.fs_pathinfo(path)
+                if pathinfo["fspath"] is not None:
+                    src_dir = pathinfo["fspath"]
+                    tgt_dir = os.path.join(tgt_workdir, rel_path)
+                    if src_dir != tgt_dir:
+                        os.makedirs(tgt_dir, exist_ok=True)
+                        for name in os.listdir(src_dir):
+                            if name == "__meta__" or name.startswith("__source"):
+                                shutil.copy2(
+                                    os.path.join(src_dir, name),
+                                    os.path.join(tgt_dir, name),
+                                )
+                        self.sync._delete_layer_files(src_dir)
+                obj.zodbsync_layer = tgt_ident
 
         self.sync.fs_prune_empty_dirs()
