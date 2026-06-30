@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # `zodbsync move` and `copy` — FS-based descendant skip detection
 
@@ -30,12 +30,12 @@ Children with no FS presence (not yet recorded) have `child_info["layeridx"] = N
 
 ## Acceptance criteria
 
-- [ ] `move._move_obj` uses `fs_pathinfo` to detect cross-layer children
-- [ ] `copy._copy_obj` uses `fs_pathinfo` to detect cross-layer children
-- [ ] Recursive `move` skips a child whose `__meta__` file is in a different layer from the source layer
-- [ ] Recursive `move` processes a child with no FS presence (not yet recorded)
-- [ ] Recursive `move` processes a child whose `__meta__` is in the same layer as source, regardless of whether `obj.zodbsync_layer` is set on it
-- [ ] All existing `move` and `copy` tests pass
+- [x] `move._move_obj` uses `fs_pathinfo` to detect cross-layer children
+- [x] `copy._copy_obj` uses `fs_pathinfo` to detect cross-layer children
+- [x] Recursive `move` skips a child whose `__meta__` file is in a different layer from the source layer
+- [x] Recursive `move` processes a child with no FS presence (not yet recorded)
+- [x] Recursive `move` processes a child whose `__meta__` is in the same layer as source, regardless of whether `obj.zodbsync_layer` is set on it
+- [x] All existing `move` and `copy` tests pass
 
 ## Blocked by
 
