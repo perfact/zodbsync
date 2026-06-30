@@ -481,27 +481,34 @@ class ZODBSync:
         return result
 
     def resolve_target_layer(self, path, obj):
-        """Return layer index for writing obj at path (rules 1-4).
+        """Return (target_layer_idx, parent_layer_idx) for writing obj at path.
 
+        target_layer_idx follows rules 1-4:
         Rule 1: obj.zodbsync_layer is a known named-layer ident.
         Rule 2: object already on FS in some layer.
         Rule 3: parent object on FS in some layer.
         Rule 4: fallback to custom layer (index 0).
+
+        parent_layer_idx is the layer index of the parent path, or None if the
+        parent has no __meta__ file in any layer.
         """
+        parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        parent_layer_idx = None
+        if parent != path:
+            pinfo = self.fs_pathinfo(parent)
+            parent_layer_idx = pinfo["layeridx"]
+
         ident = getattr(aq_base(obj), "zodbsync_layer", None)
         if ident is not None:
             for idx, layer in enumerate(self.layers):
                 if layer["ident"] == ident:
-                    return idx
+                    return idx, parent_layer_idx
         pathinfo = self.fs_pathinfo(path)
         if pathinfo["layeridx"] is not None:
-            return pathinfo["layeridx"]
-        parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
-        if parent != path:
-            pinfo = self.fs_pathinfo(parent)
-            if pinfo["layeridx"] is not None:
-                return pinfo["layeridx"]
-        return 0
+            return pathinfo["layeridx"], parent_layer_idx
+        if parent_layer_idx is not None:
+            return parent_layer_idx, parent_layer_idx
+        return 0, parent_layer_idx
 
     def fs_write(self, path, data, target_layer_idx=0):
         """
@@ -776,7 +783,7 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        target_layer_idx = self.resolve_target_layer(path, obj)
+        target_layer_idx, _ = self.resolve_target_layer(path, obj)
         old_pathinfo = self.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
