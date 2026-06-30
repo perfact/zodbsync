@@ -185,7 +185,7 @@ class Watch(SubCommand):
         obj = self.app._p_jar[oid]
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
-        target_layer_idx = self.sync.resolve_target_layer(path, obj)
+        target_layer_idx, _ = self.sync.resolve_target_layer(path, obj)
         old_pathinfo = self.sync.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:

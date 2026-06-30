@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # `resolve_target_layer` returns parent layer index
 
@@ -18,10 +18,10 @@ Both callers currently only use the first value; the second is plumbing for the 
 
 ## Acceptance criteria
 
-- [ ] `resolve_target_layer` returns `(target_layer_idx, parent_layer_idx)` in all code paths (rules 1–4)
-- [ ] `parent_layer_idx` is `None` when the parent path has no `__meta__` file in any layer
-- [ ] Both callers unpack correctly; behaviour of `record` and `watch` is unchanged
-- [ ] All existing layer tests pass
+- [x] `resolve_target_layer` returns `(target_layer_idx, parent_layer_idx)` in all code paths (rules 1–4)
+- [x] `parent_layer_idx` is `None` when the parent path has no `__meta__` file in any layer
+- [x] Both callers unpack correctly; behaviour of `record` and `watch` is unchanged
+- [x] All existing layer tests pass
 
 ## Blocked by
 
