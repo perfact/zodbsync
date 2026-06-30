@@ -46,12 +46,12 @@ class Move(SubCommand):
 
     def _move_obj(self, obj, path, src_ident, tgt_ident, tgt_workdir, recurse, is_root):
         obj_base = aq_base(obj)
-        if not is_root:
-            child_ident = getattr(obj_base, "zodbsync_layer", None)
-            if child_ident is not None and child_ident != src_ident:
-                return
-
         pathinfo = self.sync.fs_pathinfo(path)
+        if not is_root:
+            if pathinfo["layeridx"] is not None:
+                child_ident = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+                if child_ident != src_ident:
+                    return
         if pathinfo["fspath"] is not None:
             src_dir = pathinfo["fspath"]
             rel_path = os.path.join(self.sync.site, path.lstrip("/"))

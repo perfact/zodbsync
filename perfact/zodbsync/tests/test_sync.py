@@ -3222,6 +3222,53 @@ class TestSync:
                 assert os.path.exists(named_child_b)
                 assert getattr(self.app.Folder.child, "zodbsync_layer") == ident_b
 
+    def test_move_skips_child_in_different_layer_no_attr(self):
+        """Recursive move skips a child in a different layer even without attr.
+
+        Sequence: child is in fallback with no zodbsync_layer (non-boundary
+        under boundary-only semantics). Parent is moved to layer_inner via
+        --no-recurse (child left behind in fallback, still no attr). A second
+        recursive move from layer_inner to layer_outer must skip the child
+        — child's FS is in fallback (≠ layer_inner source) but has no attr
+        for the old check to detect.
+
+        Layer order note: load_layer_config reverses sort order, so with
+        addlayer("00") as outer and addlayer("01") as inner:
+          layers[-2] = 01-xxx = inner_layer context
+          layers[-1] = 00-xxx = outer_layer context
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer("00") as outer_layer:
+            with self.addlayer("01") as inner_layer:
+                inner_ident = self.runner.sync.layers[-2]["ident"]
+                outer_ident = self.runner.sync.layers[-1]["ident"]
+                self.run("record", "/Folder")
+                # child is in fallback, non-boundary -> no zodbsync_layer
+                assert (
+                    getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+                    is None
+                )
+                # Move only Folder to inner_layer (child left in fallback).
+                self.run("move", "--no-recurse", "/Folder", inner_ident)
+                fallback_child = os.path.join(
+                    self.repo.path, "__root__/Folder/child/__meta__"
+                )
+                assert os.path.exists(fallback_child)
+                # Recursively move Folder from inner to outer.
+                # src_ident = inner; child's FS is in fallback ("" ≠ inner)
+                # -> child must be skipped. No attr exists to trigger old check.
+                self.run("move", "/Folder", outer_ident)
+                outer_folder = f"{outer_layer}/workdir/__root__/Folder/__meta__"
+                outer_child = f"{outer_layer}/workdir/__root__/Folder/child/__meta__"
+                inner_folder = f"{inner_layer}/workdir/__root__/Folder/__meta__"
+                assert os.path.exists(outer_folder)
+                assert not os.path.exists(inner_folder)
+                # child stays in fallback, not moved to outer_layer
+                assert os.path.exists(fallback_child)
+                assert not os.path.exists(outer_child)
+
     def test_move_to_custom_layer(self):
         """Move a named-layer object back to the custom layer using empty string."""
         with self.runner.sync.tm:
@@ -3239,6 +3286,59 @@ class TestSync:
             assert os.path.exists(custom_meta)
             assert not os.path.exists(named_meta)
             assert getattr(self.app.blob, "zodbsync_layer") == ""
+
+    def test_move_processes_unrecorded_child(self):
+        """Recursive move processes a child with no FS presence (not yet recorded)."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            # Record only Folder, not child -> child has no __meta__ anywhere.
+            self.run("record", "--no-recurse", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            # Folder moved; child has no FS presence -> layeridx=None -> not
+            # skipped -> processed normally (no __meta__ to copy, no crash).
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            assert os.path.exists(named_folder)
+            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+
+    def test_copy_skips_child_in_different_layer_no_attr(self):
+        """copy._copy_obj: FS-based skip for child in different layer, no attr.
+
+        Setup: record Folder+child in fallback, then manually relocate child's
+        __meta__ to inner layer (simulating prior move without attr). Child has
+        no zodbsync_layer attr. Recursive copy of Folder from fallback to outer
+        must skip child because child's FS layer (inner) != src (fallback).
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer("00") as outer_layer:
+            with self.addlayer("01") as inner_layer:
+                outer_ident = self.runner.sync.layers[-1]["ident"]
+                self.run("record", "/Folder")
+                self.gitrun("add", ".")
+                self.gitrun("commit", "-m", "add folder")
+                # Relocate child __meta__ from fallback to inner (no attr set).
+                fb_child = os.path.join(self.repo.path, "__root__/Folder/child")
+                inner_child = os.path.join(inner_layer, "workdir/__root__/Folder/child")
+                os.makedirs(inner_child, exist_ok=True)
+                shutil.copy2(
+                    os.path.join(fb_child, "__meta__"),
+                    os.path.join(inner_child, "__meta__"),
+                )
+                shutil.rmtree(fb_child)
+                assert (
+                    getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+                    is None
+                )
+                # src=fallback; child's FS=inner (≠ fallback) -> must be skipped.
+                self.run("copy", "/Folder", outer_ident)
+                outer_folder = f"{outer_layer}/workdir/__root__/Folder/__meta__"
+                outer_child = f"{outer_layer}/workdir/__root__/Folder/child/__meta__"
+                assert os.path.exists(outer_folder)
+                assert not os.path.exists(outer_child)
 
     def test_copy_uncommitted_changes(self):
         """Copy blob with uncommitted changes to named layer; target gets
