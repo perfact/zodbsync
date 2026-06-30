@@ -115,7 +115,6 @@ def mod_write(
     root=None,
     default_owner=None,
     force_default_owner=False,
-    layer=None,
 ):
     """
     Given object data in <data>, store the object, creating it if it was
@@ -183,9 +182,6 @@ def mod_write(
     # Send an update (depending on type)
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, d)
-
-    # Also write zodbsync layer information
-    obj.zodbsync_layer = layer
 
     if temp_obj:
         children = temp_obj.manage_cutObjects(temp_obj.objectIds())
@@ -957,7 +953,6 @@ class ZODBSync:
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner,
                     force_default_owner=self.force_default_owner,
-                    layer=pathinfo["layers"][pathinfo["layeridx"]]["ident"],
                 )
             except Exception:
                 # If we do not want to get errors from missing
@@ -970,6 +965,29 @@ class ZODBSync:
                 else:
                     self.logger.error(msg)
                     raise
+
+        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+        parent_path = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        parent_layer = None
+        if parent_path != path:
+            parent_rel = parent_path.lstrip("/")
+            for _layer in self.layers:
+                meta = os.path.join(
+                    _layer["workdir"], self.site, parent_rel, "__meta__"
+                )
+                if os.path.exists(meta):
+                    parent_layer = _layer["ident"]
+                    break
+        at_boundary = (parent_layer is None and path_layer != "") or (
+            parent_layer is not None and path_layer != parent_layer
+        )
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        if at_boundary:
+            if current_attr != path_layer:
+                obj.zodbsync_layer = path_layer
+        else:
+            if current_attr is not None:
+                del obj.zodbsync_layer
 
         self.num_obj_total += len(contents)
         if hasattr(object_handlers[fs_data["type"]], "fix_order"):

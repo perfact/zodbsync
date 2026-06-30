@@ -2134,11 +2134,8 @@ class TestSync:
                 # Place __frozen__ inside layerA's __root__/Test/ subtree only
                 os.makedirs(f"{layerA}/workdir/__root__/Test")
                 open(f"{layerA}/workdir/__root__/Test/__frozen__", "w").close()
-                # Clear attr so rule 2 finds each object in layerB (not rule 1
-                # routing to fallback via stale zodbsync_layer="").
-                with self.runner.sync.tm:
-                    del self.app.Test.zodbsync_layer
-                    del self.app.Other.zodbsync_layer
+                # Rule 1 is not active: playback in fallback left no attr.
+                # Rule 2 finds each object in layerB.
                 self.run("record", "/")
         # /Other is outside the frozen subtree -> layerB still serves it
         # -> custom layer must NOT have /Other
@@ -2255,6 +2252,97 @@ class TestSync:
         assert self.app.Test3.objectIds() == ["Sub1", "Sub2", "Sub3"]
         assert self.app.Test2.title == "overwritten"
         assert self.app.Test3.title == ""
+
+    def test_layer_playback_boundary_attr_unchanged_content(self):
+        """Boundary check runs even when content is already up-to-date.
+
+        When fs_data == srv_data, mod_write is skipped. The boundary check
+        must still set zodbsync_layer on named-layer root objects.
+        """
+        self.add_folder("Test")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Test".format(self.repo.path),
+                "{}/workdir/__root__/Test".format(layer),
+            )
+            # Playback so ZODB matches named-layer FS content.
+            self.run("playback", "/Test")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # Clear attr so next playback must re-establish it.
+            with self.runner.sync.tm:
+                del self.app.Test.zodbsync_layer
+            # Content is already identical -> mod_write NOT called.
+            # Boundary check must still set the attr.
+            self.run("playback", "/Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+
+    def test_layer_playback_fallback_root_no_attr(self):
+        """Fallback root object: not a boundary -> no zodbsync_layer after playback."""
+        self.add_folder("Test")
+        self.run("playback", "/Test")
+        attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+        assert attr is None
+
+    def test_layer_playback_non_boundary_child_no_attr(self):
+        """Child in same named layer as parent: not a boundary -> no zodbsync_layer."""
+        self.add_folder("Folder")
+        self.add_folder("Child", parent="Folder")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            # Playback both Folder and Child from named layer.
+            self.run("playback", "/Folder")
+            # Folder is at boundary (parent=fallback, self=named) -> has attr.
+            # Child is in same named layer as Folder -> NOT boundary -> no attr.
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_mod_write_does_not_touch_zodbsync_layer(self):
+        """mod_write must not set or clear zodbsync_layer.
+
+        Before the fix, mod_write(layer=None) wiped zodbsync_layer on every
+        call (e.g. from extedit), destroying user-set layer intent.
+        """
+        with self.addlayer():
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.manage_addFolder(id="Test")
+                self.app.Test.zodbsync_layer = ident
+            data = zodbsync.mod_read(self.app.Test)
+            with self.runner.sync.tm:
+                zodbsync.mod_write(data, parent=self.app, obj_id="Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+
+    def test_layer_playback_preserves_zodbsync_layer_across_mod_write(self):
+        """mod_write must not touch zodbsync_layer.
+
+        Before this fix, mod_write(layer=None) wiped the attr. After removing
+        the layer parameter from mod_write, calling playback on an object whose
+        content changed must leave zodbsync_layer intact (the boundary check
+        manages it separately).
+        """
+        self.add_folder("Test")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Test".format(self.repo.path),
+                "{}/workdir/__root__/Test".format(layer),
+            )
+            self.run("playback", "/Test")
+            ident = self.runner.sync.layers[-1]["ident"]
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+            # Mutate ZODB object so fs_data != srv_data -> mod_write IS called.
+            with self.runner.sync.tm:
+                self.app.Test.title = "changed"
+            # After playback, boundary check must re-set attr (mod_write no
+            # longer touches it).
+            self.run("playback", "/Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
 
     def test_layer_record(self):
         """
