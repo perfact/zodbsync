@@ -11,7 +11,6 @@ import time
 # For reading the Data.FS in order to obtain affected object IDs from
 # transaction IDs
 import ZODB.FileStorage
-from Acquisition import aq_base
 
 from ..helpers import increment_txnid
 from ..subcommand import SubCommand
@@ -185,26 +184,12 @@ class Watch(SubCommand):
         obj = self.app._p_jar[oid]
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
-        target_layer_idx, parent_layer_idx = self.sync.resolve_target_layer(path, obj)
+        target_layer_idx, _ = self.sync.resolve_target_layer(path, obj)
         old_pathinfo = self.sync.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
             self.sync._delete_layer_files(old_pathinfo["fspath"])
         self.sync.fs_write(path=path, data=data, target_layer_idx=target_layer_idx)
-        path_layer = self.sync.layers[target_layer_idx]["ident"]
-
-        at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
-            parent_layer_idx is not None and target_layer_idx != parent_layer_idx
-        )
-        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
-        if at_boundary:
-            if current_attr != path_layer:
-                with self.sync.tm:
-                    obj.zodbsync_layer = path_layer
-        else:
-            if current_attr is not None:
-                with self.sync.tm:
-                    del obj.zodbsync_layer
 
     def _update_objects(self):
         """
