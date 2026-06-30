@@ -58,6 +58,8 @@ Before writing, `record_obj` and `watch._record_object` resolve the target layer
 3. The layer where the parent object's `__meta__` file lives
 4. Custom layer (ultimate fallback — only reached for root objects with no prior recording)
 
+`resolve_target_layer` returns `(target_layer_idx, parent_layer_idx)`. `parent_layer_idx` is the result of `fs_pathinfo(parent)["layeridx"]` — always computed, even when rule 1 or 2 fires, so callers can perform the boundary check without a second `fs_pathinfo` call.
+
 ### Detecting and handling layer divergence
 
 After resolving the target layer, if it differs from the object's current filesystem location, `record_obj`/`_record_object` must:
@@ -66,6 +68,33 @@ After resolving the target layer, if it differs from the object's current filesy
 3. Remove any `__frozen__` marker in the old layer's directory for this path
 
 This logic is shared between `record` and `watch`.
+
+### Updating `obj.zodbsync_layer` after recording
+
+After writing (in `record_obj`, `watch._record_object`, and `_playback_path`), the attribute is updated based on boundary status:
+
+```python
+at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or \
+              (parent_layer_idx is not None and target_layer_idx != parent_layer_idx)
+
+current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+if at_boundary:
+    if current_attr != path_layer:
+        obj.zodbsync_layer = path_layer   # set/update
+else:
+    if current_attr is not None:
+        del obj.zodbsync_layer            # clear — redundant, FS rules cover it
+```
+
+This ensures `obj.zodbsync_layer` is present only on layer-boundary objects. See ADR 0004.
+
+### `mod_read` / `mod_write` / `_playback_path` changes
+
+`mod_read` no longer includes `zodbsync_layer` in its output dict. `mod_write` no longer accepts a `layer` parameter or writes `obj.zodbsync_layer`. Both changes remove `zodbsync_layer` from the content comparison in `_playback_path`, preventing spurious write triggers.
+
+`_playback_path` removes the `fs_data["zodbsync_layer"]` injection. After calling `mod_write`, it performs the boundary check (same logic as `record_obj` / `_record_object`) to set or clear the attribute. It computes `parent_layer_idx` from `fs_pathinfo(parent_path)` since `_playback_path` does not go through `resolve_target_layer`.
+
+Side effect: `extedit` called `mod_write` without `layer`, silently setting `obj.zodbsync_layer = None` on every external-editor save and wiping any user-set layer intent. Removing the `layer` parameter fixes this.
 
 ### `fs_pathinfo` changes
 
@@ -85,7 +114,7 @@ zodbsync move <zope-path> <layer-ident> [--no-recurse]
 - Moves filesystem files from the object's current layer workdir to the target layer workdir.
 - Deletes files from the old layer workdir.
 - Updates `obj.zodbsync_layer` in a ZODB transaction.
-- Recursively processes descendants by default; skips descendants whose `obj.zodbsync_layer` differs from the source layer.
+- Recursively processes descendants by default; skips descendants whose filesystem layer (`fs_pathinfo` result) differs from the source layer. Does not use `obj.zodbsync_layer` for skip detection.
 - Does not perform git commits.
 
 ### `zodbsync copy` command
@@ -97,6 +126,7 @@ zodbsync copy <zope-path> <layer-ident> [--no-recurse]
 - Copies the current filesystem representation to the target layer workdir.
 - Runs `git checkout HEAD -- <path>` in the source layer workdir to reset the source to its last committed state.
 - Updates `obj.zodbsync_layer` to the target layer.
+- Skips descendants whose filesystem layer (`fs_pathinfo` result) differs from the source layer. Does not use `obj.zodbsync_layer` for skip detection.
 - Does NOT place a `__frozen__` marker automatically.
 - Does not perform git commits.
 - Intended use: the source layer has uncommitted changes. After copy, source resets to HEAD creating an immediate content difference, which prevents compression from collapsing the copy. If the source is already at HEAD, the copy is content-identical and compression will collapse it on the next record/watch cycle — see Known Limitations.
