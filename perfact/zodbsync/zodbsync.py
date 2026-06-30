@@ -39,6 +39,8 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
+_UNSET = object()  # sentinel for "parameter not provided"
+
 
 def mod_format(data=None):
     """Make a printable output of the given object data."""
@@ -387,7 +389,7 @@ class ZODBSync:
         """
         return os.path.join(self.app_dir, path.lstrip("/"))
 
-    def fs_pathinfo(self, path):
+    def fs_pathinfo(self, path, _parent_layers=None):
         """
         Find the correct layer for the object with the given Data.FS path.
         The top (custom) layer may have __deleted__ or __frozen__ markers for
@@ -403,6 +405,9 @@ class ZODBSync:
 
         Input:
         :path: a path in the ZODB like /PerFact/test/
+        :_parent_layers: If provided (from a parent call), skip the full
+            ancestor walk and only check the last path component for markers.
+            The caller guarantees that all ancestors have already been checked.
 
         Return value:
         {
@@ -416,28 +421,43 @@ class ZODBSync:
                         representation is found.
         }
         """
-        layers = self.layers
         markers = {"__frozen__", "__deleted__"}
-        partial = ""
-        for part in [self.site] + path.split("/"):
-            if not part:
-                continue
-            partial = os.path.join(partial, part) if partial else part
-            restricted = False
-            any_dir = False
+        if _parent_layers is not None:
+            # Ancestor walk already done by caller up to and including parent.
+            # Only check whether this path component itself carries a marker.
+            layers = _parent_layers
+            partial = os.path.join(self.site, path.lstrip("/").rstrip("/"))
             for idx, layer in enumerate(layers):
                 check = os.path.join(layer["workdir"], partial)
                 try:
                     entries = set(os.listdir(check))
                 except OSError:
                     continue
-                any_dir = True
                 if markers & entries:
                     layers = layers[: idx + 1]
-                    restricted = True
                     break
-            if restricted or not any_dir:
-                break
+        else:
+            layers = self.layers
+            partial = ""
+            for part in [self.site] + path.split("/"):
+                if not part:
+                    continue
+                partial = os.path.join(partial, part) if partial else part
+                restricted = False
+                any_dir = False
+                for idx, layer in enumerate(layers):
+                    check = os.path.join(layer["workdir"], partial)
+                    try:
+                        entries = set(os.listdir(check))
+                    except OSError:
+                        continue
+                    any_dir = True
+                    if markers & entries:
+                        layers = layers[: idx + 1]
+                        restricted = True
+                        break
+                if restricted or not any_dir:
+                    break
 
         result = {
             "path": path,
@@ -474,7 +494,9 @@ class ZODBSync:
         result["children"] = sorted(children)
         return result
 
-    def resolve_target_layer(self, path, obj):
+    def resolve_target_layer(
+        self, path, obj, _parent_layer_idx=_UNSET, _parent_layers=None
+    ):
         """Return (target_layer_idx, parent_layer_idx, pathinfo) for path.
 
         target_layer_idx follows rules 1-4:
@@ -489,19 +511,25 @@ class ZODBSync:
         pathinfo is the result of fs_pathinfo(path), or None if Rule 1 applied
         before fs_pathinfo was called (so callers can reuse it and avoid a
         redundant fs_pathinfo call).
+
+        _parent_layer_idx: pre-computed parent layeridx (skips fs_pathinfo(parent)).
+        _parent_layers: effective layers from parent's pathinfo (skips ancestor walk).
         """
         parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
-        parent_layer_idx = None
-        if parent != path:
-            pinfo = self.fs_pathinfo(parent)
-            parent_layer_idx = pinfo["layeridx"]
+        if _parent_layer_idx is _UNSET:
+            parent_layer_idx = None
+            if parent != path:
+                pinfo = self.fs_pathinfo(parent)
+                parent_layer_idx = pinfo["layeridx"]
+        else:
+            parent_layer_idx = _parent_layer_idx
 
         ident = getattr(aq_base(obj), "zodbsync_layer", None)
         if ident is not None:
             for idx, layer in enumerate(self.layers):
                 if layer["ident"] == ident:
                     return idx, parent_layer_idx, None
-        pathinfo = self.fs_pathinfo(path)
+        pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
         if pathinfo["layeridx"] is not None:
             return pathinfo["layeridx"], parent_layer_idx, pathinfo
         if parent_layer_idx is not None:
@@ -764,7 +792,15 @@ class ZODBSync:
             self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
         self.fs_prune_empty_dirs()
 
-    def record_obj(self, obj, path, recurse=True, skip_errors=False):
+    def record_obj(
+        self,
+        obj,
+        path,
+        recurse=True,
+        skip_errors=False,
+        _parent_layer_idx=_UNSET,
+        _parent_layers=None,
+    ):
         """Record a Zope object into the local filesystem"""
         try:
             data = mod_read(
@@ -783,10 +819,13 @@ class ZODBSync:
                 raise
 
         target_layer_idx, parent_layer_idx, old_pathinfo = self.resolve_target_layer(
-            path, obj
+            path,
+            obj,
+            _parent_layer_idx=_parent_layer_idx,
+            _parent_layers=_parent_layers,
         )
         if old_pathinfo is None:
-            old_pathinfo = self.fs_pathinfo(path)
+            old_pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
             self._delete_layer_files(old_pathinfo["fspath"])
@@ -832,6 +871,8 @@ class ZODBSync:
                 obj=child,
                 path=os.path.join(path, item),
                 skip_errors=skip_errors,
+                _parent_layer_idx=target_layer_idx,
+                _parent_layers=pathinfo["layers"],
             )
 
     def _playback_path(self, pathinfo):
