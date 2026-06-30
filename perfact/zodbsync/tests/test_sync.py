@@ -3328,6 +3328,39 @@ class TestSync:
             child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
             assert child_attr is None
 
+    def test_move_deep_child_behind_different_layer_gets_explicit_attr(self):
+        """Deep src_ident child behind a different-layer intermediate gets explicit tgt attr.
+
+        /Folder in fallback, /Folder/middle in mid layer, /Folder/middle/leaf in fallback.
+        Bug: _clear_src_attrs deleted leaf's '' attr, causing leaf to acquire mid_ident
+        from middle — mismatching its FS location in tgt layer.
+        Fix: when the ancestor acquisition chain would yield a wrong layer, set tgt_ident
+        explicitly instead of deleting.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFolder(id="middle")
+            self.app.Folder.middle.manage_addProduct["OFSP"].manage_addFile(id="leaf")
+        with self.addlayer("00") as layer_tgt:
+            with self.addlayer("01") as layer_mid:
+                mid_ident = self.runner.sync.layers[-2]["ident"]
+                tgt_ident = self.runner.sync.layers[-1]["ident"]
+                self.run("record", "/Folder")
+                # Assign middle to mid layer
+                with self.runner.sync.tm:
+                    self.app.Folder.middle.zodbsync_layer = mid_ident
+                self.run("record", "/Folder/middle")
+                # leaf has explicit fallback attr (= src_ident)
+                with self.runner.sync.tm:
+                    self.app.Folder.middle.leaf.zodbsync_layer = ""
+                # Move /Folder from fallback to tgt
+                self.run("move", "/Folder", tgt_ident)
+                # leaf must have explicit tgt_ident (not None → would acquire mid_ident)
+                leaf_attr = getattr(
+                    aq_base(self.app.Folder.middle.leaf), "zodbsync_layer", None
+                )
+                assert leaf_attr == tgt_ident
+
     def test_copy_skips_child_in_different_layer_no_attr(self):
         """copy._copy_obj: FS-based skip for child in different layer, no attr.
 
