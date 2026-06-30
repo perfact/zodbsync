@@ -19,16 +19,24 @@ Any layer loaded from the `layers` config directory. Has a string ident and both
 
 ## `obj.zodbsync_layer`
 
-An attribute stored directly on Zope objects in the ZODB. Records which layer ident the object belongs to. This is the authoritative signal for layer resolution — it takes precedence over the object's current filesystem location.
+An attribute stored directly on Zope objects in the ZODB. Present only on layer-boundary objects — objects whose layer differs from their parent's filesystem layer (or root-level objects in a named layer). This is the authoritative signal for layer resolution — it takes precedence over the object's current filesystem location.
+
+_Avoid_: treating absence of the attribute as meaning "unrecorded"; absence means the object inherits its layer from FS rules (rules 2–4).
+
+## Layer Boundary
+
+An object is a layer boundary if its resolved target layer differs from the layer where its parent's `__meta__` file lives (or, for root-level objects, if its layer is not the fallback layer). Only layer-boundary objects carry `obj.zodbsync_layer`. Non-boundary objects rely on filesystem rules 2–3 for routing.
 
 ## Layer Resolution
 
-The algorithm used by `record` and `watch` to determine which layer's workdir an object should be written to. Priority order:
+The algorithm used by `record`, `watch`, and `playback` to determine which layer's workdir an object should be written to. Priority order:
 
 1. `obj.zodbsync_layer` attribute (if set)
 2. Where the object already exists on the filesystem (highest-priority layer containing a `__meta__` file)
 3. Where the parent object exists on the filesystem
 4. Fallback layer (ultimate fallback — only reached for root-level objects with no prior recording)
+
+After resolving, `record`/`watch`/`playback` update `obj.zodbsync_layer` according to boundary status: set it if the object is a layer boundary, clear it (delete) if the object is in the same layer as its parent. This keeps the attribute present only where it is load-bearing.
 
 ## `__frozen__` Marker
 
