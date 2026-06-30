@@ -104,8 +104,6 @@ def mod_read(
         if "owner" in meta:
             del meta["owner"]
 
-    meta["zodbsync_layer"] = getattr(obj, "zodbsync_layer", None)
-
     return meta
 
 
@@ -783,7 +781,7 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        target_layer_idx, _ = self.resolve_target_layer(path, obj)
+        target_layer_idx, parent_layer_idx = self.resolve_target_layer(path, obj)
         old_pathinfo = self.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
@@ -791,10 +789,18 @@ class ZODBSync:
         pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
         path_layer = self.layers[target_layer_idx]["ident"]
 
-        current_layer = getattr(aq_base(obj), "zodbsync_layer", None)
-        if current_layer != path_layer:
-            with self.tm:
-                obj.zodbsync_layer = path_layer
+        at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
+            parent_layer_idx is not None and target_layer_idx != parent_layer_idx
+        )
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        if at_boundary:
+            if current_attr != path_layer:
+                with self.tm:
+                    obj.zodbsync_layer = path_layer
+        else:
+            if current_attr is not None:
+                with self.tm:
+                    del obj.zodbsync_layer
 
         if not recurse:
             return
@@ -854,12 +860,6 @@ class ZODBSync:
 
         # fspath is None if the object is to be deleted
         fs_data = pathinfo["fspath"] and self.fs_parse(pathinfo["fspath"])
-
-        # extend fs_data with layerinfo
-        if fs_data:
-            fs_data["zodbsync_layer"] = pathinfo["layers"][pathinfo["layeridx"]][
-                "ident"
-            ]
 
         # Traverse to the object if it exists
         parent_obj = None

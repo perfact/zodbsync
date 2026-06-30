@@ -16,6 +16,7 @@ import pytest
 import transaction
 import ZEO
 from AccessControl.SecurityManagement import newSecurityManager
+from Acquisition import aq_base
 
 try:
     from unittest import mock
@@ -2270,8 +2271,6 @@ class TestSync:
                 os.path.join(self.repo.path, "__root__"),
             ]
             os.rename(os.path.join(root[1], "Test"), os.path.join(root[0], "Test"))
-            with self.runner.sync.tm:
-                del self.app.Test.zodbsync_layer
             self.run("record", "/Test")
             assert not os.path.isdir(os.path.join(root[1], "Test"))
 
@@ -2361,8 +2360,6 @@ class TestSync:
                 os.path.join(layer, "workdir/__root__/index_html"),
             )
             watcher = self.mkrunner("watch")
-            with self.runner.sync.tm:
-                del self.app.index_html.zodbsync_layer
             watcher.setup()
 
             # Somehow, we need to initialize the connection here and can not
@@ -2403,10 +2400,6 @@ class TestSync:
             os.rename(src, tgt)
             os.mkdir(src)
             watcher = self.mkrunner("watch")
-            with self.runner.sync.tm:
-                del self.app.Test1.zodbsync_layer
-                del self.app.Test2.zodbsync_layer
-                del self.app.Test1.Sub.zodbsync_layer
             watcher.setup()
             with self.newconn() as conn:
                 with conn.tm:
@@ -2484,8 +2477,6 @@ class TestSync:
                 os.path.join(named_root, "Test"),
             )
             with self.runner.sync.tm:
-                del self.app.Test.zodbsync_layer
-                del self.app.Test.Sub.zodbsync_layer
                 self.app.Test.manage_delObjects(ids=["Sub"])
             self.run("record", "/")
             # Test still in named layer (still in ZODB); fallback has no Test
@@ -2622,11 +2613,6 @@ class TestSync:
             os.mkdir(src)
             self.run("layer-init", "*")
             with self.runner.sync.tm:
-                # Clear stale zodbsync_layer attrs so rule 2 routes edits to
-                # the named layer (not back to fallback via rule 1).
-                del self.app.Test.zodbsync_layer
-                del self.app.ToDelete.zodbsync_layer
-                del self.app.ToDelete.Sub.zodbsync_layer
                 self.app.Test._setProperty("nav_hidden", True, "boolean")
                 self.app.ToDelete.Sub._setProperty("nav_hidden", True, "boolean")
             self.run("record", "/")
@@ -2657,7 +2643,6 @@ class TestSync:
                 "{}/workdir/__root__/blob".format(layer),
             )
             with self.runner.sync.tm:
-                del self.app.blob.zodbsync_layer
                 self.app.blob.manage_edit(
                     filedata="text_content", content_type="text/plain", title="BLOB"
                 )
@@ -2785,14 +2770,12 @@ class TestSync:
 
         with self.addlayer() as layer:
             self.run("record", "/blob")
-            assert getattr(self.app.blob, "zodbsync_layer", None) == ""
-            # Move file to layer; clear attr so rule 2 detects new FS location
+            assert getattr(self.app.blob, "zodbsync_layer", None) is None
+            # Move file to layer; rule 2 detects new FS location
             shutil.move(
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
-            with self.runner.sync.tm:
-                del self.app.blob.zodbsync_layer
             self.run("record", "/")
             assert getattr(self.app.blob, "zodbsync_layer") is not None
             # Change file in Data.FS and verify that layer info is preserved
@@ -2806,7 +2789,7 @@ class TestSync:
             assert getattr(self.app.blob, "zodbsync_layer") == ident
 
     def test_layer_record_rule4_fallback_custom(self):
-        """Rule 4: no zodbsync_layer, no FS presence, no parent layer -> custom."""
+        """Rule 4: root in fallback -> not a boundary -> no zodbsync_layer attr."""
         with self.addlayer():
             self.run("record", "/")  # initialise runner with layer config
             with self.runner.sync.tm:
@@ -2814,7 +2797,7 @@ class TestSync:
             self.run("record", "/blob")
             custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
             assert os.path.exists(custom_meta)
-            assert getattr(self.app.blob, "zodbsync_layer", None) == ""
+            assert getattr(self.app.blob, "zodbsync_layer", None) is None
 
     def test_layer_record_rule2_fs_presence(self):
         """Rule 2: existing __meta__ in named layer -> record writes there."""
@@ -2826,9 +2809,8 @@ class TestSync:
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
-            # rule 2 fires: own zodbsync_layer absent, FS now in named layer
+            # rule 2 fires: no zodbsync_layer, FS now in named layer
             with self.runner.sync.tm:
-                del self.app.blob.zodbsync_layer
                 self.app.blob.manage_edit(
                     filedata="new_content", content_type="text/plain", title=""
                 )
@@ -2863,10 +2845,7 @@ class TestSync:
                 "{}/__root__/Folder".format(self.repo.path),
                 "{}/workdir/__root__/Folder".format(layer),
             )
-            # Clear stale attr so rule 2 detects named-layer location and
-            # sets Folder.zodbsync_layer to the named ident.
-            with self.runner.sync.tm:
-                del self.app.Folder.zodbsync_layer
+            # Rule 2 detects named-layer location and sets Folder.zodbsync_layer.
             self.run("record", "/Folder")
             # now create child under Folder
             with self.runner.sync.tm:
@@ -2878,8 +2857,9 @@ class TestSync:
             named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
             assert not os.path.exists(custom_child)
             assert os.path.exists(named_child)
-            ident = self.runner.sync.layers[-1]["ident"]
-            assert getattr(self.app.Folder.Child, "zodbsync_layer") == ident
+            # Child is in the same layer as Folder (not a boundary) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
 
     def test_layer_watch_rule1_into_named_layer(self):
         """Watch rule 1: zodbsync_layer set -> watcher writes to named layer."""
@@ -2891,8 +2871,6 @@ class TestSync:
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
-            with self.runner.sync.tm:
-                del self.app.blob.zodbsync_layer
             self.run("record", "/blob")  # rule 2 detects named layer, sets attr
 
             watcher = self.mkrunner("watch")
@@ -2919,10 +2897,7 @@ class TestSync:
                 "{}/__root__/Folder".format(self.repo.path),
                 "{}/workdir/__root__/Folder".format(layer),
             )
-            # Clear stale attr so rule 2 detects named-layer location and
-            # sets Folder.zodbsync_layer to the named ident.
-            with self.runner.sync.tm:
-                del self.app.Folder.zodbsync_layer
+            # Rule 2 detects named-layer location and sets Folder.zodbsync_layer.
             self.run("record", "/Folder")  # sets Folder.zodbsync_layer
 
             watcher = self.mkrunner("watch")
@@ -2937,6 +2912,9 @@ class TestSync:
             named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
             assert not os.path.exists(custom_child)
             assert os.path.exists(named_child)
+            # Child is in same layer as Folder (not a boundary) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
 
     def test_layer_divergence_record(self):
         """Divergence: file in fallback, zodbsync_layer=named -> moves to named."""
