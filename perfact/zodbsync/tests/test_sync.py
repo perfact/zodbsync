@@ -3191,7 +3191,9 @@ class TestSync:
             assert not os.path.exists(custom_folder)
             assert not os.path.exists(custom_child)
             assert getattr(self.app.Folder, "zodbsync_layer") == ident
-            assert getattr(self.app.Folder.child, "zodbsync_layer") == ident
+            # child is non-boundary (same layer as Folder) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+            assert child_attr is None
 
     def test_move_skips_different_layer_child(self):
         """Recursive move skips descendants already assigned to a different layer."""
@@ -3297,11 +3299,34 @@ class TestSync:
             self.run("record", "--no-recurse", "/Folder")
             ident = self.runner.sync.layers[-1]["ident"]
             self.run("move", "/Folder", ident)
-            # Folder moved; child has no FS presence -> layeridx=None -> not
-            # skipped -> processed normally (no __meta__ to copy, no crash).
+            # Folder moved; child has no __meta__ to copy but no crash.
             named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
             assert os.path.exists(named_folder)
             assert getattr(self.app.Folder, "zodbsync_layer") == ident
+
+    def test_move_clears_stale_src_attr_on_child(self):
+        """Recursive move clears zodbsync_layer on child if it equals src_ident.
+
+        Legacy code set zodbsync_layer on every object including non-boundary
+        children. After move, such a child is still non-boundary (same layer as
+        parent) so the stale src-layer attr must be removed.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            src_ident = ""  # fallback
+            # Simulate legacy attr: child has attr = src_ident (stale)
+            with self.runner.sync.tm:
+                self.app.Folder.child.zodbsync_layer = src_ident
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            named_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
+            assert os.path.exists(named_child)
+            # stale attr cleared
+            child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+            assert child_attr is None
 
     def test_copy_skips_child_in_different_layer_no_attr(self):
         """copy._copy_obj: FS-based skip for child in different layer, no attr.
