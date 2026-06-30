@@ -184,12 +184,18 @@ class Watch(SubCommand):
         obj = self.app._p_jar[oid]
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
-        target_layer_idx, _ = self.sync.resolve_target_layer(path, obj)
-        old_pathinfo = self.sync.fs_pathinfo(path)
+        target_layer_idx, _, old_pathinfo = self.sync.resolve_target_layer(path, obj)
+        if old_pathinfo is None:
+            old_pathinfo = self.sync.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
             self.sync._delete_layer_files(old_pathinfo["fspath"])
-        self.sync.fs_write(path=path, data=data, target_layer_idx=target_layer_idx)
+        self.sync.fs_write(
+            path=path,
+            data=data,
+            target_layer_idx=target_layer_idx,
+            pathinfo=old_pathinfo,
+        )
 
     def _update_objects(self):
         """
