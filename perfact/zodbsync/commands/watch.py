@@ -433,7 +433,7 @@ class Watch(SubCommand):
         finally:
             self.release_lock()
 
-    def run(self, interval=10):
+    def run(self, interval=1):
         """Setup and run in a loop."""
         if self.args.init:
             self.setup()
