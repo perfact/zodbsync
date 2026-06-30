@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Boundary logic in `_playback_path`; remove `zodbsync_layer` from `mod_read`/`mod_write`
 
@@ -30,13 +30,13 @@ The boundary check must run regardless of whether `mod_write` was called (i.e. e
 
 ## Acceptance criteria
 
-- [ ] `mod_read` output dict contains no `zodbsync_layer` key
-- [ ] `mod_write` has no `layer` parameter; does not touch `obj.zodbsync_layer`
-- [ ] `_playback_path` performs the boundary set/clear after each played-back object
-- [ ] Playback of an object in a named layer whose parent is in the fallback layer sets `obj.zodbsync_layer`
-- [ ] Playback of an object in the same layer as its parent clears `obj.zodbsync_layer` if previously set
-- [ ] `extedit` no longer clears `obj.zodbsync_layer` after saving an object through the external editor
-- [ ] All existing playback and layer tests pass
+- [x] `mod_read` output dict contains no `zodbsync_layer` key
+- [x] `mod_write` has no `layer` parameter; does not touch `obj.zodbsync_layer`
+- [x] `_playback_path` performs the boundary set/clear after each played-back object
+- [x] Playback of an object in a named layer whose parent is in the fallback layer sets `obj.zodbsync_layer`
+- [x] Playback of an object in the same layer as its parent clears `obj.zodbsync_layer` if previously set
+- [x] `extedit` no longer clears `obj.zodbsync_layer` after saving an object through the external editor
+- [x] All existing playback and layer tests pass
 
 ## Blocked by
 
