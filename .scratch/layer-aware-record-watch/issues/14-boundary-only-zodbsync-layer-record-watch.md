@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Boundary-only `obj.zodbsync_layer` in `record` and `watch`
 
@@ -33,14 +33,14 @@ See ADR 0004 for rationale.
 
 ## Acceptance criteria
 
-- [ ] `record_obj` applies the boundary check instead of unconditional write
-- [ ] `watch._record_object` applies the same boundary check
-- [ ] Objects at a layer boundary carry `obj.zodbsync_layer`; non-boundary objects do not
-- [ ] Root-level objects in the fallback layer do not carry the attribute
-- [ ] Root-level objects in a named layer carry the attribute
-- [ ] Existing tests updated: assertions on `obj.zodbsync_layer` presence/absence reflect boundary semantics
-- [ ] `test_layer_change_into_top` and related divergence tests pass with updated expectations
-- [ ] All other layer tests pass
+- [x] `record_obj` applies the boundary check instead of unconditional write
+- [x] `watch._record_object` applies the same boundary check
+- [x] Objects at a layer boundary carry `obj.zodbsync_layer`; non-boundary objects do not
+- [x] Root-level objects in the fallback layer do not carry the attribute
+- [x] Root-level objects in a named layer carry the attribute
+- [x] Existing tests updated: assertions on `obj.zodbsync_layer` presence/absence reflect boundary semantics
+- [x] `test_layer_change_into_top` and related divergence tests pass with updated expectations
+- [x] All other layer tests pass
 
 ## Blocked by
 
