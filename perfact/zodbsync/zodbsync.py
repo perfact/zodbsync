@@ -475,7 +475,7 @@ class ZODBSync:
         return result
 
     def resolve_target_layer(self, path, obj):
-        """Return (target_layer_idx, parent_layer_idx) for writing obj at path.
+        """Return (target_layer_idx, parent_layer_idx, pathinfo) for path.
 
         target_layer_idx follows rules 1-4:
         Rule 1: obj.zodbsync_layer is a known named-layer ident.
@@ -485,6 +485,10 @@ class ZODBSync:
 
         parent_layer_idx is the layer index of the parent path, or None if the
         parent has no __meta__ file in any layer.
+
+        pathinfo is the result of fs_pathinfo(path), or None if Rule 1 applied
+        before fs_pathinfo was called (so callers can reuse it and avoid a
+        redundant fs_pathinfo call).
         """
         parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
         parent_layer_idx = None
@@ -496,15 +500,15 @@ class ZODBSync:
         if ident is not None:
             for idx, layer in enumerate(self.layers):
                 if layer["ident"] == ident:
-                    return idx, parent_layer_idx
+                    return idx, parent_layer_idx, None
         pathinfo = self.fs_pathinfo(path)
         if pathinfo["layeridx"] is not None:
-            return pathinfo["layeridx"], parent_layer_idx
+            return pathinfo["layeridx"], parent_layer_idx, pathinfo
         if parent_layer_idx is not None:
-            return parent_layer_idx, parent_layer_idx
-        return 0, parent_layer_idx
+            return parent_layer_idx, parent_layer_idx, pathinfo
+        return 0, parent_layer_idx, pathinfo
 
-    def fs_write(self, path, data, target_layer_idx=0):
+    def fs_write(self, path, data, target_layer_idx=0, pathinfo=None):
         """
         Write object data out to a folder with the given path.
         """
@@ -517,7 +521,8 @@ class ZODBSync:
 
         # Find layer that holds the current version of the object, falling back
         # to the custom layer
-        pathinfo = self.fs_pathinfo(path)
+        if pathinfo is None:
+            pathinfo = self.fs_pathinfo(path)
         base_dir = pathinfo["fspath"] or base_dir
 
         # Make directory for the object if it's not already there
@@ -777,12 +782,17 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        target_layer_idx, parent_layer_idx = self.resolve_target_layer(path, obj)
-        old_pathinfo = self.fs_pathinfo(path)
+        target_layer_idx, parent_layer_idx, old_pathinfo = self.resolve_target_layer(
+            path, obj
+        )
+        if old_pathinfo is None:
+            old_pathinfo = self.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
             self._delete_layer_files(old_pathinfo["fspath"])
-        pathinfo = self.fs_write(path, data, target_layer_idx=target_layer_idx)
+        pathinfo = self.fs_write(
+            path, data, target_layer_idx=target_layer_idx, pathinfo=old_pathinfo
+        )
         path_layer = self.layers[target_layer_idx]["ident"]
 
         at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
