@@ -45,12 +45,13 @@ class Move(SubCommand):
         return ""
 
     def _clear_src_attrs(self, obj, src_ident, tgt_ident, acquired_ident=None):
-        """Recursively update zodbsync_layer on descendants moving from src_ident to tgt_ident.
+        """Recursively update zodbsync_layer on descendants.
 
-        acquired_ident tracks what a child with no explicit attr would inherit from its
-        ancestor chain. When that equals tgt_ident, deleting the attr is sufficient.
-        When an intermediate ancestor has a different explicit layer, deletion would cause
-        wrong acquisition, so the attr is set explicitly to tgt_ident instead.
+        Moving from src_ident to tgt_ident. acquired_ident tracks what a child
+        with no explicit attr would inherit from its ancestor chain. When that
+        equals tgt_ident, deleting the attr is sufficient. When an intermediate
+        ancestor has a different explicit layer, deletion would cause wrong
+        acquisition, so the attr is set explicitly to tgt_ident instead.
         """
         if acquired_ident is None:
             acquired_ident = tgt_ident

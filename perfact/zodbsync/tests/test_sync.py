@@ -3329,20 +3329,20 @@ class TestSync:
             assert child_attr is None
 
     def test_move_deep_child_behind_different_layer_gets_explicit_attr(self):
-        """Deep src_ident child behind a different-layer intermediate gets explicit tgt attr.
+        """Deep src child behind different-layer intermediate gets explicit tgt attr.
 
-        /Folder in fallback, /Folder/middle in mid layer, /Folder/middle/leaf in fallback.
-        Bug: _clear_src_attrs deleted leaf's '' attr, causing leaf to acquire mid_ident
-        from middle — mismatching its FS location in tgt layer.
-        Fix: when the ancestor acquisition chain would yield a wrong layer, set tgt_ident
-        explicitly instead of deleting.
+        /Folder in fallback, /Folder/middle in mid layer, /Folder/middle/leaf
+        in fallback. Bug: _clear_src_attrs deleted leaf's '' attr, causing
+        leaf to acquire mid_ident from middle — mismatching FS location in tgt
+        layer. Fix: when ancestor acquisition chain would yield wrong layer,
+        set tgt_ident explicitly instead of deleting.
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
             self.app.Folder.manage_addProduct["OFSP"].manage_addFolder(id="middle")
             self.app.Folder.middle.manage_addProduct["OFSP"].manage_addFile(id="leaf")
-        with self.addlayer("00") as layer_tgt:
-            with self.addlayer("01") as layer_mid:
+        with self.addlayer("00"):
+            with self.addlayer("01"):
                 mid_ident = self.runner.sync.layers[-2]["ident"]
                 tgt_ident = self.runner.sync.layers[-1]["ident"]
                 self.run("record", "/Folder")
