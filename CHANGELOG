@@ -1,3 +1,6 @@
+26.4.0
+  * Expose helper function for extracting layer config
+
 26.3.0
   * Do not fail due to missing __meta__ if object is marked as deleted
 
