@@ -22,7 +22,7 @@ from Zope2.Startup.run import configure_wsgi
 from .helpers import (
     StrRepr,
     literal_eval,
-    load_config,
+    load_layer_config,
     remove_redundant_paths,
     to_string,
 )
@@ -275,42 +275,13 @@ class ZODBSync:
         self.app = root.Application
 
         # Initialize layers
-        layerdir = self.config.get("layers", None)
-        layers = []
-        fnames = []
-        if layerdir and os.path.isdir(layerdir):
-            fnames = sorted(os.listdir(layerdir))
-        for fname in fnames:
-            if any([fname.startswith(key) for key in ".~_"]):
-                continue
-            ident = fname
-            if ident.endswith(".py"):
-                ident = ident[:-3]
-            layer = {
-                **{
-                    "ident": ident,
-                },
-                **load_config(f"{layerdir}/{fname}"),
-            }
-            if "workdir" not in layer or "source" not in layer:
-                raise ValueError("Old-style layer config without workdir+source")
-            layers.append(layer)
+        self.layers = load_layer_config(config=self.config)
+        for layer in self.layers:
             workdir = layer["workdir"]
             root = f"{workdir}/{site}"
-            if not os.path.isdir(root):
-                os.makedirs(root, exist_ok=True)
+            os.makedirs(root, exist_ok=True)
             if not os.path.isdir(f"{workdir}/.git"):
                 sp.run(["git", "init"], cwd=workdir, check=True)
-
-        # Append default top-level layer
-        layers.append(
-            {
-                "ident": None,
-                "workdir": self.config["base_dir"],
-            }
-        )
-        # Reverse order - index zero is the topmost fallback layer
-        self.layers = list(reversed(layers))
 
         # Make sure the manager user exists
         if self.config.get("create_manager_user", False):

@@ -2,6 +2,7 @@
 import ast
 import importlib
 import operator
+import os
 
 
 class Namespace(object):
@@ -271,3 +272,43 @@ def path_diff(old, new):
     result.update([row[0] for row in old[oldidx:]])
     result.update([row[0] for row in new[newidx:]])
     return result
+
+
+def load_layer_config(config=None, path=None):
+    """
+    Load layer configuration. Returns list of layers, where each has an "ident"
+    and more keys like "workdir" and "source" from the layer configuration
+    file. The topmost fallback layer is also added, with ident="" (empty
+    string). Order of returned entries is such that the topmost fallback layer
+    is the first.
+    """
+    if config is None:
+        config = load_config(path)
+    layerdir = config.get("layers", None)
+    layers = []
+    fnames = []
+    if layerdir and os.path.isdir(layerdir):
+        fnames = sorted(os.listdir(layerdir))
+    for fname in fnames:
+        if any([fname.startswith(key) for key in ".~_"]):
+            continue
+        ident = fname
+        if ident.endswith(".py"):
+            ident = ident[:-3]
+        layer = {
+            "ident": ident,
+            **load_config(f"{layerdir}/{fname}"),
+        }
+        if "workdir" not in layer or "source" not in layer:
+            raise ValueError("Old-style layer config without workdir+source")
+        layers.append(layer)
+
+    # Append default top-level layer
+    layers.append(
+        {
+            "ident": None,
+            "workdir": config["base_dir"],
+        }
+    )
+    # Reverse order - index zero is the topmost fallback layer
+    return list(reversed(layers))
