@@ -2178,6 +2178,42 @@ class TestSync:
             self.run("record", "/")
             assert not os.path.isdir(os.path.join(self.repo.path, "__root__/Test"))
 
+    def test_layer_named_not_compressed(self):
+        """
+        A copy that lives in a named layer is not removed by compression, even
+        when a lower-priority layer holds identical content. Only the fallback
+        layer is subject to compression.
+        """
+        # Object starts in the fallback layer.
+        self.add_folder("Test", "Test")
+        self.run("playback", "/Test")
+
+        # Two named layers: 'high' (seqnum 09 -> index 1, higher priority) and
+        # 'low' (seqnum 01 -> index 2, lower priority).
+        with self.addlayer("01") as low, self.addlayer("09") as high:
+            high_ident = self.runner.sync.layers[1]["ident"]
+
+            # Lower layer holds Test titled 'Something'.
+            low_dir = "{}/workdir/__root__/Test".format(low)
+            os.makedirs(low_dir)
+            meta = zodbsync.mod_format({"title": "Something", "type": "Folder"})
+            with open("{}/__meta__".format(low_dir), "w") as f:
+                f.write(meta)
+
+            # Move Test into the high layer and make its content match the low
+            # layer, then record. Under fallback-only compression the high copy
+            # must survive; it must not be collapsed into the identical low layer.
+            with self.runner.sync.tm:
+                self.app.Test.title = "Something"
+                self.app.Test.zodbsync_layer = high_ident
+            self.run("record", "/")
+
+            high_meta = "{}/workdir/__root__/Test/__meta__".format(high)
+            assert os.path.exists(high_meta)
+            # Fallback copy is gone (moved out); low layer copy untouched.
+            assert not os.path.isdir(os.path.join(self.repo.path, "__root__/Test"))
+            assert os.path.exists("{}/__meta__".format(low_dir))
+
     @pytest.mark.parametrize("recurse", [True, False])
     def test_layer_playback(self, recurse):
         """
@@ -3360,132 +3396,3 @@ class TestSync:
                     aq_base(self.app.Folder.middle.leaf), "zodbsync_layer", None
                 )
                 assert leaf_attr == tgt_ident
-
-    def test_copy_skips_child_in_different_layer_no_attr(self):
-        """copy._copy_obj: FS-based skip for child in different layer, no attr.
-
-        Setup: record Folder+child in fallback, then manually relocate child's
-        __meta__ to inner layer (simulating prior move without attr). Child has
-        no zodbsync_layer attr. Recursive copy of Folder from fallback to outer
-        must skip child because child's FS layer (inner) != src (fallback).
-        """
-        with self.runner.sync.tm:
-            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
-            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
-        with self.addlayer("00") as outer_layer:
-            with self.addlayer("01") as inner_layer:
-                outer_ident = self.runner.sync.layers[-1]["ident"]
-                self.run("record", "/Folder")
-                self.gitrun("add", ".")
-                self.gitrun("commit", "-m", "add folder")
-                # Relocate child __meta__ from fallback to inner (no attr set).
-                fb_child = os.path.join(self.repo.path, "__root__/Folder/child")
-                inner_child = os.path.join(inner_layer, "workdir/__root__/Folder/child")
-                os.makedirs(inner_child, exist_ok=True)
-                shutil.copy2(
-                    os.path.join(fb_child, "__meta__"),
-                    os.path.join(inner_child, "__meta__"),
-                )
-                shutil.rmtree(fb_child)
-                assert (
-                    getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
-                    is None
-                )
-                # src=fallback; child's FS=inner (≠ fallback) -> must be skipped.
-                self.run("copy", "/Folder", outer_ident)
-                outer_folder = f"{outer_layer}/workdir/__root__/Folder/__meta__"
-                outer_child = f"{outer_layer}/workdir/__root__/Folder/child/__meta__"
-                assert os.path.exists(outer_folder)
-                assert not os.path.exists(outer_child)
-
-    def test_copy_uncommitted_changes(self):
-        """Copy blob with uncommitted changes to named layer; target gets
-        modified content, source resets to HEAD, zodbsync_layer updated."""
-        with self.runner.sync.tm:
-            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
-        self.run("record", "/blob")
-        self.gitrun("add", ".")
-        self.gitrun("commit", "-m", "add blob")
-        with self.runner.sync.tm:
-            self.app.blob.manage_edit(
-                filedata="modified_content", content_type="text/plain", title=""
-            )
-        self.run("record", "/blob")
-        source_source = os.path.join(self.repo.path, "__root__/blob/__source__.txt")
-        assert os.path.exists(source_source)
-        with open(source_source) as f:
-            assert f.read() == "modified_content"
-        with self.addlayer() as layer:
-            ident = self.runner.sync.layers[-1]["ident"]
-            self.run("copy", "/blob", ident)
-            target_meta = f"{layer}/workdir/__root__/blob/__meta__"
-            target_source = f"{layer}/workdir/__root__/blob/__source__.txt"
-            source_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
-            assert os.path.exists(target_meta)
-            assert os.path.exists(target_source)
-            assert os.path.exists(source_meta)
-            with open(target_source) as f:
-                assert f.read() == "modified_content"
-            with open(source_source) as f:
-                assert f.read() != "modified_content"
-            assert getattr(self.app.blob, "zodbsync_layer") == ident
-
-    def test_copy_recursive(self):
-        """Recursive copy moves entire subtree to named layer."""
-        with self.runner.sync.tm:
-            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
-            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
-        self.run("record", "/Folder")
-        self.gitrun("add", ".")
-        self.gitrun("commit", "-m", "add folder")
-        with self.runner.sync.tm:
-            self.app.Folder.child.manage_edit(
-                filedata="modified_child", content_type="text/plain", title=""
-            )
-        self.run("record", "/Folder")
-        child_source = os.path.join(
-            self.repo.path, "__root__/Folder/child/__source__.txt"
-        )
-        assert os.path.exists(child_source)
-        with open(child_source) as f:
-            assert f.read() == "modified_child"
-        with self.addlayer() as layer:
-            ident = self.runner.sync.layers[-1]["ident"]
-            self.run("copy", "/Folder", ident)
-            target_folder = f"{layer}/workdir/__root__/Folder/__meta__"
-            target_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
-            target_child_source = (
-                f"{layer}/workdir/__root__/Folder/child/__source__.txt"
-            )
-            assert os.path.exists(target_folder)
-            assert os.path.exists(target_child)
-            assert os.path.exists(target_child_source)
-            with open(target_child_source) as f:
-                assert f.read() == "modified_child"
-            with open(child_source) as f:
-                assert f.read() != "modified_child"
-            assert getattr(self.app.Folder, "zodbsync_layer") == ident
-            assert getattr(self.app.Folder.child, "zodbsync_layer") == ident
-
-    def test_copy_no_recurse(self):
-        """--no-recurse copies only the named object, not its children."""
-        with self.runner.sync.tm:
-            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
-            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
-        self.run("record", "/Folder")
-        self.gitrun("add", ".")
-        self.gitrun("commit", "-m", "add folder")
-        with self.addlayer() as layer:
-            ident = self.runner.sync.layers[-1]["ident"]
-            self.run("copy", "--no-recurse", "/Folder", ident)
-            target_folder = f"{layer}/workdir/__root__/Folder/__meta__"
-            target_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
-            source_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
-            source_child = os.path.join(
-                self.repo.path, "__root__/Folder/child/__meta__"
-            )
-            assert os.path.exists(target_folder)
-            assert not os.path.exists(target_child)
-            assert os.path.exists(source_folder)
-            assert os.path.exists(source_child)
-            assert getattr(self.app.Folder, "zodbsync_layer") == ident

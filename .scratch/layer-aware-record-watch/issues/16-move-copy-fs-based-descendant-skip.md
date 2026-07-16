@@ -1,6 +1,6 @@
 Status: done
 
-# `zodbsync move` and `copy` — FS-based descendant skip detection
+# `zodbsync move` — FS-based descendant skip detection
 
 ## Parent
 
@@ -8,12 +8,12 @@ Status: done
 
 ## What to build
 
-`move._move_obj` and `copy._copy_obj` currently skip descendants by reading `obj.zodbsync_layer` off the child object. Under the boundary-only attribute scheme (issue 14), non-boundary children no longer carry the attribute, so the existing check silently fails to skip cross-layer children that have no attribute set.
+`move._move_obj` currently skips descendants by reading `obj.zodbsync_layer` off the child object. Under the boundary-only attribute scheme (issue 14), non-boundary children no longer carry the attribute, so the existing check silently fails to skip cross-layer children that have no attribute set.
 
 Replace the attribute-based skip check with an FS-based check using `fs_pathinfo`:
 
 ```python
-# current (both _move_obj and _copy_obj):
+# current (_move_obj):
 child_ident = getattr(obj_base, "zodbsync_layer", None)
 if child_ident is not None and child_ident != src_ident:
     return
@@ -31,11 +31,10 @@ Children with no FS presence (not yet recorded) have `child_info["layeridx"] = N
 ## Acceptance criteria
 
 - [x] `move._move_obj` uses `fs_pathinfo` to detect cross-layer children
-- [x] `copy._copy_obj` uses `fs_pathinfo` to detect cross-layer children
 - [x] Recursive `move` skips a child whose `__meta__` file is in a different layer from the source layer
 - [x] Recursive `move` processes a child with no FS presence (not yet recorded)
 - [x] Recursive `move` processes a child whose `__meta__` is in the same layer as source, regardless of whether `obj.zodbsync_layer` is set on it
-- [x] All existing `move` and `copy` tests pass
+- [x] All existing `move` tests pass
 
 ## Blocked by
 

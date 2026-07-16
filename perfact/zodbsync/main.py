@@ -13,7 +13,6 @@ except ImportError:
     pass
 
 from .commands.checkout import Checkout
-from .commands.copy import Copy
 from .commands.execute import Exec
 from .commands.fastforward import FF
 from .commands.freeze import Freeze
@@ -52,7 +51,6 @@ class Runner(object):
         LayerInit,
         LayerUpdate,
         Move,
-        Copy,
         FF,
     ]
 

@@ -17,7 +17,7 @@ New behaviour:
 - If exactly one layer holds the object: delete its files from that workdir. No `__deleted__` marker.
 - If more than one layer holds the object: place `__deleted__` in the workdir of the topmost (lowest list index) layer that holds the object.
 
-The multi-layer case arises when `zodbsync copy` has been used — the object exists in both a named layer and the fallback layer.
+The multi-layer case arises when the same object is defined in more than one layer — e.g. a base layer's definition plus an override in a higher-priority layer.
 
 ## Acceptance criteria
 

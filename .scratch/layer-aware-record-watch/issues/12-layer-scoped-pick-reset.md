@@ -82,4 +82,4 @@ layer's own unstaged file set. If any conflict is found, abort before touching a
 
 ## Blocked by
 
-None. Independent of the record/watch/move/copy work. Can be implemented in parallel.
+None. Independent of the record/watch/move work. Can be implemented in parallel.

@@ -74,8 +74,8 @@ Command that switches branch in one layer's git repo and plays back changed obje
 
 Command that executes a shell command and plays back objects changed between old and new HEAD. Without flags: cd to fallback layer workdir, check fallback layer only. `--layer <ident>`: cd to named layer workdir, check that layer only. `--nocd`: skip cd, check ALL layers for changes — unstaged changes in each layer are stashed before the command runs and restored after; any failure rolls back all layers.
 
-## `zodbsync copy`
+## Layer Compression
 
-Command that copies an object's current state to a target layer and resets the source layer's workdir to its last git-committed state. Updates `obj.zodbsync_layer` to the target layer. Does not place a `__frozen__` marker automatically. Useful when a base-layer object needs a permanent customer-specific override in a higher-priority layer.
+The pass in `fs_write` (run by `record`, `watch`, and `playback`) that removes an object's representation from a layer when a lower-priority layer holds identical content, so the object is defined in only one place.
 
-Intended use: the source layer has unstaged changes. Copy captures the current Zope state in the target layer; the source reset to HEAD creates an immediate content difference, preventing compression. If source is already at HEAD (no unstaged changes), the copy is identical to the source content and compression will remove it on the next record/watch cycle — reverting `obj.zodbsync_layer` to the source layer. In that case, place a `__frozen__` marker manually in the target layer's workdir, or edit the object in Zope before the next record/watch run.
+Applies **only to the fallback layer**: a copy is removed only when it currently lives in the fallback layer, collapsing into the highest-priority named layer with identical content. A copy in a named layer is never removed by compression — deliberate layer placement (e.g. via `zodbsync move`) is stable even when identical to a lower layer.
