@@ -616,34 +616,39 @@ class ZODBSync:
 
             pathinfo["layeridx"] = target_layer_idx
 
-        # Compress if possible: Compare object with its representation on disk
-        # if the current layer is ignored. If it is the same, remove it in the
-        # current layer. Continue with the next layer that holds the object
-        for idx, layer in enumerate(pathinfo["layers"]):
-            # This is now the layer that we compare the current layer to in
-            # order to check if we can compress it.
-            if idx <= pathinfo["layeridx"]:
-                continue
+        # Compress if possible: only a copy that currently lives in the
+        # fallback layer (index 0) may be collapsed into an identical
+        # lower-priority layer. A copy in a named layer is never removed by
+        # compression, so a deliberate layer placement stays stable even when
+        # its content is identical to a lower layer. See ADR 0005.
+        if pathinfo["layeridx"] == 0:
+            for idx, layer in enumerate(pathinfo["layers"]):
+                # This is now the layer that we compare the fallback layer to in
+                # order to check if we can compress it.
+                if idx <= pathinfo["layeridx"]:
+                    continue
 
-            fspath = os.path.join(layer["workdir"], self.site, path.lstrip("/"))
-            data = self.fs_read(fspath)
-            if not data or not data.get("meta"):
-                # No representation on this layer
-                continue
-            if data != new_data:
-                # No compression
+                fspath = os.path.join(layer["workdir"], self.site, path.lstrip("/"))
+                data = self.fs_read(fspath)
+                if not data or not data.get("meta"):
+                    # No representation on this layer
+                    continue
+                if data != new_data:
+                    # No compression
+                    break
+                # Remove meta file and all source files from the fallback layer
+                base = os.path.join(
+                    pathinfo["layers"][pathinfo["layeridx"]]["workdir"],
+                    self.site,
+                    path.lstrip("/"),
+                )
+                os.remove(os.path.join(base, "__meta__"))
+                for src in data.get("src_fnames", []):
+                    os.remove(os.path.join(base, src))
+                # The fallback copy is gone; the object now lives in the named
+                # layer at idx. Do not cascade further into lower named layers.
+                pathinfo["layeridx"] = idx
                 break
-            # Remove meta file and all source files
-            base = os.path.join(
-                pathinfo["layers"][pathinfo["layeridx"]]["workdir"],
-                self.site,
-                path.lstrip("/"),
-            )
-            os.remove(os.path.join(base, "__meta__"))
-            for src in data.get("src_fnames", []):
-                os.remove(os.path.join(base, src))
-            # Next comparison point
-            pathinfo["layeridx"] = idx
 
         return pathinfo
 
