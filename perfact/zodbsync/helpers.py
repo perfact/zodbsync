@@ -296,9 +296,7 @@ def load_layer_config(config=None, path=None):
         if ident.endswith(".py"):
             ident = ident[:-3]
         layer = {
-            **{
-                "ident": ident,
-            },
+            "ident": ident,
             **load_config(f"{layerdir}/{fname}"),
         }
         if "workdir" not in layer or "source" not in layer:
