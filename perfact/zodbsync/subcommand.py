@@ -130,6 +130,11 @@ class SubCommand(Namespace):
                 # p.e. __root__.tar.gz -> Unpack to __root__/
                 basename = entry.split(".")[0]
                 targetitems.append(basename)
+                # Clear the target ourselves instead of using
+                # --recursive-unlink, which fails with
+                # "tar: .: Cannot unlink: Invalid argument" if the tarball
+                # contains "." as member (tar < 1.35, e.g. Ubuntu 22.04).
+                shutil.rmtree(f"{tgt}/{basename}", ignore_errors=True)
                 os.makedirs(f"{tgt}/{basename}", exist_ok=True)
                 cmd = [
                     "tar",
@@ -137,7 +142,6 @@ class SubCommand(Namespace):
                     path,
                     "-C",
                     f"{tgt}/{basename}/",
-                    "--recursive-unlink",
                     "-m",
                 ]
             subprocess.run(cmd, check=True)
