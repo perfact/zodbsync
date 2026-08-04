@@ -8,7 +8,7 @@ import sys
 
 import filelock
 
-from .helpers import Namespace
+from .helpers import Namespace, unpack_tar
 
 
 class SubCommand(Namespace):
@@ -126,21 +126,12 @@ class SubCommand(Namespace):
                     continue
                 targetitems.append(entry)
                 cmd = ["rsync", "-a", "--delete-during", f"{path}/", f"{tgt}/{entry}/"]
+                subprocess.run(cmd, check=True)
             else:
                 # p.e. __root__.tar.gz -> Unpack to __root__/
                 basename = entry.split(".")[0]
                 targetitems.append(basename)
-                os.makedirs(f"{tgt}/{basename}", exist_ok=True)
-                cmd = [
-                    "tar",
-                    "xf",
-                    path,
-                    "-C",
-                    f"{tgt}/{basename}/",
-                    "--recursive-unlink",
-                    "-m",
-                ]
-            subprocess.run(cmd, check=True)
+                unpack_tar(path, f"{tgt}/{basename}")
         for entry in os.listdir(tgt):
             if entry.startswith(".") or entry in targetitems:
                 continue

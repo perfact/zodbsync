@@ -3,6 +3,12 @@ import ast
 import importlib
 import operator
 import os
+import shutil
+import tarfile
+
+# Members larger than this are written without comparing them to the existing
+# file first, so we never hold an arbitrary amount of data in memory.
+UNPACK_COMPARE_LIMIT = 16 * 1024 * 1024
 
 
 class Namespace(object):
@@ -272,6 +278,149 @@ def path_diff(old, new):
     result.update([row[0] for row in old[oldidx:]])
     result.update([row[0] for row in new[newidx:]])
     return result
+
+
+def _is_dir(path):
+    """Check for a real directory, not a symlink pointing to one."""
+    return os.path.isdir(path) and not os.path.islink(path)
+
+
+def _remove(path):
+    """Remove path, no matter if it is a file, symlink or directory."""
+    if _is_dir(path):
+        shutil.rmtree(path)
+    elif os.path.lexists(path):
+        os.remove(path)
+
+
+def _prepare_parents(target, name):
+    """
+    Make sure each element of the parent path of name is a real directory below
+    target, replacing anything that is in the way. Doing this per member means
+    the archive does not have to be ordered such that a directory is listed
+    before its content.
+    """
+    parts = name.split("/")
+    for idx in range(1, len(parts)):
+        path = os.path.join(target, *parts[:idx])
+        if os.path.lexists(path) and not _is_dir(path):
+            os.remove(path)
+        if not os.path.exists(path):
+            os.mkdir(path)
+
+
+def _set_mode(path, member):
+    """
+    Apply the permissions of member to path. This is done explicitly instead of
+    relying on the mode given to mkdir or open, which is subject to the umask
+    and would drop the setgid bit and the group write permission that make the
+    resulting repository a group repository.
+    """
+    mode = member.mode & 0o7777
+    if os.stat(path).st_mode & 0o7777 != mode:
+        os.chmod(path, mode)
+
+
+def _matches(path, data):
+    """Check if the file at path holds exactly data."""
+    try:
+        if os.path.getsize(path) != len(data):
+            return False
+        with open(path, "rb") as fh:
+            return fh.read() == data
+    except OSError:
+        return False
+
+
+def _unpack_file(tar, member, path):
+    """
+    Make sure path holds the content of member, leaving it untouched if it
+    already does.
+    """
+    with tar.extractfile(member) as src:
+        if member.size <= UNPACK_COMPARE_LIMIT:
+            data = src.read()
+            if not _matches(path, data):
+                _remove(path)
+                with open(path, "wb") as fh:
+                    fh.write(data)
+        else:
+            _remove(path)
+            with open(path, "wb") as fh:
+                shutil.copyfileobj(src, fh)
+
+    _set_mode(path, member)
+
+
+def _unpack_symlink(member, path):
+    """Make sure path is a symlink pointing where member says."""
+    if os.path.islink(path) and os.readlink(path) == member.linkname:
+        return
+    _remove(path)
+    os.symlink(member.linkname, path)
+
+
+def unpack_tar(archive, target):
+    """
+    Unpack archive into target, which is created if it does not exist yet.
+
+    Files that already hold the correct content are not written again, so their
+    mtime is kept and git does not have to rehash them. Everything in target
+    that is not part of the archive is removed afterwards. Timestamps from the
+    archive are never applied (as with tar -m), permissions always are (as with
+    tar -p), including those of the extraction root itself if the archive
+    contains it as "." - the sources are built with setgid directories to yield
+    a group repository.
+
+    Each member must occur only once in the archive. The order of members is
+    irrelevant.
+    """
+    os.makedirs(target, exist_ok=True)
+    seen = set()
+
+    with tarfile.open(archive) as tar:
+        for member in tar:
+            name = os.path.normpath(member.name)
+            if name.startswith(("/", "..")):
+                # Something outside of the extraction root
+                continue
+            if name == ".":
+                # The extraction root itself, which only carries permissions
+                _set_mode(target, member)
+                continue
+            seen.add(name)
+            path = os.path.join(target, name)
+            _prepare_parents(target, name)
+
+            if member.isdir():
+                if not _is_dir(path):
+                    _remove(path)
+                    os.mkdir(path)
+                _set_mode(path, member)
+            elif member.issym():
+                _unpack_symlink(member, path)
+            elif member.isfile():
+                _unpack_file(tar, member, path)
+            else:
+                # Hardlinks, devices etc. are not expected, but let's not lose
+                # them if they do show up.
+                _remove(path)
+                tar.extract(member, target, set_attrs=False)
+
+    # Parent directories are to be kept even if the archive does not list them
+    # explicitly.
+    for name in list(seen):
+        while "/" in name:
+            name = name.rsplit("/", 1)[0]
+            seen.add(name)
+
+    # Walking bottom-up means any directory we are about to remove has already
+    # been emptied of everything that is not in the archive.
+    for root, dirs, files in os.walk(target, topdown=False):
+        for entry in dirs + files:
+            path = os.path.join(root, entry)
+            if os.path.relpath(path, target) not in seen:
+                _remove(path)
 
 
 def load_layer_config(config=None, path=None):
