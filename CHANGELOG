@@ -1,3 +1,7 @@
+  * Unpack layer tarballs in Python, only writing files whose content actually
+    changed, so unchanged files keep their mtime
+  * Apply the permissions from layer tarballs exactly, keeping the setgid bit
+    of directories instead of masking everything with the umask
   * Clear target ourselves instead of using tar --recursive-unlink, which
     fails on tar < 1.35 if the tarball contains "."
 
