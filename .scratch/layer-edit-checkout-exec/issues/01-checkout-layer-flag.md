@@ -10,11 +10,11 @@ Follow the same pattern as `zodbsync pick`: resolve the layer in `__init__`, set
 
 ## Acceptance criteria
 
-- [ ] `zodbsync checkout --layer "ident" <branch>` checks out `<branch>` in the named layer's workdir and plays back changed objects
-- [ ] `--reset`, `--rebase`, `-b`, `--track` all work correctly when `--layer` is set
-- [ ] Unknown `--layer` ident exits with a clear error message
-- [ ] `zodbsync checkout <branch>` (no `--layer`) is unchanged
-- [ ] Unstaged changes in the named layer workdir are stashed before checkout and restored after (via `@gitexec`)
+- [x] `zodbsync checkout --layer "ident" <branch>` checks out `<branch>` in the named layer's workdir and plays back changed objects
+- [x] `--reset`, `--rebase`, `-b`, `--track` all work correctly when `--layer` is set
+- [x] Unknown `--layer` ident exits with a clear error message
+- [x] `zodbsync checkout <branch>` (no `--layer`) is unchanged
+- [x] Unstaged changes in the named layer workdir are stashed before checkout and restored after (via `@gitexec`)
 
 ## Blocked by
 
