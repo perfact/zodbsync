@@ -13,16 +13,17 @@ Replace the "always write `obj.zodbsync_layer`" block in `record_obj` and `watch
 The boundary condition (using the `parent_layer_idx` now returned by `resolve_target_layer`):
 
 ```python
-at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or \
-              (parent_layer_idx is not None and target_layer_idx != parent_layer_idx)
+at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
+    parent_layer_idx is not None and target_layer_idx != parent_layer_idx
+)
 
 current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
 if at_boundary:
     if current_attr != path_layer:
-        obj.zodbsync_layer = path_layer   # set or update
+        obj.zodbsync_layer = path_layer  # set or update
 else:
     if current_attr is not None:
-        del obj.zodbsync_layer            # clear — FS rules 2–3 cover routing
+        del obj.zodbsync_layer  # clear — FS rules 2–3 cover routing
 ```
 
 Both the set and the delete must happen inside `self.tm` / `self.sync.tm`.

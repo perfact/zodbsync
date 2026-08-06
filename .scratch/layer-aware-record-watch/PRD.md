@@ -73,16 +73,17 @@ This logic is shared between `record` and `watch`.
 After writing (in `record_obj`, `watch._record_object`, and `_playback_path`), the attribute is updated based on boundary status:
 
 ```python
-at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or \
-              (parent_layer_idx is not None and target_layer_idx != parent_layer_idx)
+at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
+    parent_layer_idx is not None and target_layer_idx != parent_layer_idx
+)
 
 current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
 if at_boundary:
     if current_attr != path_layer:
-        obj.zodbsync_layer = path_layer   # set/update
+        obj.zodbsync_layer = path_layer  # set/update
 else:
     if current_attr is not None:
-        del obj.zodbsync_layer            # clear — redundant, FS rules cover it
+        del obj.zodbsync_layer  # clear — redundant, FS rules cover it
 ```
 
 This ensures `obj.zodbsync_layer` is present only on layer-boundary objects. See ADR 0004.
