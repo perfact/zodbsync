@@ -8,10 +8,10 @@ Add `--layer <ident>` to `zodbsync exec` so it can run a command in a named laye
 
 ## Acceptance criteria
 
-- [ ] `zodbsync exec --layer "ident" "cmd"` runs `cmd` in the named layer's workdir and plays back changed objects
-- [ ] Unknown `--layer` ident exits with a clear error message
-- [ ] `zodbsync exec "cmd"` (no `--layer`) is unchanged
-- [ ] `--nocd` combined with `--layer` runs the command without cd but still checks only the specified layer
+- [x] `zodbsync exec --layer "ident" "cmd"` runs `cmd` in the named layer's workdir and plays back changed objects
+- [x] Unknown `--layer` ident exits with a clear error message
+- [x] `zodbsync exec "cmd"` (no `--layer`) is unchanged
+- [x] `--nocd` combined with `--layer` runs the command without cd but still checks only the specified layer
 
 ## Blocked by
 

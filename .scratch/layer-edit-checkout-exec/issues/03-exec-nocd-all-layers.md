@@ -10,12 +10,12 @@ This is a multi-layer transaction held under the existing lock. The implementati
 
 ## Acceptance criteria
 
-- [ ] `zodbsync exec --nocd "cmd"` (no `--layer`) stashes unstaged changes in all layers, runs `cmd`, diffs all layers, plays back union of changed paths
-- [ ] All layers are rolled back on failure; best-effort playback attempted for partially applied objects
-- [ ] Stashes are popped on both success and failure
-- [ ] `zodbsync exec --nocd --layer "ident" "cmd"` checks only the specified layer (existing scoped behavior, unchanged)
-- [ ] `zodbsync exec --nocd "cmd"` with no changed paths in any layer is a no-op (no playback)
-- [ ] Existing `--nocd` behavior (no `--layer`) was previously identical to the fallback-only path — confirm no regression for callers that expected no cross-layer side effects
+- [x] `zodbsync exec --nocd "cmd"` (no `--layer`) stashes unstaged changes in all layers, runs `cmd`, diffs all layers, plays back union of changed paths
+- [x] All layers are rolled back on failure; best-effort playback attempted for partially applied objects
+- [x] Stashes are popped on both success and failure
+- [x] `zodbsync exec --nocd --layer "ident" "cmd"` checks only the specified layer (existing scoped behavior, unchanged)
+- [x] `zodbsync exec --nocd "cmd"` with no changed paths in any layer is a no-op (no playback)
+- [x] Existing `--nocd` behavior (no `--layer`) was previously identical to the fallback-only path — confirm no regression for callers that expected no cross-layer side effects
 
 ## Blocked by
 

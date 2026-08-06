@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # PRD: Layer-aware record/watch, zodbsync move, layer-scoped pick/reset
 
