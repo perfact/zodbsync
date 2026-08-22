@@ -174,7 +174,8 @@ def mod_write(
         obj = None
 
     # ID is new? Create a minimal object (depending on type)
-    if obj is None:
+    created = obj is None
+    if created:
         object_handlers[meta_type].create(parent, data, obj_id)
         if hasattr(parent, "aq_explicit"):
             obj = getattr(parent.aq_explicit, obj_id, None)
@@ -182,8 +183,10 @@ def mod_write(
             obj = getattr(parent, obj_id, None)
 
     # Send an update (depending on type)
+    handler_data = dict(d)
+    handler_data["_created"] = created
     for handler in mod_implemented_handlers(obj, meta_type):
-        handler.write(obj, d)
+        handler.write(obj, handler_data)
 
     # Also write zodbsync layer information
     obj.zodbsync_layer = layer
@@ -365,6 +368,35 @@ class ZODBSync:
         """
         return os.path.join(self.app_dir, path.lstrip("/"))
 
+    def _cache_fs_op(self, cache_name, path, func):
+        """
+        Cache filesystem lookups during playback. Playback only reads the
+        serialized tree, so these values remain stable for the whole run.
+        """
+        cache = getattr(self, cache_name, None)
+        if cache is None:
+            return func(path)
+        stats = getattr(self, "_v_fs_cache_stats", None)
+        opname = cache_name[len("_v_fs_") : -len("_cache")]
+        if path in cache:
+            if stats is not None:
+                stats[opname]["hits"] += 1
+            return cache[path]
+        if stats is not None:
+            stats[opname]["misses"] += 1
+        if path not in cache:
+            cache[path] = func(path)
+        return cache[path]
+
+    def _fs_isdir(self, path):
+        return self._cache_fs_op("_v_fs_isdir_cache", path, os.path.isdir)
+
+    def _fs_listdir(self, path):
+        return self._cache_fs_op("_v_fs_listdir_cache", path, os.listdir)
+
+    def _fs_exists(self, path):
+        return self._cache_fs_op("_v_fs_exists_cache", path, os.path.exists)
+
     def fs_pathinfo(self, path):
         """
         Find the correct layer for the object with the given Data.FS path.
@@ -401,9 +433,9 @@ class ZODBSync:
             if not part:
                 continue
             check = os.path.join(check, part)
-            if not os.path.isdir(check):
+            if not self._fs_isdir(check):
                 break
-            if any([item in markers for item in os.listdir(check)]):
+            if any([item in markers for item in self._fs_listdir(check)]):
                 # Only keep custom layer
                 layers = layers[:1]
                 break
@@ -421,20 +453,20 @@ class ZODBSync:
         deleted = set()  # those with a __deleted__ marker on some layer
         for idx, layer in enumerate(layers):
             fspath = os.path.join(layer["workdir"], self.site, path)
-            if not os.path.isdir(fspath):
+            if not self._fs_isdir(fspath):
                 continue
             meta = os.path.join(fspath, "__meta__")
-            if result["fspath"] is None and os.path.exists(meta):
+            if result["fspath"] is None and self._fs_exists(meta):
                 result["fspath"] = fspath
                 result["layeridx"] = idx
 
-            for entry in os.listdir(fspath):
+            for entry in self._fs_listdir(fspath):
                 if entry in children or entry.startswith("__"):
                     continue
                 candidates.add(entry)
-                if os.path.exists(os.path.join(fspath, entry, "__meta__")):
+                if self._fs_exists(os.path.join(fspath, entry, "__meta__")):
                     children.add(entry)
-                elif os.path.exists(os.path.join(fspath, entry, "__deleted__")):
+                elif self._fs_exists(os.path.join(fspath, entry, "__deleted__")):
                     deleted.add(entry)
         missing = candidates - children - deleted
         if missing:
@@ -957,25 +989,36 @@ class ZODBSync:
         # Cached read metadata for paths that are in fixorder so we
         # don't need to read it again from disk.
         self.fs_data = {}
+        self._v_fs_isdir_cache = {}
+        self._v_fs_listdir_cache = {}
+        self._v_fs_exists_cache = {}
+        self._v_fs_cache_stats = {
+            "isdir": {"hits": 0, "misses": 0},
+            "listdir": {"hits": 0, "misses": 0},
+            "exists": {"hits": 0, "misses": 0},
+        }
+        current_path = None
 
-        pathinfo = [self.fs_pathinfo(path) for path in paths]
-        # Remove all objects that are to be removed so they do not interfere
-        # with properties with the same ID that take their place
-        lastdel = None
-        for entry in pathinfo:
-            if lastdel and entry["path"].startswith(lastdel):
-                continue
-            if entry["fspath"] is not None:
-                todo.append(entry)
-                continue
-            self._playback_path(entry)
-            lastdel = entry["path"]
-        todo.reverse()
-
-        # Iterate until both stacks are empty. Whenever the topmost element in
-        # todo is no longer a subelement of the topmost element of fixorder, we
-        # handle the fixorder element, otherwise we handle the todo element.
         try:
+            pathinfo = [self.fs_pathinfo(path) for path in paths]
+            # Remove all objects that are to be removed so they do not
+            # interfere with properties with the same ID that take their place
+            lastdel = None
+            for entry in pathinfo:
+                current_path = entry["path"]
+                if lastdel and entry["path"].startswith(lastdel):
+                    continue
+                if entry["fspath"] is not None:
+                    todo.append(entry)
+                    continue
+                self._playback_path(entry)
+                lastdel = entry["path"]
+            todo.reverse()
+
+            # Iterate until both stacks are empty. Whenever the topmost element
+            # in todo is no longer a subelement of the topmost element of
+            # fixorder, we handle the fixorder element, otherwise we handle the
+            # todo element.
             while todo or fixorder:
                 if fixorder:
                     # Handle next object on which to fix order unless there are
@@ -986,11 +1029,18 @@ class ZODBSync:
                         continue
 
                 entry = todo.pop()
+                current_path = entry["path"]
                 self._playback_path(entry)
         except Exception:
-            self.logger.exception("Error with path: " + entry["path"])
+            self.logger.exception("Error with path: %s", current_path)
             txn_mgr.abort()
             raise
+        finally:
+            self._v_last_playback_fs_cache_stats = dict(self._v_fs_cache_stats)
+            self._v_fs_isdir_cache = None
+            self._v_fs_listdir_cache = None
+            self._v_fs_exists_cache = None
+            self._v_fs_cache_stats = None
 
         if dryrun:
             self.logger.info("Dry-run. Rolling back")

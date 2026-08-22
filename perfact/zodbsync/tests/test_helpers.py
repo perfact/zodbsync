@@ -1,7 +1,82 @@
 # -*- coding: utf-8 -*-
 import pytest
 
-from .. import helpers
+from .. import benchmark, helpers, object_mixins
+
+
+class _DummyFolder:
+    def __init__(self):
+        self._children = {}
+        self.manage_addProduct = {
+            "OFSP": _DummyFolderManager(self),
+            "PageTemplates": _UnsupportedManager(),
+            "PythonScripts": _UnsupportedManager(),
+            "ZSQLMethods": _DummySqlMethodManager(self),
+        }
+
+    def __getattr__(self, name):
+        try:
+            return self._children[name]
+        except KeyError:
+            raise AttributeError(name)
+
+
+class _DummyFolderManager:
+    def __init__(self, parent):
+        self.parent = parent
+
+    def manage_addFolder(self, id):
+        self.parent._children[id] = _DummyFolder()
+
+
+class _UnsupportedManager:
+    def __getattr__(self, name):
+        raise AssertionError("Leaf object manager should not be used")
+
+
+class _DummySqlMethodManager:
+    def __init__(self, parent):
+        self.parent = parent
+
+    def manage_addZSQLMethod(self, id, title, connection_id, arguments, template):
+        self.parent._children[id] = {
+            "id": id,
+            "title": title,
+            "connection_id": connection_id,
+            "arguments": arguments,
+            "template": template,
+        }
+
+
+class _PermissionProbe:
+    def __init__(self):
+        self._owner = (["acl_users"], "perfact")
+        self.roles_added = []
+        self.roles_deleted = []
+        self.local_roles_deleted = []
+        self.local_roles_set = []
+        self.isTopLevelPrincipiaApplicationObject = False
+
+    def userdefined_roles(self):
+        return ()
+
+    def get_local_roles(self):
+        return ()
+
+    def _addRole(self, role):
+        self.roles_added.append(role)
+
+    def _delRoles(self, roles):
+        self.roles_deleted.append(tuple(roles))
+
+    def manage_delLocalRoles(self, users):
+        self.local_roles_deleted.append(tuple(users))
+
+    def manage_setLocalRoles(self, user, roles):
+        self.local_roles_set.append((user, tuple(roles)))
+
+    def ac_inherited_permissions(self, _all):
+        return [("View", [])]
 
 
 def test_remove_redundant_paths():
@@ -146,3 +221,122 @@ def test_path_diff():
     ]
     result = helpers.path_diff(old, new)
     assert result == {"Def", "Xyz", "Yyy"}
+
+
+def test_populate_dataset_folders_only():
+    root = _DummyFolder()
+    stats = benchmark.populate_dataset(
+        app=root,
+        depth=3,
+        breadth=2,
+        blobs_per_folder=0,
+        blob_size=4096,
+        object_type="folders",
+    )
+
+    assert stats == {
+        "folders": 14,
+        "page_templates": 0,
+        "python_scripts": 0,
+        "sql_methods": 0,
+        "payload_bytes": 4096,
+    }
+
+
+def test_populate_dataset_sql_methods():
+    root = _DummyFolder()
+    stats = benchmark.populate_dataset(
+        app=root,
+        depth=2,
+        breadth=2,
+        blobs_per_folder=3,
+        blob_size=16,
+        object_type="sql_method",
+    )
+
+    folder = root._children["f0_0"]
+    created = folder._children["sql_0_0_0"]
+
+    assert created["connection_id"] == "benchmark_db"
+    assert created["arguments"] == ""
+    assert "SELECT '" in created["template"]
+    assert stats == {
+        "folders": 6,
+        "page_templates": 0,
+        "python_scripts": 0,
+        "sql_methods": 18,
+        "payload_bytes": 16,
+    }
+
+
+def test_accesscontrol_write_skips_default_reset_on_create():
+    obj = _PermissionProbe()
+
+    object_mixins.AccessControlObj.write(
+        obj,
+        {
+            "_created": True,
+        },
+    )
+
+    assert obj.roles_added == []
+    assert obj.roles_deleted == []
+    assert obj.local_roles_deleted == []
+    assert obj.local_roles_set == []
+
+
+def test_accesscontrol_write_skips_unchanged_permissions(monkeypatch):
+    obj = _PermissionProbe()
+
+    class _FakePermission:
+        def __init__(self, name, _roles, _obj):
+            self.name = name
+
+        def getRoles(self, default=None):
+            return []
+
+        def setRoles(self, roles):
+            raise AssertionError("Permission reset path should be skipped")
+
+    monkeypatch.setattr(
+        object_mixins.AccessControl.Permission,
+        "Permission",
+        _FakePermission,
+    )
+
+    object_mixins.AccessControlObj.write(
+        obj,
+        {
+            "owner": (["acl_users"], "perfact"),
+        },
+    )
+
+
+def test_analyze_recorded_repo(tmp_path):
+    root = tmp_path / "__root__"
+    root.mkdir()
+
+    script = root / "script"
+    script.mkdir()
+    (script / "__meta__").write_text("[('type', 'Script (Python)')]")
+
+    folder = root / "folder"
+    folder.mkdir()
+    (folder / "__meta__").write_text("[('type', 'Folder')]")
+
+    sql = folder / "query"
+    sql.mkdir()
+    (sql / "__meta__").write_text("[('type', 'Z SQL Method')]")
+
+    unknown = root / "other"
+    unknown.mkdir()
+    (unknown / "__meta__").write_text("[('type', 'Image')]")
+
+    assert benchmark.analyze_recorded_repo(str(tmp_path)) == {
+        "folders": 1,
+        "page_templates": 0,
+        "python_scripts": 1,
+        "sql_methods": 1,
+        "other_objects": 1,
+        "payload_bytes": None,
+    }
