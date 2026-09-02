@@ -699,7 +699,7 @@ class ZODBSync:
                 with open(os.path.join(tgt, "__deleted__"), "wb"):
                     pass
 
-    def _delete_layer_files(self, fspath):
+    def delete_layer_files(self, fspath):
         """Remove __meta__, __source* and __frozen__ files from fspath."""
         for name in os.listdir(fspath):
             if (
@@ -833,7 +833,7 @@ class ZODBSync:
             old_pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
-            self._delete_layer_files(old_pathinfo["fspath"])
+            self.delete_layer_files(old_pathinfo["fspath"])
         pathinfo = self.fs_write(
             path, data, target_layer_idx=target_layer_idx, pathinfo=old_pathinfo
         )
