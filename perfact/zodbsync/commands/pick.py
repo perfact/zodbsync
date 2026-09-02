@@ -8,7 +8,7 @@ class Pick(SubCommand):
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        layer_ident = getattr(self.args, "layer", None)
+        layer_ident = self.args.layer
         if layer_ident is not None:
             layer = next(
                 (la for la in self.sync.layers if la["ident"] == layer_ident),
