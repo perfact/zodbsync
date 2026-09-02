@@ -99,8 +99,7 @@ class SubCommand(Namespace):
 
     def gitcmd(self, *args):
         # use "--no-pager" instead of "-P" for compatibility / readability
-        workdir = self._git_workdir
-        return ["git", "--no-pager", "-C", workdir] + list(args)
+        return ["git", "--no-pager", "-C", self._git_workdir] + list(args)
 
     def gitcmd_run(self, *args):
         """Wrapper to run a git command."""
@@ -307,9 +306,8 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
-                git_workdir = self._git_workdir
                 for fname in self.git_state_indicators:
-                    path = os.path.join(git_workdir, ".git", fname)
+                    path = os.path.join(self._git_workdir, ".git", fname)
                     assert not os.path.exists(path), "Git state not clean"
 
                 files = {
@@ -341,8 +339,7 @@ class SubCommand(Namespace):
 
                 # Special handling in case of interrupted cherry-pick: show
                 # differences in affected files
-                git_workdir = self._git_workdir
-                cpfname = os.path.join(git_workdir, ".git/CHERRY_PICK_HEAD")
+                cpfname = os.path.join(self._git_workdir, ".git/CHERRY_PICK_HEAD")
                 if os.path.exists(cpfname):
                     with open(cpfname) as f:
                         failed_commit = f.read().strip()
