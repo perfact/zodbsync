@@ -31,38 +31,38 @@ class SubCommand(Namespace):
     # layer-scoped operations where stashing would be surprising).
     _no_stash = False
 
+    # Set by subclasses (e.g. Pick) for which a dirty named-layer workdir
+    # must abort instead of being stashed away.
+    _layer_no_stash = False
+
     def __init__(self, **kw):
         super().__init__(**kw)
         # Git workdir to operate on, defaulting to the fallback layer.
-        # Subclasses that support --layer overwrite this with the target
-        # layer's workdir via _set_layer.
+        # Resolved below to the target layer's workdir for subcommands whose
+        # add_args defines --layer.
         self._git_workdir = self.config["base_dir"]
+
+        # Some subcommands are instantiated programmatically without an
+        # "args" kwarg at all (e.g. Record's --autoreset spinning up a
+        # Reset), hence the inner getattr. Subcommands without a --layer
+        # argument, or with it left unset (None), keep the default
+        # fallback-layer workdir.
+        layer_ident = getattr(getattr(self, "args", None), "layer", None)
+        if layer_ident is not None:
+            layer = next(
+                (la for la in self.sync.layers if la["ident"] == layer_ident),
+                None,
+            )
+            if layer is None:
+                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
+            self._git_workdir = layer["workdir"]
+            if self._layer_no_stash:
+                self._no_stash = True
 
     @staticmethod
     def add_args(parser):
         """Overwrite to add arguments specific to sub-command."""
         pass
-
-    def _set_layer(self, no_stash=False):
-        """
-        Resolve self.args.layer (added via add_args by subcommands that
-        support --layer) to a layer workdir and point self._git_workdir at
-        it. A missing --layer (None) leaves the default fallback-layer
-        workdir untouched. Pass no_stash=True for commands where a dirty
-        named-layer workdir must abort instead of being stashed away.
-        """
-        layer_ident = self.args.layer
-        if layer_ident is None:
-            return
-        layer = next(
-            (la for la in self.sync.layers if la["ident"] == layer_ident),
-            None,
-        )
-        if layer is None:
-            raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
-        self._git_workdir = layer["workdir"]
-        if no_stash:
-            self._no_stash = True
 
     def acquire_lock(self, timeout=10):
         if self.args.no_lock:

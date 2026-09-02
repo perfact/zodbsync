@@ -6,10 +6,6 @@ from ..subcommand import SubCommand
 class Checkout(SubCommand):
     """Switch to another branch"""
 
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self._set_layer()
-
     @staticmethod
     def add_args(parser):
         parser.add_argument(
