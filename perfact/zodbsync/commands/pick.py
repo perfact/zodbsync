@@ -6,9 +6,7 @@ from ..subcommand import SubCommand
 class Pick(SubCommand):
     """Cherry-pick commits, apply them and play back affected objects"""
 
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self._set_layer(no_stash=True)
+    _layer_no_stash = True
 
     @staticmethod
     def add_args(parser):

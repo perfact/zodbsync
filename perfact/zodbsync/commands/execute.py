@@ -10,10 +10,6 @@ class Exec(SubCommand):
     """Execute a command and play back any paths changed between old and new
     HEAD"""
 
-    def __init__(self, **kw):
-        super().__init__(**kw)
-        self._set_layer()
-
     @staticmethod
     def add_args(parser):
         parser.add_argument(
