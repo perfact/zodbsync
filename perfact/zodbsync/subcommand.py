@@ -27,6 +27,14 @@ class SubCommand(Namespace):
         "REVERT_HEAD",
     ]
 
+    # Git workdir to operate on. None means the fallback layer (base_dir).
+    # Subclasses that support --layer set this to the target layer's workdir.
+    _git_workdir = None
+
+    # Set by subclasses to disallow stashing away unstaged changes (used for
+    # layer-scoped operations where stashing would be surprising).
+    _no_stash = False
+
     @staticmethod
     def add_args(parser):
         """Overwrite to add arguments specific to sub-command."""
@@ -67,7 +75,7 @@ class SubCommand(Namespace):
 
     def gitcmd(self, *args):
         # use "--no-pager" instead of "-P" for compatibility / readability
-        workdir = getattr(self, "_git_workdir", self.config["base_dir"])
+        workdir = self._git_workdir or self.config["base_dir"]
         return ["git", "--no-pager", "-C", workdir] + list(args)
 
     def gitcmd_run(self, *args):
@@ -179,7 +187,7 @@ class SubCommand(Namespace):
         self.orig_branch, self.branches = self._branch_info()
 
         if self.unstaged_changes:
-            if getattr(self, "_no_stash", False):
+            if self._no_stash:
                 raise SystemExit("Named-layer workdir has unstaged changes; aborting.")
             self.logger.warning("Unstaged changes found. Moving them out of the way.")
             self.gitcmd_run("stash", "push", "--include-untracked")
@@ -275,7 +283,7 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
-                git_workdir = getattr(self, "_git_workdir", self.config["base_dir"])
+                git_workdir = self._git_workdir or self.config["base_dir"]
                 for fname in self.git_state_indicators:
                     path = os.path.join(git_workdir, ".git", fname)
                     assert not os.path.exists(path), "Git state not clean"
@@ -309,7 +317,7 @@ class SubCommand(Namespace):
 
                 # Special handling in case of interrupted cherry-pick: show
                 # differences in affected files
-                git_workdir = getattr(self, "_git_workdir", self.config["base_dir"])
+                git_workdir = self._git_workdir or self.config["base_dir"]
                 cpfname = os.path.join(git_workdir, ".git/CHERRY_PICK_HEAD")
                 if os.path.exists(cpfname):
                     with open(cpfname) as f:
