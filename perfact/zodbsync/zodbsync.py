@@ -17,6 +17,7 @@ import transaction
 
 # For config loading and initial connection, possibly populating an empty ZODB
 import Zope2.App.startup
+from Acquisition import aq_base
 from Zope2.Startup.run import configure_wsgi
 
 from .helpers import (
@@ -37,6 +38,8 @@ try:
     Connection.Connection.connect_on_load = False
 except ImportError:  # pragma: no cover
     pass
+
+_UNSET = object()  # sentinel for "parameter not provided"
 
 
 def mod_format(data=None):
@@ -103,8 +106,6 @@ def mod_read(
         if "owner" in meta:
             del meta["owner"]
 
-    meta["zodbsync_layer"] = getattr(obj, "zodbsync_layer", None)
-
     return meta
 
 
@@ -116,7 +117,6 @@ def mod_write(
     root=None,
     default_owner=None,
     force_default_owner=False,
-    layer=None,
 ):
     """
     Given object data in <data>, store the object, creating it if it was
@@ -184,9 +184,6 @@ def mod_write(
     # Send an update (depending on type)
     for handler in mod_implemented_handlers(obj, meta_type):
         handler.write(obj, d)
-
-    # Also write zodbsync layer information
-    obj.zodbsync_layer = layer
 
     if temp_obj:
         children = temp_obj.manage_cutObjects(temp_obj.objectIds())
@@ -271,8 +268,7 @@ class ZODBSync:
         # server!" messages (which is mostly relevant for the tests).
         self.tm = transaction.TransactionManager()
         db = App.config.getConfiguration().dbtab.getDatabase("/", is_root=1)
-        root = db.open(self.tm).root
-        self.app = root.Application
+        self.app = db.open(self.tm).root.Application
 
         # Initialize layers
         self.layers = load_layer_config(config=self.config)
@@ -286,6 +282,22 @@ class ZODBSync:
         # Make sure the manager user exists
         if self.config.get("create_manager_user", False):
             self.create_manager_user()
+
+    def reload_layers(self):
+        """Re-read layer config and initialise any new layer workdirs.
+
+        Call this when the on-disk layer configuration has changed (e.g. a
+        layer config file was added or removed) without restarting the process.
+        The ZODB connection is left untouched.
+        """
+        site = self.site
+        self.layers = load_layer_config(config=self.config)
+        for layer in self.layers:
+            workdir = layer["workdir"]
+            root = f"{workdir}/{site}"
+            os.makedirs(root, exist_ok=True)
+            if not os.path.isdir(f"{workdir}/.git"):
+                sp.run(["git", "init"], cwd=workdir, check=True)
 
     def create_manager_user(self):
         """
@@ -365,7 +377,7 @@ class ZODBSync:
         """
         return os.path.join(self.app_dir, path.lstrip("/"))
 
-    def fs_pathinfo(self, path):
+    def fs_pathinfo(self, path, _parent_layers=None):
         """
         Find the correct layer for the object with the given Data.FS path.
         The top (custom) layer may have __deleted__ or __frozen__ markers for
@@ -381,6 +393,9 @@ class ZODBSync:
 
         Input:
         :path: a path in the ZODB like /PerFact/test/
+        :_parent_layers: If provided (from a parent call), skip the full
+            ancestor walk and only check the last path component for markers.
+            The caller guarantees that all ancestors have already been checked.
 
         Return value:
         {
@@ -394,19 +409,43 @@ class ZODBSync:
                         representation is found.
         }
         """
-        layers = self.layers
-        check = self.base_dir
-        markers = ["__frozen__", "__deleted__"]
-        for part in [self.site] + path.split("/"):
-            if not part:
-                continue
-            check = os.path.join(check, part)
-            if not os.path.isdir(check):
-                break
-            if any([item in markers for item in os.listdir(check)]):
-                # Only keep custom layer
-                layers = layers[:1]
-                break
+        markers = {"__frozen__", "__deleted__"}
+        if _parent_layers is not None:
+            # Ancestor walk already done by caller up to and including parent.
+            # Only check whether this path component itself carries a marker.
+            layers = _parent_layers
+            partial = os.path.join(self.site, path.lstrip("/").rstrip("/"))
+            for idx, layer in enumerate(layers):
+                check = os.path.join(layer["workdir"], partial)
+                try:
+                    entries = set(os.listdir(check))
+                except OSError:
+                    continue
+                if markers & entries:
+                    layers = layers[: idx + 1]
+                    break
+        else:
+            layers = self.layers
+            partial = ""
+            for part in [self.site] + path.split("/"):
+                if not part:
+                    continue
+                partial = os.path.join(partial, part) if partial else part
+                restricted = False
+                any_dir = False
+                for idx, layer in enumerate(layers):
+                    check = os.path.join(layer["workdir"], partial)
+                    try:
+                        entries = set(os.listdir(check))
+                    except OSError:
+                        continue
+                    any_dir = True
+                    if markers & entries:
+                        layers = layers[: idx + 1]
+                        restricted = True
+                        break
+                if restricted or not any_dir:
+                    break
 
         result = {
             "path": path,
@@ -443,7 +482,49 @@ class ZODBSync:
         result["children"] = sorted(children)
         return result
 
-    def fs_write(self, path, data):
+    def resolve_target_layer(
+        self, path, obj, _parent_layer_idx=_UNSET, _parent_layers=None
+    ):
+        """Return (target_layer_idx, parent_layer_idx, pathinfo) for path.
+
+        target_layer_idx follows rules 1-4:
+        Rule 1: obj.zodbsync_layer is a known named-layer ident.
+        Rule 2: object already on FS in some layer.
+        Rule 3: parent object on FS in some layer.
+        Rule 4: fallback to custom layer (index 0).
+
+        parent_layer_idx is the layer index of the parent path, or None if the
+        parent has no __meta__ file in any layer.
+
+        pathinfo is the result of fs_pathinfo(path), or None if Rule 1 applied
+        before fs_pathinfo was called (so callers can reuse it and avoid a
+        redundant fs_pathinfo call).
+
+        _parent_layer_idx: pre-computed parent layeridx (skips fs_pathinfo(parent)).
+        _parent_layers: effective layers from parent's pathinfo (skips ancestor walk).
+        """
+        parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        if _parent_layer_idx is _UNSET:
+            parent_layer_idx = None
+            if parent != path:
+                pinfo = self.fs_pathinfo(parent)
+                parent_layer_idx = pinfo["layeridx"]
+        else:
+            parent_layer_idx = _parent_layer_idx
+
+        ident = getattr(aq_base(obj), "zodbsync_layer", None)
+        if ident is not None:
+            for idx, layer in enumerate(self.layers):
+                if layer["ident"] == ident:
+                    return idx, parent_layer_idx, None
+        pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
+        if pathinfo["layeridx"] is not None:
+            return pathinfo["layeridx"], parent_layer_idx, pathinfo
+        if parent_layer_idx is not None:
+            return parent_layer_idx, parent_layer_idx, pathinfo
+        return 0, parent_layer_idx, pathinfo
+
+    def fs_write(self, path, data, target_layer_idx=0, pathinfo=None):
         """
         Write object data out to a folder with the given path.
         """
@@ -456,7 +537,8 @@ class ZODBSync:
 
         # Find layer that holds the current version of the object, falling back
         # to the custom layer
-        pathinfo = self.fs_pathinfo(path)
+        if pathinfo is None:
+            pathinfo = self.fs_pathinfo(path)
         base_dir = pathinfo["fspath"] or base_dir
 
         # Make directory for the object if it's not already there
@@ -492,10 +574,14 @@ class ZODBSync:
             new_data["src_fnames"] = [src_fname]
             new_data["source"] = source
 
-        if old_data != new_data:
-            # Path in top layer, might be different than the one where we read
-            # the content
-            write_base = self.fs_path(path)
+        target_base = os.path.join(
+            self.layers[target_layer_idx]["workdir"],
+            self.site,
+            path.lstrip("/"),
+        )
+        target_missing = not os.path.exists(os.path.join(target_base, "__meta__"))
+        if old_data != new_data or target_missing:
+            write_base = target_base
             os.makedirs(write_base, exist_ok=True)
 
             self.logger.debug("Will write %d bytes of metadata" % len(fmt))
@@ -516,68 +602,101 @@ class ZODBSync:
                 with open(os.path.join(write_base, src_fname), "wb") as f:
                     f.write(source)
 
-            # We wrote the object to the topmost layer, so the index where the
-            # current representation can be found is zero.
-            pathinfo["layeridx"] = 0
+            pathinfo["layeridx"] = target_layer_idx
 
-        # Compress if possible: Compare object with its representation on disk
-        # if the current layer is ignored. If it is the same, remove it in the
-        # current layer. Continue with the next layer that holds the object
-        for idx, layer in enumerate(pathinfo["layers"]):
-            # This is now the layer that we compare the current layer to in
-            # order to check if we can compress it.
-            if idx <= pathinfo["layeridx"]:
-                continue
+        # Compress if possible: only a copy that currently lives in the
+        # fallback layer (index 0) may be collapsed into an identical
+        # lower-priority layer. A copy in a named layer is never removed by
+        # compression, so a deliberate layer placement stays stable even when
+        # its content is identical to a lower layer. See ADR 0005.
+        if pathinfo["layeridx"] == 0:
+            for idx, layer in enumerate(pathinfo["layers"]):
+                # This is now the layer that we compare the fallback layer to in
+                # order to check if we can compress it.
+                if idx <= pathinfo["layeridx"]:
+                    continue
 
-            fspath = os.path.join(layer["workdir"], self.site, path.lstrip("/"))
-            data = self.fs_read(fspath)
-            if not data or not data.get("meta"):
-                # No representation on this layer
-                continue
-            if data != new_data:
-                # No compression
+                fspath = os.path.join(layer["workdir"], self.site, path.lstrip("/"))
+                data = self.fs_read(fspath)
+                if not data or not data.get("meta"):
+                    # No representation on this layer
+                    continue
+                if data != new_data:
+                    # No compression
+                    break
+                # Remove meta file and all source files from the fallback layer
+                base = os.path.join(
+                    pathinfo["layers"][pathinfo["layeridx"]]["workdir"],
+                    self.site,
+                    path.lstrip("/"),
+                )
+                os.remove(os.path.join(base, "__meta__"))
+                for src in data.get("src_fnames", []):
+                    os.remove(os.path.join(base, src))
+                # The fallback copy is gone; the object now lives in the named
+                # layer at idx. Do not cascade further into lower named layers.
+                pathinfo["layeridx"] = idx
                 break
-            # Remove meta file and all source files
-            base = os.path.join(
-                pathinfo["layers"][pathinfo["layeridx"]]["workdir"],
-                self.site,
-                path.lstrip("/"),
-            )
-            os.remove(os.path.join(base, "__meta__"))
-            for src in data.get("src_fnames", []):
-                os.remove(os.path.join(base, src))
-            # Next comparison point
-            pathinfo["layeridx"] = idx
 
         return pathinfo
 
     def fs_prune(self, pathinfo, contents):
         """
         Remove all subfolders from path that are not in contents.
-        Removes the folder from the top-level directory, but if the effective
-        folder that defines the object (in a multi-layer setup) still would
-        provide it, recreate the directory and add a __deleted__ file.
+        If the object exists in exactly one layer, delete it from that layer.
+        If it exists in multiple layers, place a __deleted__ marker in the
+        topmost layer to shadow the lower ones.
         """
         relpath = os.path.join(self.site, pathinfo["path"].lstrip("/"))
-        base_dir = self.fs_path(pathinfo["path"])
+        markers = {"__frozen__", "__deleted__"}
         for item in pathinfo["children"]:
             if item in contents:
                 continue
-            tgt = os.path.join(base_dir, item)
-            if os.path.isdir(tgt):
-                self.logger.info("Removing old item %s from filesystem" % item)
-                shutil.rmtree(tgt)
-            meta = os.path.join(relpath, item, "__meta__")
-            # Omit topmost (custom) layer
-            for layer in pathinfo["layers"][1:]:
-                if not os.path.exists(os.path.join(layer["workdir"], meta)):
+            item_relpath = os.path.join(relpath, item)
+            # Mirror the fs_pathinfo layer-restriction logic: if item's own
+            # directory has a __frozen__ or __deleted__ marker in layer X,
+            # layers with higher indices are invisible for this subtree.
+            visible_layers = pathinfo["layers"]
+            for idx, layer in enumerate(visible_layers):
+                item_dir = os.path.join(layer["workdir"], item_relpath)
+                try:
+                    entries = set(os.listdir(item_dir))
+                except OSError:
                     continue
-                # Mask the path as deleted because it is also present
-                # in a lower layer
+                if markers & entries:
+                    visible_layers = visible_layers[: idx + 1]
+                    break
+            meta_relpath = os.path.join(item_relpath, "__meta__")
+            item_layers = [
+                layer
+                for layer in visible_layers
+                if os.path.exists(os.path.join(layer["workdir"], meta_relpath))
+            ]
+            self.logger.info("Removing old item %s from filesystem" % item)
+            if len(item_layers) <= 1:
+                for layer in item_layers:
+                    tgt = os.path.join(layer["workdir"], relpath, item)
+                    if os.path.isdir(tgt):
+                        shutil.rmtree(tgt)
+            else:
+                topmost = item_layers[0]
+                tgt = os.path.join(topmost["workdir"], relpath, item)
+                if os.path.isdir(tgt):
+                    shutil.rmtree(tgt)
                 os.makedirs(tgt, exist_ok=True)
                 with open(os.path.join(tgt, "__deleted__"), "wb"):
                     pass
-                break
+
+    @staticmethod
+    def fs_delete_files(fspath):
+        """Remove __meta__, __source* and __frozen__ files from fspath."""
+        for name in os.listdir(fspath):
+            if (
+                name == "__meta__"
+                or name.startswith("__source")
+                or name == "__frozen__"
+            ):
+                os.remove(os.path.join(fspath, name))
 
     def fs_prune_empty_dirs(self):
         "Remove all empty directories"
@@ -667,7 +786,15 @@ class ZODBSync:
             self.record_obj(obj, path, recurse=recurse, skip_errors=skip_errors)
         self.fs_prune_empty_dirs()
 
-    def record_obj(self, obj, path, recurse=True, skip_errors=False):
+    def record_obj(
+        self,
+        obj,
+        path,
+        recurse=True,
+        skip_errors=False,
+        _parent_layer_idx=_UNSET,
+        _parent_layers=None,
+    ):
         """Record a Zope object into the local filesystem"""
         try:
             data = mod_read(
@@ -685,13 +812,34 @@ class ZODBSync:
                 self.logger.error(msg)
                 raise
 
-        pathinfo = self.fs_write(path, data)
-        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+        target_layer_idx, parent_layer_idx, old_pathinfo = self.resolve_target_layer(
+            path,
+            obj,
+            _parent_layer_idx=_parent_layer_idx,
+            _parent_layers=_parent_layers,
+        )
+        if old_pathinfo is None:
+            old_pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
+        old_idx = old_pathinfo["layeridx"]
+        if old_idx is not None and old_idx != target_layer_idx:
+            self.fs_delete_files(old_pathinfo["fspath"])
+        pathinfo = self.fs_write(
+            path, data, target_layer_idx=target_layer_idx, pathinfo=old_pathinfo
+        )
+        path_layer = self.layers[target_layer_idx]["ident"]
 
-        current_layer = getattr(obj, "zodbsync_layer", None)
-        if current_layer != path_layer:
-            with self.tm:
-                obj.zodbsync_layer = path_layer
+        at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
+            parent_layer_idx is not None and target_layer_idx != parent_layer_idx
+        )
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        if at_boundary:
+            if current_attr != path_layer:
+                with self.tm:
+                    obj.zodbsync_layer = path_layer
+        else:
+            if current_attr is not None:
+                with self.tm:
+                    del obj.zodbsync_layer
 
         if not recurse:
             return
@@ -717,6 +865,8 @@ class ZODBSync:
                 obj=child,
                 path=os.path.join(path, item),
                 skip_errors=skip_errors,
+                _parent_layer_idx=target_layer_idx,
+                _parent_layers=pathinfo["layers"],
             )
 
     def _playback_path(self, pathinfo):
@@ -751,12 +901,6 @@ class ZODBSync:
 
         # fspath is None if the object is to be deleted
         fs_data = pathinfo["fspath"] and self.fs_parse(pathinfo["fspath"])
-
-        # extend fs_data with layerinfo
-        if fs_data:
-            fs_data["zodbsync_layer"] = pathinfo["layers"][pathinfo["layeridx"]][
-                "ident"
-            ]
 
         # Traverse to the object if it exists
         parent_obj = None
@@ -854,7 +998,6 @@ class ZODBSync:
                     root=(obj if parent_obj is None else None),
                     default_owner=self.default_owner,
                     force_default_owner=self.force_default_owner,
-                    layer=pathinfo["layers"][pathinfo["layeridx"]]["ident"],
                 )
             except Exception:
                 # If we do not want to get errors from missing
@@ -867,6 +1010,29 @@ class ZODBSync:
                 else:
                     self.logger.error(msg)
                     raise
+
+        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
+        parent_path = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        parent_layer = None
+        if parent_path != path:
+            parent_rel = parent_path.lstrip("/")
+            for _layer in self.layers:
+                meta = os.path.join(
+                    _layer["workdir"], self.site, parent_rel, "__meta__"
+                )
+                if os.path.exists(meta):
+                    parent_layer = _layer["ident"]
+                    break
+        at_boundary = (parent_layer is None and path_layer != "") or (
+            parent_layer is not None and path_layer != parent_layer
+        )
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        if at_boundary:
+            if current_attr != path_layer:
+                obj.zodbsync_layer = path_layer
+        else:
+            if current_attr is not None:
+                del obj.zodbsync_layer
 
         self.num_obj_total += len(contents)
         if hasattr(object_handlers[fs_data["type"]], "fix_order"):

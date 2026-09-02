@@ -27,6 +27,38 @@ class SubCommand(Namespace):
         "REVERT_HEAD",
     ]
 
+    # Set by subclasses to disallow stashing away unstaged changes (used for
+    # layer-scoped operations where stashing would be surprising).
+    _no_stash = False
+
+    # Set by subclasses (e.g. Pick) for which a dirty named-layer workdir
+    # must abort instead of being stashed away.
+    _layer_no_stash = False
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        # Git workdir to operate on, defaulting to the fallback layer.
+        # Resolved below to the target layer's workdir for subcommands whose
+        # add_args defines --layer.
+        self._git_workdir = self.config["base_dir"]
+
+        # Some subcommands are instantiated programmatically without an
+        # "args" kwarg at all (e.g. Record's --autoreset spinning up a
+        # Reset), hence the inner getattr. Subcommands without a --layer
+        # argument, or with it left unset (None), keep the default
+        # fallback-layer workdir.
+        layer_ident = getattr(getattr(self, "args", None), "layer", None)
+        if layer_ident is not None:
+            layer = next(
+                (la for la in self.sync.layers if la["ident"] == layer_ident),
+                None,
+            )
+            if layer is None:
+                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
+            self._git_workdir = layer["workdir"]
+            if self._layer_no_stash:
+                self._no_stash = True
+
     @staticmethod
     def add_args(parser):
         """Overwrite to add arguments specific to sub-command."""
@@ -67,7 +99,7 @@ class SubCommand(Namespace):
 
     def gitcmd(self, *args):
         # use "--no-pager" instead of "-P" for compatibility / readability
-        return ["git", "--no-pager", "-C", self.config["base_dir"]] + list(args)
+        return ["git", "--no-pager", "-C", self._git_workdir] + list(args)
 
     def gitcmd_run(self, *args):
         """Wrapper to run a git command."""
@@ -178,6 +210,8 @@ class SubCommand(Namespace):
         self.orig_branch, self.branches = self._branch_info()
 
         if self.unstaged_changes:
+            if self._no_stash:
+                raise SystemExit("Named-layer workdir has unstaged changes; aborting.")
             self.logger.warning("Unstaged changes found. Moving them out of the way.")
             self.gitcmd_run("stash", "push", "--include-untracked")
 
@@ -273,7 +307,7 @@ class SubCommand(Namespace):
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
                 for fname in self.git_state_indicators:
-                    path = os.path.join(self.sync.base_dir, ".git", fname)
+                    path = os.path.join(self._git_workdir, ".git", fname)
                     assert not os.path.exists(path), "Git state not clean"
 
                 files = {
@@ -305,7 +339,7 @@ class SubCommand(Namespace):
 
                 # Special handling in case of interrupted cherry-pick: show
                 # differences in affected files
-                cpfname = os.path.join(self.sync.base_dir, ".git/CHERRY_PICK_HEAD")
+                cpfname = os.path.join(self._git_workdir, ".git/CHERRY_PICK_HEAD")
                 if os.path.exists(cpfname):
                     with open(cpfname) as f:
                         failed_commit = f.read().strip()

@@ -16,6 +16,7 @@ import pytest
 import transaction
 import ZEO
 from AccessControl.SecurityManagement import newSecurityManager
+from Acquisition import aq_base
 
 try:
     from unittest import mock
@@ -58,7 +59,8 @@ class TestSync:
     """
 
     @pytest.fixture(scope="class", autouse=True)
-    def environment(self, request):
+    @classmethod
+    def environment(cls, request):
         """
         Fixture that is automatically used by all tests. Initializes
         environment and injects the elements of it into the class.
@@ -73,13 +75,14 @@ class TestSync:
 
         # inject items into class so methods can use them
         for key, value in myenv.items():
-            setattr(request.cls, key, value)
+            setattr(cls, key, value)
 
         # Initially record everything and commit it
-        self.run("record", "/")
-        self.gitrun("add", ".")
-        self.gitrun("commit", "-m", "init")
-        request.cls.initial_commit = self.get_head_id()
+        me = cls()
+        me.run("record", "/")
+        me.gitrun("add", ".")
+        me.gitrun("commit", "-m", "init")
+        cls.initial_commit = me.get_head_id()
 
         # at this point, the test is called
         yield
@@ -131,6 +134,7 @@ class TestSync:
         yield helpers.Namespace({"tm": tm, "app": app})
         tm.abort()
         conn.close()
+        db.close()
 
     @pytest.fixture(scope="function")
     def conn(self, request):
@@ -140,14 +144,17 @@ class TestSync:
         with self.newconn() as conn:
             yield conn
 
-    def mkrunner(self, *cmd):
+    @classmethod
+    def mkrunner(cls, *cmd):
         """
-        Create or update runner for given zodbsync command
+        Create or update runner for given zodbsync command.
+        Runner and app are stored on the class so a single ZODBSync connection
+        is shared across all test instances, avoiding per-test FD accumulation.
         """
-        if not hasattr(self, "runner"):
-            self.runner = Runner()
-        result = self.runner.parse("--config", self.config.path, *cmd)
-        self.app = self.runner.sync.app if self.runner.sync else None
+        if not hasattr(cls, "runner"):
+            cls.runner = Runner()
+        result = cls.runner.parse("--config", cls.config.path, *cmd)
+        cls.app = cls.runner.sync.app if cls.runner.sync else None
         return result
 
     def run(self, *cmd):
@@ -371,6 +378,104 @@ class TestSync:
                 self.run("pick", commit, second)
             assert "TestFolder" not in self.app.objectIds()
             assert not os.path.isdir(self.repo.path + "/__root__/TestFolder")
+
+    def _layer_workdir_git(self, workdir, *args, **kw):
+        """Run a git command in a named layer workdir."""
+        subprocess.run(["git"] + list(args), cwd=workdir, check=True, **kw)
+
+    def _layer_workdir_git_output(self, workdir, *args):
+        return subprocess.check_output(
+            ["git"] + list(args), cwd=workdir, text=True
+        ).strip()
+
+    def _prepare_named_layer_commit(self, workdir, obj_name):
+        """
+        Set up a named layer workdir with an initial empty commit on the main
+        branch and a feature branch containing a Folder at obj_name. Returns
+        the feature branch commit hash, leaving the workdir on the main branch.
+        """
+        self._layer_workdir_git(workdir, "commit", "--allow-empty", "-m", "init")
+        self._layer_workdir_git(workdir, "checkout", "-b", "feature")
+        folder = os.path.join(workdir, "__root__", obj_name)
+        os.makedirs(folder)
+        with open(os.path.join(folder, "__meta__"), "w") as f:
+            f.write(zodbsync.mod_format({"title": "", "type": "Folder"}))
+        self._layer_workdir_git(workdir, "add", ".")
+        self._layer_workdir_git(workdir, "commit", "-m", f"add {obj_name}")
+        commit = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+        self._layer_workdir_git(workdir, "checkout", "-")
+        return commit
+
+    def _layer_ident_from_workdir(self, workdir):
+        """Return the layer ident whose workdir matches the given path."""
+        return next(
+            la["ident"]
+            for la in self.runner.sync.layers
+            if la.get("workdir") == workdir
+        )
+
+    def test_pick_layer(self):
+        """
+        pick --layer cherry-picks in named layer workdir; custom layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            commit = self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("pick", "--layer", ident, commit)
+
+            assert "LayerObj" in self.app.objectIds()
+            # Named layer filesystem has the object; custom layer does not
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_pick_layer_dirty_workdir(self):
+        """
+        pick --layer with a dirty named-layer workdir fails before cherry-pick.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            commit = self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Dirty file in the named layer workdir
+            with open(os.path.join(workdir, "dirty_file"), "w") as f:
+                f.write("dirty")
+
+            with pytest.raises(SystemExit):
+                self.run("pick", "--layer", ident, commit)
+
+            # No cherry-pick happened: object should not be in ZODB
+            assert "LayerObj" not in self.app.objectIds()
+
+    def test_checkout_layer(self):
+        """
+        checkout --layer switches named layer workdir to branch; fallback
+        layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Named layer is on main branch (no LayerObj); feature branch has it
+            self.run("checkout", "--layer", ident, "feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_checkout_layer_unknown_ident(self):
+        """
+        checkout --layer with unknown ident raises SystemExit.
+        """
+        with pytest.raises(SystemExit):
+            self.run("checkout", "--layer", "no-such-layer", "feature")
 
     def test_upload_relpath(self):
         """
@@ -606,10 +711,11 @@ class TestSync:
 
     def test_cacheable(self):
         "Add a RamCacheManager and use it for index_html"
-        self.app.manage_addProduct["StandardCacheManagers"].manage_addRAMCacheManager(
-            id="http_cache"
-        )
-        self.app.index_html.ZCacheable_setManagerId("http_cache")
+        with self.runner.sync.tm:
+            self.app.manage_addProduct[
+                "StandardCacheManagers"
+            ].manage_addRAMCacheManager(id="http_cache")
+            self.app.index_html.ZCacheable_setManagerId("http_cache")
         self.run("record", "/")
         fname = self.repo.path + "/__root__/index_html/__meta__"
         assert "http_cache" in open(fname).read()
@@ -752,6 +858,85 @@ class TestSync:
         self.run("reset", "second")
         assert self.app.index_html.title == "test"
 
+    def test_reset_named_layer(self):
+        """
+        reset <ident>:<ref> resets the named layer and plays back changed objects;
+        custom layer and its git repo remain untouched.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            # Named layer is on main branch (no LayerObj); feature branch has it
+            self.run("reset", f"{ident}:feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_reset_multi_layer(self):
+        """
+        reset <ident1>:<ref1> <ident2>:<ref2> resets both repos and plays back
+        the union of changed paths in one pass.
+        """
+        with self.addlayer("00") as layer_a_dir:
+            with self.addlayer("01") as layer_b_dir:
+                workdir_a = f"{layer_a_dir}/workdir"
+                workdir_b = f"{layer_b_dir}/workdir"
+                ident_a = self._layer_ident_from_workdir(workdir_a)
+                ident_b = self._layer_ident_from_workdir(workdir_b)
+
+                self._prepare_named_layer_commit(workdir_a, "ObjA")
+                self._prepare_named_layer_commit(workdir_b, "ObjB")
+
+                self.run("reset", f"{ident_a}:feature", f"{ident_b}:feature")
+
+                assert "ObjA" in self.app.objectIds()
+                assert "ObjB" in self.app.objectIds()
+                assert not os.path.isdir(
+                    os.path.join(self.repo.path, "__root__", "ObjA")
+                )
+                assert not os.path.isdir(
+                    os.path.join(self.repo.path, "__root__", "ObjB")
+                )
+
+    def test_reset_multi_layer_mid_failure(self):
+        """
+        Multi-layer reset rolls back all layers when any step fails.
+        """
+        with self.addlayer("00") as layer_a_dir:
+            with self.addlayer("01") as layer_b_dir:
+                workdir_a = f"{layer_a_dir}/workdir"
+                workdir_b = f"{layer_b_dir}/workdir"
+                ident_a = self._layer_ident_from_workdir(workdir_a)
+                ident_b = self._layer_ident_from_workdir(workdir_b)
+
+                # Prepare valid feature commit on layer A
+                self._prepare_named_layer_commit(workdir_a, "ObjA")
+                orig_a = self._layer_workdir_git_output(workdir_a, "rev-parse", "HEAD")
+
+                # Layer B: only initial commit, no "feature" branch
+                self._layer_workdir_git(
+                    workdir_b, "commit", "--allow-empty", "-m", "init"
+                )
+
+                # Reset layer A to feature, layer B to non-existent ref -> failure
+                with pytest.raises(subprocess.CalledProcessError):
+                    self.run(
+                        "reset",
+                        f"{ident_a}:feature",
+                        f"{ident_b}:nonexistent",
+                    )
+
+                # Layer A must be rolled back to its original commit
+                head_a = self._layer_workdir_git_output(workdir_a, "rev-parse", "HEAD")
+                assert head_a == orig_a
+
+                # Nothing played back to ZODB
+                assert "ObjA" not in self.app.objectIds()
+
     def test_revert(self):
         """
         Do the same as in test_reset, but afterwards revert it.
@@ -782,6 +967,116 @@ class TestSync:
         self.run("exec", "git checkout other")
         title = self.app.index_html.title
         assert title != "test"
+
+    def test_exec_layer(self):
+        """
+        exec --layer runs command in named layer workdir and plays back
+        changed objects; fallback layer unchanged.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("exec", "--layer", ident, "git checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_exec_layer_nocd(self):
+        """
+        exec --layer --nocd runs command without cd but diff-checks named
+        layer workdir.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            ident = self._layer_ident_from_workdir(workdir)
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run(
+                "exec",
+                "--layer",
+                ident,
+                "--nocd",
+                f"git -C {workdir} checkout feature",
+            )
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.isdir(os.path.join(workdir, "__root__", "LayerObj"))
+
+    def test_exec_layer_unknown_ident(self):
+        """
+        exec --layer with unknown ident raises SystemExit.
+        """
+        with pytest.raises(SystemExit):
+            self.run("exec", "--layer", "no-such-layer", "true")
+
+    def test_exec_nocd_all_layers(self):
+        """
+        exec --nocd (no --layer) diffs all layers and plays back union of
+        changed paths.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            self.run("exec", "--nocd", f"git -C {workdir} checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
+    def test_exec_nocd_no_changes(self):
+        """
+        exec --nocd with no changes in any layer is a no-op (no exception).
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            before = list(self.app.objectIds())
+
+            self.run("exec", "--nocd", "true")
+
+            assert list(self.app.objectIds()) == before
+
+    def test_exec_nocd_stash(self):
+        """
+        exec --nocd stashes unstaged changes in named layer, runs cmd, pops
+        stash; dirty file still present after.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            dirty = os.path.join(workdir, "dirty_file")
+            with open(dirty, "w") as f:
+                f.write("dirty")
+
+            self.run("exec", "--nocd", f"git -C {workdir} checkout feature")
+
+            assert "LayerObj" in self.app.objectIds()
+            assert os.path.exists(dirty)
+
+    def test_exec_nocd_failure(self):
+        """
+        exec --nocd rolls back all layers when cmd fails.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            orig_head = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+
+            with pytest.raises(subprocess.CalledProcessError):
+                self.run("exec", "--nocd", "false")
+
+            assert (
+                self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+                == orig_head
+            )
+            assert "LayerObj" not in self.app.objectIds()
 
     def test_withlock(self):
         "Running with-lock and, inside that, --no-lock, works"
@@ -1382,9 +1677,9 @@ class TestSync:
             self.app.manage_addProduct["OFSP"].manage_addFolder(id="test")
 
         folder = self.app.test
-        mtime1 = folder._p_mtime
 
         self.run("record", "/test")
+        mtime1 = folder._p_mtime
         self.run("playback", "/test")
         mtime2 = folder._p_mtime
         assert mtime1 == mtime2
@@ -1724,32 +2019,36 @@ class TestSync:
             seqnum, "".join([random.choice(string.ascii_letters) for _ in range(16)])
         )
         path = "{}/layers/{}".format(self.config.folder, name)
-        with tempfile.TemporaryDirectory() as layer:
-            workdir = f"{layer}/workdir"
-            os.makedirs(f"{workdir}/__root__")
-            subprocess.run(["git", "init"], cwd=workdir)
-            subprocess.run(
-                ["git", "config", "user.email", "zodbsync-tester@perfact.de"],
-                cwd=workdir,
-            )
-            subprocess.run(
-                ["git", "config", "user.name", "ZODBSync tester"], cwd=workdir
-            )
-            source = f"{layer}/source"
-            os.makedirs(f"{source}/__root__")
-            with open(path, "w") as f:
-                f.write(f'workdir = "{layer}/workdir"\n')
-                f.write(f'source = "{source}"\n')
-                f.write(f'ident = "{name}"\n')
-            # Force re-reading config
-            if hasattr(self, "runner"):
-                del self.runner
-            try:
+        try:
+            with tempfile.TemporaryDirectory() as layer:
+                workdir = f"{layer}/workdir"
+                os.makedirs(f"{workdir}/__root__")
+                subprocess.run(["git", "init"], cwd=workdir)
+                subprocess.run(
+                    ["git", "config", "user.email", "zodbsync-tester@perfact.de"],
+                    cwd=workdir,
+                )
+                subprocess.run(
+                    ["git", "config", "user.name", "ZODBSync tester"], cwd=workdir
+                )
+                source = f"{layer}/source"
+                os.makedirs(f"{source}/__root__")
+                with open(path, "w") as f:
+                    f.write(f'workdir = "{layer}/workdir"\n')
+                    f.write(f'source = "{source}"\n')
+                    f.write(f'ident = "{name}"\n')
+                # Reload so the new layer is visible without recreating the
+                # ZODB connection (which would accumulate file descriptors).
+                if hasattr(self, "runner") and self.runner.sync:
+                    self.runner.sync.reload_layers()
                 yield layer
-            finally:
-                if hasattr(self, "runner"):
-                    del self.runner
+            # TemporaryDirectory is now gone; remove config before reloading
+            # so the stale workdir path is never added back to self.layers.
+        finally:
+            if os.path.exists(path):
                 os.remove(path)
+            if hasattr(self, "runner") and self.runner.sync:
+                self.runner.sync.reload_layers()
 
     def test_layer_record_freeze(self):
         """
@@ -1783,6 +2082,64 @@ class TestSync:
             )
             self.run("record", "/")
         assert not os.path.exists("{}/__root__/Test".format(self.repo.path))
+
+    def test_layer_named_freeze_restricts(self):
+        """
+        __frozen__ in a named layer restricts layers to that layer and above.
+        Object visible in Zope but only in an excluded layer must be recorded
+        into the custom layer.
+        """
+        self.add_folder("Test", "Test")
+        self.run("playback", "/Test")
+        # layerB (seqnum="00") -> index 2 (lower priority)
+        # layerA (seqnum="01") -> index 1 (higher priority)
+        with self.addlayer("00") as layerB:
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Test",
+                f"{layerB}/workdir/__root__/Test",
+            )
+            with self.addlayer("01") as layerA:
+                # Remove /Test from custom layer so only layerB has it
+                shutil.rmtree(f"{self.repo.path}/__root__/Test")
+                # Place __frozen__ in layerA's __root__ (index 1)
+                # -> layers[:2] = [custom, layerA]; layerB excluded
+                open(f"{layerA}/workdir/__root__/__frozen__", "w").close()
+                self.run("record", "/")
+        # layerB excluded by freeze -> /Test not seen in consulted layers
+        # -> recorded to custom layer
+        assert os.path.exists(f"{self.repo.path}/__root__/Test/__meta__")
+
+    def test_layer_named_freeze_sibling_unaffected(self):
+        """
+        __frozen__ in a named layer at a subtree path does not restrict
+        sibling paths outside that subtree.
+        """
+        self.add_folder("Test", "Test")
+        self.add_folder("Other", "Other")
+        self.run("playback", "/Test")
+        self.run("playback", "/Other")
+        with self.addlayer("00") as layerB:
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Test",
+                f"{layerB}/workdir/__root__/Test",
+            )
+            shutil.copytree(
+                f"{self.repo.path}/__root__/Other",
+                f"{layerB}/workdir/__root__/Other",
+            )
+            with self.addlayer("01") as layerA:
+                # Remove both from custom layer
+                shutil.rmtree(f"{self.repo.path}/__root__/Test")
+                shutil.rmtree(f"{self.repo.path}/__root__/Other")
+                # Place __frozen__ inside layerA's __root__/Test/ subtree only
+                os.makedirs(f"{layerA}/workdir/__root__/Test")
+                open(f"{layerA}/workdir/__root__/Test/__frozen__", "w").close()
+                # Rule 1 is not active: playback in fallback left no attr.
+                # Rule 2 finds each object in layerB.
+                self.run("record", "/")
+        # /Other is outside the frozen subtree -> layerB still serves it
+        # -> custom layer must NOT have /Other
+        assert not os.path.exists(f"{self.repo.path}/__root__/Other")
 
     def test_layer_record_compress_simple(self):
         """
@@ -1820,6 +2177,42 @@ class TestSync:
             # Test folder aka compress
             self.run("record", "/")
             assert not os.path.isdir(os.path.join(self.repo.path, "__root__/Test"))
+
+    def test_layer_named_not_compressed(self):
+        """
+        A copy that lives in a named layer is not removed by compression, even
+        when a lower-priority layer holds identical content. Only the fallback
+        layer is subject to compression.
+        """
+        # Object starts in the fallback layer.
+        self.add_folder("Test", "Test")
+        self.run("playback", "/Test")
+
+        # Two named layers: 'high' (seqnum 09 -> index 1, higher priority) and
+        # 'low' (seqnum 01 -> index 2, lower priority).
+        with self.addlayer("01") as low, self.addlayer("09") as high:
+            high_ident = self.runner.sync.layers[1]["ident"]
+
+            # Lower layer holds Test titled 'Something'.
+            low_dir = "{}/workdir/__root__/Test".format(low)
+            os.makedirs(low_dir)
+            meta = zodbsync.mod_format({"title": "Something", "type": "Folder"})
+            with open("{}/__meta__".format(low_dir), "w") as f:
+                f.write(meta)
+
+            # Move Test into the high layer and make its content match the low
+            # layer, then record. Under fallback-only compression the high copy
+            # must survive; it must not be collapsed into the identical low layer.
+            with self.runner.sync.tm:
+                self.app.Test.title = "Something"
+                self.app.Test.zodbsync_layer = high_ident
+            self.run("record", "/")
+
+            high_meta = "{}/workdir/__root__/Test/__meta__".format(high)
+            assert os.path.exists(high_meta)
+            # Fallback copy is gone (moved out); low layer copy untouched.
+            assert not os.path.isdir(os.path.join(self.repo.path, "__root__/Test"))
+            assert os.path.exists("{}/__meta__".format(low_dir))
 
     @pytest.mark.parametrize("recurse", [True, False])
     def test_layer_playback(self, recurse):
@@ -1896,11 +2289,102 @@ class TestSync:
         assert self.app.Test2.title == "overwritten"
         assert self.app.Test3.title == ""
 
+    def test_layer_playback_boundary_attr_unchanged_content(self):
+        """Boundary check runs even when content is already up-to-date.
+
+        When fs_data == srv_data, mod_write is skipped. The boundary check
+        must still set zodbsync_layer on named-layer root objects.
+        """
+        self.add_folder("Test")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Test".format(self.repo.path),
+                "{}/workdir/__root__/Test".format(layer),
+            )
+            # Playback so ZODB matches named-layer FS content.
+            self.run("playback", "/Test")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # Clear attr so next playback must re-establish it.
+            with self.runner.sync.tm:
+                del self.app.Test.zodbsync_layer
+            # Content is already identical -> mod_write NOT called.
+            # Boundary check must still set the attr.
+            self.run("playback", "/Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+
+    def test_layer_playback_fallback_root_no_attr(self):
+        """Fallback root object: not a boundary -> no zodbsync_layer after playback."""
+        self.add_folder("Test")
+        self.run("playback", "/Test")
+        attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+        assert attr is None
+
+    def test_layer_playback_non_boundary_child_no_attr(self):
+        """Child in same named layer as parent: not a boundary -> no zodbsync_layer."""
+        self.add_folder("Folder")
+        self.add_folder("Child", parent="Folder")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            # Playback both Folder and Child from named layer.
+            self.run("playback", "/Folder")
+            # Folder is at boundary (parent=fallback, self=named) -> has attr.
+            # Child is in same named layer as Folder -> NOT boundary -> no attr.
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_mod_write_does_not_touch_zodbsync_layer(self):
+        """mod_write must not set or clear zodbsync_layer.
+
+        Before the fix, mod_write(layer=None) wiped zodbsync_layer on every
+        call (e.g. from extedit), destroying user-set layer intent.
+        """
+        with self.addlayer():
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.manage_addFolder(id="Test")
+                self.app.Test.zodbsync_layer = ident
+            data = zodbsync.mod_read(self.app.Test)
+            with self.runner.sync.tm:
+                zodbsync.mod_write(data, parent=self.app, obj_id="Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+
+    def test_layer_playback_preserves_zodbsync_layer_across_mod_write(self):
+        """mod_write must not touch zodbsync_layer.
+
+        Before this fix, mod_write(layer=None) wiped the attr. After removing
+        the layer parameter from mod_write, calling playback on an object whose
+        content changed must leave zodbsync_layer intact (the boundary check
+        manages it separately).
+        """
+        self.add_folder("Test")
+        with self.addlayer() as layer:
+            shutil.move(
+                "{}/__root__/Test".format(self.repo.path),
+                "{}/workdir/__root__/Test".format(layer),
+            )
+            self.run("playback", "/Test")
+            ident = self.runner.sync.layers[-1]["ident"]
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+            # Mutate ZODB object so fs_data != srv_data -> mod_write IS called.
+            with self.runner.sync.tm:
+                self.app.Test.title = "changed"
+            # After playback, boundary check must re-set attr (mod_write no
+            # longer touches it).
+            self.run("playback", "/Test")
+            attr = getattr(aq_base(self.app.Test), "zodbsync_layer", None)
+            assert attr == ident
+
     def test_layer_record(self):
         """
-        Add an object and move it to the lower layer. Record again. The object
-        must not be added to the top layer since it is already present in the
-        lower layer.
+        Add an object and move it to the lower layer. Clear zodbsync_layer so
+        rule 2 detects the new FS location. Record again — must stay in named
+        layer and not appear in the fallback layer.
         """
         self.add_folder("Test")
         self.run("playback", "/Test")
@@ -1914,11 +2398,10 @@ class TestSync:
             self.run("record", "/Test")
             assert not os.path.isdir(os.path.join(root[1], "Test"))
 
-    def test_layer_record_deletion(self):
+    def test_layer_prune_single_named_layer(self):
         """
-        Have an object with subobjects defined in the lower layer, but not in
-        the Data.FS. Record it. The top-level layer needs to recreate the
-        folder and mark it as deleted.
+        Object exists only in the named layer (not in Data.FS). Recording
+        should remove the named-layer directory without creating __deleted__.
         """
         self.add_folder("Test")
         self.add_folder("Sub", parent="Test")
@@ -1927,8 +2410,52 @@ class TestSync:
             tgtroot = os.path.join(layer, "workdir/__root__")
             os.rename(os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test"))
             self.run("record", "/")
-            assert os.path.isdir(os.path.join(srcroot, "Test"))
+            # Named-layer dir removed; no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(tgtroot, "Test"))
+            assert not os.path.isdir(os.path.join(srcroot, "Test"))
+
+    def test_layer_prune_multi_layer(self):
+        """
+        Object exists in both the fallback layer and a named layer (not in
+        Data.FS). Recording should place __deleted__ in the topmost (fallback)
+        layer to shadow the named-layer copy.
+        """
+        self.add_folder("Test")
+        self.add_folder("Sub", parent="Test")
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, "__root__")
+            tgtroot = os.path.join(layer, "workdir/__root__")
+            shutil.copytree(
+                os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test")
+            )
+            self.run("record", "/")
+            # Fallback layer gets __deleted__ to shadow the named-layer copy
             assert os.path.exists(os.path.join(srcroot, "Test/__deleted__"))
+
+    def test_layer_prune_frozen_masks_lower(self):
+        """
+        Object exists in both the fallback layer (with __frozen__) and a named
+        layer. The frozen marker in the fallback layer makes the named layer
+        invisible for that subtree. Pruning should treat this as single-layer
+        (only fallback counts) and delete from fallback — NOT create __deleted__.
+        """
+        self.add_folder("Test")
+        self.add_folder("Sub", parent="Test")
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, "__root__")
+            tgtroot = os.path.join(layer, "workdir/__root__")
+            # Copy Test into named layer (so it exists in both layers)
+            shutil.copytree(
+                os.path.join(srcroot, "Test"), os.path.join(tgtroot, "Test")
+            )
+            # Freeze Test in the fallback layer (marks named layer as invisible)
+            with open(os.path.join(srcroot, "Test/__frozen__"), "w"):
+                pass
+            self.run("record", "/")
+            # Frozen masks named layer -> only 1 visible layer (fallback) ->
+            # single-layer delete, no __deleted__ marker
+            assert not os.path.isdir(os.path.join(srcroot, "Test"))
+            assert not os.path.exists(os.path.join(srcroot, "Test/__deleted__"))
 
     def test_layer_record_prune(self):
         """
@@ -1949,8 +2476,7 @@ class TestSync:
     def test_layer_watch_rename(self):
         """
         Rename an object in the Data.FS that is recorded in a lower layer.
-        Check that the watcher does the right thing, marking the original
-        object as deleted and creating the new object.
+        The renamed object keeps the layer assignment of its OID (rule 1).
         """
         with self.addlayer() as layer:
             os.rename(
@@ -1967,11 +2493,16 @@ class TestSync:
                 with conn.tm:
                     conn.app.manage_renameObject("index_html", "something")
             watcher.step()
-            assert os.path.exists(
-                os.path.join(self.repo.path, "__root__/index_html/__deleted__")
+            # index_html was only in the named layer; single-layer prune removes
+            # it directly without creating __deleted__ in the fallback layer
+            assert not os.path.isdir(os.path.join(layer, "workdir/__root__/index_html"))
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__/index_html")
             )
+            # object was in named layer (setup recorded it there via rule 2);
+            # after rename the OID keeps zodbsync_layer so rule 1 routes to named
             assert os.path.exists(
-                os.path.join(self.repo.path, "__root__/something/__meta__")
+                os.path.join(layer, "workdir/__root__/something/__meta__")
             )
 
     def test_layer_watch_paste(self):
@@ -1998,28 +2529,36 @@ class TestSync:
                 with conn.tm:
                     cp = conn.app.Test1.manage_cutObjects(["Sub"])
                     conn.app.Test2._pasteObjects(cp)
-            paths = [
-                os.path.join(self.repo.path, "__root__", path)
-                for path in ["Test1/Sub/__deleted__", "Test2/Sub/__meta__"]
-            ]
-            self.watcher_step_until(watcher, lambda: all(map(os.path.exists, paths)))
+            layer_root = "{}/workdir/__root__".format(layer)
+            # Sub was only in named layer; single-layer prune removes it from
+            # named Test1 directly; no __deleted__ in fallback layer.
+            self.watcher_step_until(
+                watcher,
+                lambda: (
+                    os.path.exists(os.path.join(layer_root, "Test2/Sub/__meta__"))
+                    and not os.path.isdir(os.path.join(layer_root, "Test1/Sub"))
+                ),
+            )
             with self.newconn() as conn:
                 with conn.tm:
                     cp = conn.app.Test2.manage_cutObjects(["Sub"])
                     conn.app.Test1._pasteObjects(cp)
 
-            paths = [
-                os.path.join(self.repo.path, "__root__", path)
-                for path in ["Test1", "Test2"]
-            ]
-            # Both folders must be removed
-            self.watcher_step_until(watcher, lambda: not any(map(os.path.isdir, paths)))
+            # After paste back: named Test2/Sub removed (single layer), Sub
+            # re-recorded to named Test1/Sub.
+            self.watcher_step_until(
+                watcher,
+                lambda: (
+                    not os.path.isdir(os.path.join(layer_root, "Test2/Sub"))
+                    and os.path.exists(os.path.join(layer_root, "Test1/Sub/__meta__"))
+                ),
+            )
 
     def test_layer_recreate_deleted(self):
         """
-        Delete an object from the custom layer s.t. it obtains a __deleted__
-        marker. Recreate it and make sure that it is no longer present in the
-        custom layer since it is the same as below.
+        Object recorded to fallback, then moved to named layer (single-layer).
+        Delete from ZODB: named-layer dir is removed, no __deleted__ created.
+        Recreate in ZODB: re-recorded to named layer, fallback stays clean.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2027,23 +2566,27 @@ class TestSync:
         with self.addlayer() as layer:
             self.run("record", "/Test")
             root = os.path.join(self.repo.path, "__root__")
+            named_root = os.path.join(layer, "workdir/__root__")
             os.rename(
                 os.path.join(root, "Test"),
-                os.path.join(layer, "workdir/__root__/Test"),
+                os.path.join(named_root, "Test"),
             )
             self.app.manage_delObjects(ids=["Test"])
             self.run("record", "/")
-            assert os.path.exists(os.path.join(root, "Test/__deleted__"))
+            # Single-layer: named dir removed, no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(named_root, "Test"))
+            assert not os.path.isdir(os.path.join(root, "Test"))
             self.app.manage_addFolder(id="Test")
             self.run("record", "/Test")
-            assert not os.path.isdir(os.path.join(root, "Test"))
+            # Recreated: root.__meta__ is in fallback (rule 3), so Test goes there
+            assert os.path.exists(os.path.join(root, "Test/__meta__"))
+            assert not os.path.isdir(os.path.join(named_root, "Test"))
 
     def test_layer_remove_subfolder(self):
         """
-        Set up a folder with a subfolder, both only defined in the lower layer.
-        Remove the subfolder. Check that both folders are created in the custom
-        folder, without __meta__ but in order to correctly place the
-        __deleted__ marker.
+        Set up a folder with a subfolder, both only in the named layer.
+        Remove the subfolder. Single-layer prune removes Sub from named layer
+        directly; no __deleted__ marker is created in the fallback layer.
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2052,16 +2595,20 @@ class TestSync:
         with self.addlayer() as layer:
             self.run("record", "/")
             root = os.path.join(self.repo.path, "__root__")
+            named_root = os.path.join(layer, "workdir/__root__")
             os.rename(
                 os.path.join(root, "Test"),
-                os.path.join(layer, "workdir/__root__/Test"),
+                os.path.join(named_root, "Test"),
             )
             with self.runner.sync.tm:
                 self.app.Test.manage_delObjects(ids=["Sub"])
             self.run("record", "/")
+            # Test still in named layer (still in ZODB); fallback has no Test
             assert not os.path.exists(os.path.join(root, "Test/__meta__"))
             assert not os.path.exists(os.path.join(root, "Test/Sub/__meta__"))
-            assert os.path.exists(os.path.join(root, "Test/Sub/__deleted__"))
+            # Sub deleted from named layer; no __deleted__ in fallback
+            assert not os.path.isdir(os.path.join(named_root, "Test/Sub"))
+            assert not os.path.isdir(os.path.join(root, "Test/Sub"))
 
     def test_layer_update(self, caplog):
         """
@@ -2171,12 +2718,10 @@ class TestSync:
     def test_layer_update_warn(self, caplog):
         """
         Set up a layer and initialize it. Change an object that is provided by
-        this layer and record the change into the custom layer. Update the base
-        layer such that this object would change and make sure that we are
-        warned that the change is ignored due to a collision.
-        Also check that deletion of an object in the base layer that is not
-        masked in the custom layer, but that has a masked subobject, also leads
-        to a warning.
+        this layer and record it (now routes to named layer via rule 2). Update
+        the base layer so that the object changes and ToDelete is removed.
+        Verify no AttributeError occurs and that playback applies the source
+        changes to the ZODB (Test uploaded, ToDelete removed).
         """
         with self.runner.sync.tm:
             self.app.manage_addFolder(id="Test")
@@ -2199,18 +2744,18 @@ class TestSync:
                 f.write(zodbsync.mod_format({"title": "Changed", "type": "Folder"}))
             shutil.rmtree(os.path.join(tgt, "ToDelete"))
             self.run("layer-update", ident)
-            expect = "Conflict with object in custom layer: "
-            assert expect + "/Test" in caplog.text
+            # With issue-3 layer routing, edits go to named layer (not custom),
+            # so no custom-layer conflict fires. Verify no errors and that
+            # playback happened (Test uploaded, ToDelete removed from ZODB).
             assert "AttributeError" not in caplog.text
-            assert expect + "/ToDelete/Sub" in caplog.text
+            assert "Uploading /Test/" in caplog.text
+            assert "Removing object /ToDelete/" in caplog.text
 
     def test_layer_change_into_top(self):
         """
-        Verify that changed files are written into the top layer.
-        Note that this is not what we want in the long run, but until we have
-        methods for moving objects between layers and there is a frontend for
-        showing unstaged changes in all layers, everything is written into the
-        top layer.
+        After record, a changed object whose __meta__ is in a named layer
+        must be written back to that named layer (rule 2 on first record,
+        rule 1 on subsequent records).
         """
         with self.runner.sync.tm:
             self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
@@ -2227,15 +2772,12 @@ class TestSync:
                 )
             self.run("record", "/")
             root = os.path.join(self.repo.path, "__root__")
-            # both meta and source file are in custom layer
-            assert os.path.exists(os.path.join(root, "blob/__meta__"))
-            assert os.path.exists(os.path.join(root, "blob/__source__.txt"))
-            source_fmt = "{}/__root__/blob/__source__.txt"
-            with open(source_fmt.format(f"{layer}/workdir")) as f:
-                # source in layer should still be empty
-                assert f.read() == ""
-            with open(source_fmt.format(self.repo.path)) as f:
-                # ... content is in custom layer!
+            # custom layer must NOT have blob
+            assert not os.path.exists(os.path.join(root, "blob/__meta__"))
+            assert not os.path.exists(os.path.join(root, "blob/__source__.txt"))
+            # named layer has the new content
+            layer_root = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            with open(layer_root) as f:
                 assert f.read() == "text_content"
 
     def test_layer_playback_hook(self):
@@ -2353,20 +2895,247 @@ class TestSync:
         with self.addlayer() as layer:
             self.run("record", "/blob")
             assert getattr(self.app.blob, "zodbsync_layer", None) is None
-            # Move file to layer and check that layer info is stored in Data.FS
+            # Move file to layer; rule 2 detects new FS location
             shutil.move(
                 "{}/__root__/blob".format(self.repo.path),
                 "{}/workdir/__root__/blob".format(layer),
             )
             self.run("record", "/")
             assert getattr(self.app.blob, "zodbsync_layer") is not None
-            # Change file in Data.FS and verify that layer info is cleared
+            # Change file in Data.FS and verify that layer info is preserved
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
                     filedata="text_content", content_type="text/plain", title="BLOB"
                 )
             self.run("record", "/")
+            # rule 1 routes back to named layer because zodbsync_layer was set above
+            ident = self.runner.sync.layers[-1]["ident"]
+            assert getattr(self.app.blob, "zodbsync_layer") == ident
+
+    def test_layer_record_rule4_fallback_custom(self):
+        """Rule 4: root in fallback -> not a boundary -> no zodbsync_layer attr."""
+        with self.addlayer():
+            self.run("record", "/")  # initialise runner with layer config
+            with self.runner.sync.tm:
+                self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
             assert getattr(self.app.blob, "zodbsync_layer", None) is None
+
+    def test_layer_record_rule2_fs_presence(self):
+        """Rule 2: existing __meta__ in named layer -> record writes there."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")  # custom layer
+            shutil.move(
+                "{}/__root__/blob".format(self.repo.path),
+                "{}/workdir/__root__/blob".format(layer),
+            )
+            # rule 2 fires: no zodbsync_layer, FS now in named layer
+            with self.runner.sync.tm:
+                self.app.blob.manage_edit(
+                    filedata="new_content", content_type="text/plain", title=""
+                )
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_src = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            assert not os.path.exists(custom_meta)
+            with open(named_src) as f:
+                assert f.read() == "new_content"
+
+    def test_layer_record_rule1_zodbsync_layer(self):
+        """Rule 1: obj.zodbsync_layer set -> record writes to that named layer."""
+        with self.addlayer() as layer:
+            self.mkrunner("record")  # init runner with layer config
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+                self.app.blob.zodbsync_layer = ident  # explicitly assign
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert not os.path.exists(custom_meta)
+            assert os.path.exists(named_meta)
+
+    def test_layer_record_rule3_parent_layer(self):
+        """Rule 3: parent __meta__ in named layer -> new child lands in same layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id="Folder")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            # Rule 2 detects named-layer location and sets Folder.zodbsync_layer.
+            self.run("record", "/Folder")
+            # now create child under Folder
+            with self.runner.sync.tm:
+                self.app.Folder.manage_addFolder(id="Child")
+            self.run("record", "/Folder/Child")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/Child/__meta__"
+            )
+            named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
+            assert not os.path.exists(custom_child)
+            assert os.path.exists(named_child)
+            # Child is in the same layer as Folder (not a boundary) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_layer_watch_rule1_into_named_layer(self):
+        """Watch rule 1: zodbsync_layer set -> watcher writes to named layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            shutil.move(
+                "{}/__root__/blob".format(self.repo.path),
+                "{}/workdir/__root__/blob".format(layer),
+            )
+            self.run("record", "/blob")  # rule 2 detects named layer, sets attr
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.manage_edit(
+                        filedata="watched_content", content_type="text/plain", title=""
+                    )
+            watcher.step()
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            named_src = "{}/workdir/__root__/blob/__source__.txt".format(layer)
+            assert not os.path.exists(custom_meta)
+            with open(named_src) as f:
+                assert f.read() == "watched_content"
+
+    def test_layer_watch_rule3_new_child_inherits_parent(self):
+        """Watch rule 3: parent in named layer -> new child written to same layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addFolder(id="Folder")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            shutil.move(
+                "{}/__root__/Folder".format(self.repo.path),
+                "{}/workdir/__root__/Folder".format(layer),
+            )
+            # Rule 2 detects named-layer location and sets Folder.zodbsync_layer.
+            self.run("record", "/Folder")  # sets Folder.zodbsync_layer
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.Folder.manage_addFolder(id="Child")
+            watcher.step()
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/Child/__meta__"
+            )
+            named_child = "{}/workdir/__root__/Folder/Child/__meta__".format(layer)
+            assert not os.path.exists(custom_child)
+            assert os.path.exists(named_child)
+            # Child is in same layer as Folder (not a boundary) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_layer_divergence_record(self):
+        """Divergence: file in fallback, zodbsync_layer=named -> moves to named."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+
+    def test_layer_divergence_watch(self):
+        """Divergence: file in fallback, zodbsync_layer set via watch -> named."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.zodbsync_layer = ident
+            watcher.step()
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+
+    def test_layer_divergence_clears_frozen(self):
+        """Divergence move removes __frozen__ marker from old layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_blob_dir = os.path.join(self.repo.path, "__root__/blob")
+            frozen = os.path.join(custom_blob_dir, "__frozen__")
+            with open(frozen, "wb"):
+                pass
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            assert not os.path.exists(frozen)
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+
+    def test_layer_divergence_record_back(self):
+        """Divergence: file in named layer, zodbsync_layer="" -> moves to fallback."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            # Now move back to fallback layer
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ""
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
+
+    def test_layer_divergence_watch_back(self):
+        """Divergence: file in named layer, zodbsync_layer="" via watch -> fallback."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            with self.runner.sync.tm:
+                self.app.blob.zodbsync_layer = ident
+            self.run("record", "/blob")
+            named_meta = "{}/workdir/__root__/blob/__meta__".format(layer)
+            assert os.path.exists(named_meta)
+            # Move back to fallback via watch
+            watcher = self.mkrunner("watch")
+            watcher.setup()
+            with self.newconn() as conn:
+                with conn.tm:
+                    conn.app.blob.zodbsync_layer = ""
+            watcher.step()
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
 
     def test_fail_when_meta_is_missing(self):
         """
@@ -2403,3 +3172,227 @@ class TestSync:
             with open(f"{self.repo.path}/__root__/delfolder/__deleted__", "w"):
                 pass
             self.run("playback", "/")
+
+    def test_move_single_object(self):
+        """Move a single object to a named layer; verify FS state and zodbsync_layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/blob", ident)
+            named_meta = f"{layer}/workdir/__root__/blob/__meta__"
+            assert os.path.exists(named_meta)
+            assert not os.path.exists(custom_meta)
+            assert getattr(self.app.blob, "zodbsync_layer") == ident
+
+    def test_move_no_recurse(self):
+        """--no-recurse moves only the named object, not its children."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "--no-recurse", "/Folder", ident)
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/child/__meta__"
+            )
+            assert os.path.exists(named_folder)
+            assert not os.path.exists(custom_folder)
+            # child not moved: still in custom layer
+            assert os.path.exists(custom_child)
+
+    def test_move_recursive(self):
+        """Recursive move of a subtree moves all descendants to the named layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            named_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
+            custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            custom_child = os.path.join(
+                self.repo.path, "__root__/Folder/child/__meta__"
+            )
+            assert os.path.exists(named_folder)
+            assert os.path.exists(named_child)
+            assert not os.path.exists(custom_folder)
+            assert not os.path.exists(custom_child)
+            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+            # child is non-boundary (same layer as Folder) -> no attr
+            child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_move_skips_different_layer_child(self):
+        """Recursive move skips descendants already assigned to a different layer."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer("00") as layerB:
+            with self.addlayer("01") as layerA:
+                self.run("record", "/Folder")
+                ident_a = self.runner.sync.layers[-2][
+                    "ident"
+                ]  # layerA (higher priority)
+                ident_b = self.runner.sync.layers[-1][
+                    "ident"
+                ]  # layerB (lower priority)
+                # Explicitly assign child to layerB
+                with self.runner.sync.tm:
+                    self.app.Folder.child.zodbsync_layer = ident_b
+                self.run("record", "/Folder/child")
+                # Move Folder to layerA; child should be skipped
+                self.run("move", "/Folder", ident_a)
+                named_folder = f"{layerA}/workdir/__root__/Folder/__meta__"
+                named_child_b = f"{layerB}/workdir/__root__/Folder/child/__meta__"
+                custom_folder = os.path.join(self.repo.path, "__root__/Folder/__meta__")
+                assert os.path.exists(named_folder)
+                assert not os.path.exists(custom_folder)
+                # child stays in layerB (not moved to layerA)
+                assert os.path.exists(named_child_b)
+                assert getattr(self.app.Folder.child, "zodbsync_layer") == ident_b
+
+    def test_move_skips_child_in_different_layer_no_attr(self):
+        """Recursive move skips a child in a different layer even without attr.
+
+        Sequence: child is in fallback with no zodbsync_layer (non-boundary
+        under boundary-only semantics). Parent is moved to layer_inner via
+        --no-recurse (child left behind in fallback, still no attr). A second
+        recursive move from layer_inner to layer_outer must skip the child
+        — child's FS is in fallback (≠ layer_inner source) but has no attr
+        for the old check to detect.
+
+        Layer order note: load_layer_config reverses sort order, so with
+        addlayer("00") as outer and addlayer("01") as inner:
+          layers[-2] = 01-xxx = inner_layer context
+          layers[-1] = 00-xxx = outer_layer context
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer("00") as outer_layer:
+            with self.addlayer("01") as inner_layer:
+                inner_ident = self.runner.sync.layers[-2]["ident"]
+                outer_ident = self.runner.sync.layers[-1]["ident"]
+                self.run("record", "/Folder")
+                # child is in fallback, non-boundary -> no zodbsync_layer
+                assert (
+                    getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+                    is None
+                )
+                # Move only Folder to inner_layer (child left in fallback).
+                self.run("move", "--no-recurse", "/Folder", inner_ident)
+                fallback_child = os.path.join(
+                    self.repo.path, "__root__/Folder/child/__meta__"
+                )
+                assert os.path.exists(fallback_child)
+                # Recursively move Folder from inner to outer.
+                # src_ident = inner; child's FS is in fallback ("" ≠ inner)
+                # -> child must be skipped. No attr exists to trigger old check.
+                self.run("move", "/Folder", outer_ident)
+                outer_folder = f"{outer_layer}/workdir/__root__/Folder/__meta__"
+                outer_child = f"{outer_layer}/workdir/__root__/Folder/child/__meta__"
+                inner_folder = f"{inner_layer}/workdir/__root__/Folder/__meta__"
+                assert os.path.exists(outer_folder)
+                assert not os.path.exists(inner_folder)
+                # child stays in fallback, not moved to outer_layer
+                assert os.path.exists(fallback_child)
+                assert not os.path.exists(outer_child)
+
+    def test_move_to_custom_layer(self):
+        """Move a named-layer object back to the custom layer using empty string."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFile(id="blob")
+        with self.addlayer() as layer:
+            self.run("record", "/blob")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # First move to named layer
+            self.run("move", "/blob", ident)
+            named_meta = f"{layer}/workdir/__root__/blob/__meta__"
+            assert os.path.exists(named_meta)
+            # Now move back to custom layer
+            self.run("move", "/blob", "")
+            custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
+            assert os.path.exists(custom_meta)
+            assert not os.path.exists(named_meta)
+            assert getattr(self.app.blob, "zodbsync_layer") == ""
+
+    def test_move_processes_unrecorded_child(self):
+        """Recursive move processes a child with no FS presence (not yet recorded)."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            # Record only Folder, not child -> child has no __meta__ anywhere.
+            self.run("record", "--no-recurse", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            # Folder moved; child has no __meta__ to copy but no crash.
+            named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
+            assert os.path.exists(named_folder)
+            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+
+    def test_move_clears_stale_src_attr_on_child(self):
+        """Recursive move clears zodbsync_layer on child if it equals src_ident.
+
+        Legacy code set zodbsync_layer on every object including non-boundary
+        children. After move, such a child is still non-boundary (same layer as
+        parent) so the stale src-layer attr must be removed.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            src_ident = ""  # fallback
+            # Simulate legacy attr: child has attr = src_ident (stale)
+            with self.runner.sync.tm:
+                self.app.Folder.child.zodbsync_layer = src_ident
+            ident = self.runner.sync.layers[-1]["ident"]
+            self.run("move", "/Folder", ident)
+            named_child = f"{layer}/workdir/__root__/Folder/child/__meta__"
+            assert os.path.exists(named_child)
+            # stale attr cleared
+            child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
+            assert child_attr is None
+
+    def test_move_deep_child_behind_different_layer_gets_explicit_attr(self):
+        """Deep src child behind different-layer intermediate gets explicit tgt attr.
+
+        /Folder in fallback, /Folder/middle in mid layer, /Folder/middle/leaf
+        in fallback. Bug: _clear_src_attrs deleted leaf's '' attr, causing
+        leaf to acquire mid_ident from middle — mismatching FS location in tgt
+        layer. Fix: when ancestor acquisition chain would yield wrong layer,
+        set tgt_ident explicitly instead of deleting.
+        """
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFolder(id="middle")
+            self.app.Folder.middle.manage_addProduct["OFSP"].manage_addFile(id="leaf")
+        with self.addlayer("00"):
+            with self.addlayer("01"):
+                mid_ident = self.runner.sync.layers[-2]["ident"]
+                tgt_ident = self.runner.sync.layers[-1]["ident"]
+                self.run("record", "/Folder")
+                # Assign middle to mid layer
+                with self.runner.sync.tm:
+                    self.app.Folder.middle.zodbsync_layer = mid_ident
+                self.run("record", "/Folder/middle")
+                # leaf has explicit fallback attr (= src_ident)
+                with self.runner.sync.tm:
+                    self.app.Folder.middle.leaf.zodbsync_layer = ""
+                # Move /Folder from fallback to tgt
+                self.run("move", "/Folder", tgt_ident)
+                # leaf must have explicit tgt_ident (not None → would acquire mid_ident)
+                leaf_attr = getattr(
+                    aq_base(self.app.Folder.middle.leaf), "zodbsync_layer", None
+                )
+                assert leaf_attr == tgt_ident

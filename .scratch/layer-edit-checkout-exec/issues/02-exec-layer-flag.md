@@ -1,0 +1,22 @@
+# exec: add --layer flag
+
+Status: done
+
+## What to build
+
+Add `--layer <ident>` to `zodbsync exec` so it can run a command in a named layer's git workdir and play back only that layer's changes. Omitting `--layer` keeps current behavior (fallback layer). Follow the same pattern as `zodbsync pick`: resolve the layer in `__init__`, set `self._git_workdir`, let `@gitexec` handle the rest.
+
+## Acceptance criteria
+
+- [x] `zodbsync exec --layer "ident" "cmd"` runs `cmd` in the named layer's workdir and plays back changed objects
+- [x] Unknown `--layer` ident exits with a clear error message
+- [x] `zodbsync exec "cmd"` (no `--layer`) is unchanged
+- [x] `--nocd` combined with `--layer` runs the command without cd but still checks only the specified layer
+
+## Blocked by
+
+None — can start immediately.
+
+## Comments
+
+Implemented in `perfact/zodbsync/commands/execute.py`: added `__init__` (same layer resolution pattern as `checkout`/`pick`), `--layer` arg, and updated `run()` to use `_git_workdir` as cwd when `--layer` set and `--nocd` not given. Tests: `test_exec_layer`, `test_exec_layer_nocd`, `test_exec_layer_unknown_ident`.

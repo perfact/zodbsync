@@ -6,8 +6,19 @@ from ..subcommand import SubCommand
 class Pick(SubCommand):
     """Cherry-pick commits, apply them and play back affected objects"""
 
+    _layer_no_stash = True
+
     @staticmethod
     def add_args(parser):
+        parser.add_argument(
+            "--layer",
+            type=str,
+            default=None,
+            help=(
+                "Named layer ident to cherry-pick into"
+                " (empty string for fallback layer)"
+            ),
+        )
         parser.add_argument(
             "--skip-errors",
             action="store_true",

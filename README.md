@@ -198,13 +198,52 @@ This allows commands like the following:
     zodbsync exec "git reset --hard COMMIT"
     zodbsync exec "git revert COMMIT"
 
+The optional `--layer <ident>` flag runs the command in the named layer's
+workdir (instead of cding to the fallback layer workdir) and diffs only that
+layer. Omitting `--layer` keeps fallback-layer behavior.
+
+The optional `--nocd` flag skips the `cd` into the git workdir, so the command
+runs in the caller's working directory. When `--nocd` is given without
+`--layer`, all layers are snapshotted before the command runs; after it
+completes, the union of all changed paths across every layer is played back in
+a single pass. Unstaged changes in each layer are stashed before the command
+and restored after. On failure, all layers are rolled back to their original
+commits and stashes are popped; a best-effort playback is attempted for any
+objects already written. With `--nocd --layer <ident>` only the named layer is
+checked (existing scoped behavior).
+
 ### `zodbsync reset`
 
-Shorthand for `zodbsync exec "git reset --hard COMMIT"`
+Resets one or more layer repos to target commits and plays back the union of
+changed paths in a single pass.
+
+```
+zodbsync reset [--dry-run] [--skip-errors] <commit>
+zodbsync reset [--dry-run] [--skip-errors] <ident>:<commit> [<ident>:<commit> ...]
+```
+
+The bare `<commit>` form is a shorthand for `zodbsync exec "git reset --hard
+<commit>"` and operates on the fallback layer only.
+
+The `<ident>:<commit>` form resets the named layer identified by `<ident>` to
+the given commit. Multiple targets may be listed; they are reset in order and
+the union of all changed paths is played back in a single pass. An empty
+`<ident>` addresses the fallback layer.
+
+Multi-layer reset is all-or-nothing: if any step fails, every already-reset
+layer is rolled back to its original commit. Unstaged changes in each target
+layer are stashed before resetting and restored on success or failure.
 
 ### `zodbsync checkout`
 
-Wrapper for `git checkout` with some of its functionality.
+Wrapper for `git checkout` with some of its functionality. Supports `--reset`
+to hard-reset after checkout, `--rebase` to rebase onto a commit, and `-b` /
+`--track` to create or track branches.
+
+The optional `--layer <ident>` flag operates on the named layer's workdir
+instead of the fallback layer. Unstaged changes in the target workdir are
+stashed before checkout and restored after. Omitting `--layer` keeps existing
+fallback-layer behavior.
 
 ### `zodbsync pick`
 
@@ -233,6 +272,13 @@ that are reachable from `COMMIT2` but not from `COMMIT1` are picked. In
 practice, choosing commits that are not directly connected will result in some
 commit not being able to be picked due to conflicts and a rollback of the
 operation.
+
+The optional `--layer <ident>` flag cherry-picks into the named layer's
+`workdir` instead of the fallback layer. The named layer's workdir must be
+clean before picking; dirty workdirs cause an immediate error with no
+cherry-pick attempted. Changed paths are collected from the named layer's git
+diff and played back as usual. The fallback layer's repo and workdir are
+untouched.
 
 
 ### `zodbsync upload` (DEPRECATED)
@@ -348,6 +394,27 @@ The representation rules for objects in a multi-layer setup are as follows:
   However, if some subobject is defined while no active layer provides the
   parent, re-recording will remove it.
 
+### Layer resolution in `record` and `watch`
+
+When `record` or `watch` writes an object, it determines the target layer using
+the following priority order:
+
+1. `obj.zodbsync_layer` attribute on the ZODB object (if set — authoritative)
+2. The highest-priority layer that already has a `__meta__` file for this object
+3. The layer where the parent object is recorded
+4. The fallback layer (ultimate fallback — only reached for root-level objects
+   with no prior recording)
+
+When an object is deleted:
+
+- If it exists in only one layer: its files are removed, no marker is needed.
+- If it exists in multiple layers: a `__deleted__` marker is placed in the
+  topmost layer that held the object, shadowing any lower-layer definitions.
+
+When `record` or `watch` detects that the above rules would write to a different
+layer than where the object currently lives (layer divergence), the object is
+moved to the correct layer and the old location is cleaned up.
+
 The following subcommands for `zodbsync` provide layer handling:
 
 ### `layer-init`
@@ -367,6 +434,46 @@ in the `git` history in the `workdir`, but the working directory and the
 resulting Data.FS content are reset. It is therefore possible to pre-apply
 changes that will be part of the next release, but if there is a change that is
 not yet merged upstream, the layer should not be updated until it is.
+
+### `zodbsync move`
+
+```
+zodbsync move <zope-path> <layer-ident> [--no-recurse]
+```
+
+Moves an object's filesystem representation from its current layer to a target
+layer identified by `<layer-ident>`. The fallback layer is addressed with an
+empty string (`""`). Recursive by default; `--no-recurse` limits the operation
+to the named object. Updates `obj.zodbsync_layer` in the ZODB. Descendants
+whose `zodbsync_layer` already differs from the source layer are skipped,
+preserving intentional cross-layer assignments. Does not create git commits.
+
+Typical use: promote a fallback-layer object into a named layer, or demote a
+named-layer object back to the fallback layer.
+
+### `zodbsync copy`
+
+```
+zodbsync copy <zope-path> <layer-ident> [--no-recurse]
+```
+
+Copies an object's current filesystem state to a target layer, then resets the
+source layer's workdir to its last git-committed state (`git checkout HEAD`).
+Updates `obj.zodbsync_layer` to the target layer. Does **not** place a
+`__frozen__` marker automatically. Recursive by default; `--no-recurse` limits
+the operation to the named object. Does not create git commits.
+
+Intended use: the source layer has uncommitted changes. After copy, the source
+resets to HEAD, creating an immediate content difference between target and
+source — this prevents the compression pass from collapsing the copy on the
+next `record`/`watch` cycle.
+
+**Known limitation:** if the source is already at HEAD (no uncommitted changes),
+the copy is content-identical to the source and compression will collapse it on
+the next `record`/`watch` cycle, reverting `obj.zodbsync_layer` back to the
+source layer. To prevent this, either edit the object in Zope before the next
+`record`/`watch` run, or place a `__frozen__` marker manually in the target
+layer's workdir.
 
 ## Compatibility
 This package replaces similar functionality that was previously found in
@@ -401,36 +508,17 @@ in order to build the test environment from `pyproject.toml` instead of
 just upgrade `tox` to latest version and retry.
 
 ## To Do / Roadmap
-To allow developing multiple layers on the same development system, `record`
-should be changed to follow the following rules:
 
-- If a new object is found, it is recorded into the `workdir` of the layer that
-  defines its parent.
-- If an object is changed, it is changed in the (top-most) layer that defined
-  the object.
-- If an object is deleted, it is deleted in all layers that define the object,
-  unless shadowed by a `__frozen__` marker.
+### Migration path for non-layered systems
 
-All commands that allow to apply changes, like `pick` and `reset`, should be
-able to work on all layers' workdirs, not only on the fallback layer.
+Systems that have not yet adopted layers, but whose objects partially overlap
+with objects provided by an upcoming named layer, need a migration tool. The
+intended workflow is roughly:
 
-Some more commands are then needed for the following layer use cases:
-- A new object is recorded into the layer where its parent is defined. However,
-  it should instead be an additional object defined in a different layer.
-- An object is changed, which is recorded into the layer where the object is
-  defined. However, the intention is not to pre-apply a change that is about to
-  also be included upstream, but to freeze and record the object into some
-  other layer.
-  - Manual steps that should cover this: Add a `__frozen__` marker, reset the
-    unstaged changes in the layer that wrongfully got the changes, and
-    `record`.
-- A migration path for systems that don't use layers yet, but have a lot of the
-  same objects that are to be provided by a separate layer, which will probably
-  have some deviations. It needs to be possible to decide which objects to
-  reset to their upstream state, which to freeze as changed into the custom
-  layer and which to add as change to the separate layer (intending to include
-  that change upstream until the next release).
-  - Should be something like: Do a merge-based upgrade and then obtain the list
-    of all deviating paths from the merge base. Add `__frozen__` markers where
-    necessary. Remove all superfluous files from the original layer (which now
-    becomes the fallback layer) and initialize the added layers.
+1. Do a merge-based upgrade to obtain the list of deviating object paths.
+2. Add `__frozen__` markers where the local version should take precedence.
+3. Remove superfluous duplicates from the fallback layer and initialize the new
+   named layer.
+
+No dedicated command exists for this yet; the steps can be done manually using
+`record`, `move`, `copy`, and direct filesystem operations.

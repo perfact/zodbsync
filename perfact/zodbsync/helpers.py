@@ -3,6 +3,7 @@ import ast
 import importlib
 import operator
 import os
+import subprocess
 
 
 class Namespace(object):
@@ -306,9 +307,68 @@ def load_layer_config(config=None, path=None):
     # Append default top-level layer
     layers.append(
         {
-            "ident": None,
+            "ident": "",
             "workdir": config["base_dir"],
         }
     )
     # Reverse order - index zero is the topmost fallback layer
     return list(reversed(layers))
+
+
+def set_zodbsync_layer(obj, layer_ident):
+    """
+    Set zodbsync_layer on a Zope object.
+
+    Intended to be imported and called from Zope Python Scripts (requires
+    allow_module for the perfact namespace). Python Scripts cannot set
+    attributes directly (RestrictedPython raises TypeError), but calling
+    a module function bypasses that restriction.
+
+    Pass None to clear the attribute so that record/watch fall back to
+    FS-presence and parent-layer resolution on the next run. Pass "" to set
+    sticky fallback (routes to the top-level custom layer via Rule 1).
+    """
+    if layer_ident is not None:
+        obj.zodbsync_layer = layer_ident
+    else:
+        try:
+            del obj.zodbsync_layer
+        except AttributeError:
+            pass
+
+
+def git_cmd(workdir, *args):
+    """Build a git command line running against an explicit workdir."""
+    return ["git", "--no-pager", "-C", workdir] + list(args)
+
+
+def git_run(workdir, *args):
+    """Run a git command in the given workdir."""
+    subprocess.check_call(git_cmd(workdir, *args))
+
+
+def git_try(workdir, *args):
+    """Run a git command in the given workdir, returning the return code."""
+    return subprocess.call(git_cmd(workdir, *args))
+
+
+def git_output(workdir, *args):
+    """Run a git command in the given workdir and return its output."""
+    return subprocess.check_output(git_cmd(workdir, *args), universal_newlines=True)
+
+
+def git_head(workdir):
+    """Return the current HEAD commit of the repo in workdir."""
+    return git_output(workdir, "rev-parse", "HEAD").strip()
+
+
+def git_unstaged(workdir):
+    """Return the list of unstaged (including untracked) files in workdir."""
+    raw = git_output(workdir, "status", "--untracked-files", "-z")
+    return [line[3:] for line in raw.split("\0") if line]
+
+
+def git_changed(workdir, orig):
+    """Return the set of files changed between orig and the current state."""
+    output = git_output(workdir, "diff", orig, "--name-only", "--no-renames")
+    return {line for line in output.strip().split("\n") if line}
