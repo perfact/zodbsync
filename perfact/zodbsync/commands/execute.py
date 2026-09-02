@@ -12,15 +12,7 @@ class Exec(SubCommand):
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        layer_ident = self.args.layer
-        if layer_ident is not None:
-            layer = next(
-                (la for la in self.sync.layers if la["ident"] == layer_ident),
-                None,
-            )
-            if layer is None:
-                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
-            self._git_workdir = layer["workdir"]
+        self._set_layer()
 
     @staticmethod
     def add_args(parser):
@@ -60,7 +52,7 @@ class Exec(SubCommand):
 
     @SubCommand.gitexec
     def _run_single_layer(self):
-        cwd = None if self.args.nocd else (self._git_workdir or self.sync.base_dir)
+        cwd = None if self.args.nocd else self._git_workdir
         subprocess.check_call(self.args.cmd, cwd=cwd, shell=True)
 
     @SubCommand.with_lock

@@ -8,15 +8,7 @@ class Checkout(SubCommand):
 
     def __init__(self, **kw):
         super().__init__(**kw)
-        layer_ident = self.args.layer
-        if layer_ident is not None:
-            layer = next(
-                (la for la in self.sync.layers if la["ident"] == layer_ident),
-                None,
-            )
-            if layer is None:
-                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
-            self._git_workdir = layer["workdir"]
+        self._set_layer()
 
     @staticmethod
     def add_args(parser):
