@@ -189,7 +189,7 @@ class Watch(SubCommand):
             old_pathinfo = self.sync.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]
         if old_idx is not None and old_idx != target_layer_idx:
-            self.sync.delete_layer_files(old_pathinfo["fspath"])
+            self.sync.fs_delete_files(old_pathinfo["fspath"])
         self.sync.fs_write(
             path=path,
             data=data,

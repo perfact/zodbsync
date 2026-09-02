@@ -44,7 +44,8 @@ class Move(SubCommand):
             return pathinfo["layers"][pathinfo["layeridx"]]["ident"]
         return ""
 
-    def _clear_src_attrs(self, obj, src_ident, tgt_ident, acquired_ident=None):
+    @staticmethod
+    def _clear_src_attrs(obj, src_ident, tgt_ident, acquired_ident=None):
         """Recursively update zodbsync_layer on descendants.
 
         Moving from src_ident to tgt_ident. acquired_ident tracks what a child
@@ -69,7 +70,7 @@ class Move(SubCommand):
                 child_acquired = child_ident
             else:
                 child_acquired = acquired_ident
-            self._clear_src_attrs(child, src_ident, tgt_ident, child_acquired)
+            Move._clear_src_attrs(child, src_ident, tgt_ident, child_acquired)
 
     @SubCommand.with_lock
     def run(self):
@@ -119,7 +120,7 @@ class Move(SubCommand):
                                     os.path.join(src_dir, name),
                                     os.path.join(tgt_dir, name),
                                 )
-                        self.sync.delete_layer_files(src_dir)
+                        self.sync.fs_delete_files(src_dir)
                 obj.zodbsync_layer = tgt_ident
 
         self.sync.fs_prune_empty_dirs()
