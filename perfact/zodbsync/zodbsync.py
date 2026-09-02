@@ -268,8 +268,7 @@ class ZODBSync:
         # server!" messages (which is mostly relevant for the tests).
         self.tm = transaction.TransactionManager()
         db = App.config.getConfiguration().dbtab.getDatabase("/", is_root=1)
-        self._conn = db.open(self.tm)
-        self.app = self._conn.root.Application
+        self.app = db.open(self.tm).root.Application
 
         # Initialize layers
         self.layers = load_layer_config(config=self.config)
@@ -299,17 +298,6 @@ class ZODBSync:
             os.makedirs(root, exist_ok=True)
             if not os.path.isdir(f"{workdir}/.git"):
                 sp.run(["git", "init"], cwd=workdir, check=True)
-
-    def close(self):
-        """Close the ZODB connection and return it to the pool."""
-        try:
-            self.tm.abort()
-        except Exception:
-            pass
-        try:
-            self._conn.close()
-        except Exception:
-            pass
 
     def create_manager_user(self):
         """
