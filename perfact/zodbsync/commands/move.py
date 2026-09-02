@@ -119,7 +119,7 @@ class Move(SubCommand):
                                     os.path.join(src_dir, name),
                                     os.path.join(tgt_dir, name),
                                 )
-                        self.sync._delete_layer_files(src_dir)
+                        self.sync.delete_layer_files(src_dir)
                 obj.zodbsync_layer = tgt_ident
 
         self.sync.fs_prune_empty_dirs()
