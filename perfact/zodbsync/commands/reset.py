@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import subprocess
-
+from ..helpers import git_changed, git_head, git_output, git_run, git_try, git_unstaged
 from ..subcommand import SubCommand
 
 
@@ -36,31 +35,6 @@ class Reset(SubCommand):
                 return layer
         return None
 
-    def _git(self, workdir, *args):
-        return ["git", "--no-pager", "-C", workdir] + list(args)
-
-    def _git_run(self, workdir, *args):
-        subprocess.check_call(self._git(workdir, *args))
-
-    def _git_try(self, workdir, *args):
-        return subprocess.call(self._git(workdir, *args))
-
-    def _git_output(self, workdir, *args):
-        return subprocess.check_output(
-            self._git(workdir, *args), universal_newlines=True
-        )
-
-    def _get_head(self, workdir):
-        return self._git_output(workdir, "rev-parse", "HEAD").strip()
-
-    def _get_unstaged(self, workdir):
-        raw = self._git_output(workdir, "status", "--untracked-files", "-z")
-        return [line[3:] for line in raw.split("\0") if line]
-
-    def _get_changed(self, workdir, orig):
-        output = self._git_output(workdir, "diff", orig, "--name-only", "--no-renames")
-        return {line for line in output.strip().split("\n") if line}
-
     @SubCommand.with_lock
     def run(self):
         # Detect bare single-target (no colon) for backward-compat rollback hint
@@ -82,8 +56,8 @@ class Reset(SubCommand):
                     "layer": layer,
                     "ref": ref,
                     "workdir": wd,
-                    "orig_commit": self._get_head(wd),
-                    "unstaged": self._get_unstaged(wd),
+                    "orig_commit": git_head(wd),
+                    "unstaged": git_unstaged(wd),
                 }
             )
 
@@ -91,7 +65,7 @@ class Reset(SubCommand):
         # unstaged files — abort before touching any layer.
         for t in targets:
             ref_range = t["orig_commit"] + ".." + t["ref"]
-            predicted = self._get_changed(t["workdir"], ref_range)
+            predicted = git_changed(t["workdir"], ref_range)
             conflicts = predicted & set(t["unstaged"])
             if conflicts:
                 raise SystemExit(
@@ -103,7 +77,7 @@ class Reset(SubCommand):
         for t in targets:
             if t["unstaged"]:
                 self.logger.warning("Unstaged changes in %s, stashing.", t["workdir"])
-                self._git_run(t["workdir"], "stash", "push", "--include-untracked")
+                git_run(t["workdir"], "stash", "push", "--include-untracked")
                 stashed.append(t)
 
         reset_done = []
@@ -114,21 +88,21 @@ class Reset(SubCommand):
                 self.logger.info(
                     "Checking and resetting to %s in %s.", t["ref"], t["workdir"]
                 )
-                self._git_run(t["workdir"], "reset", "--hard", t["ref"])
+                git_run(t["workdir"], "reset", "--hard", t["ref"])
                 reset_done.append(t)
 
             # Accumulate union of changed paths across all layers
             all_files = set()
             for t in targets:
-                all_files |= self._get_changed(t["workdir"], t["orig_commit"])
+                all_files |= git_changed(t["workdir"], t["orig_commit"])
 
             paths = sorted(f for f in all_files if f.startswith(self.sync.site))
 
             if self.args.dry_run:
                 for t in reset_done:
-                    self._git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
+                    git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
                 for t in stashed:
-                    self._git_run(t["workdir"], "stash", "pop")
+                    git_run(t["workdir"], "stash", "pop")
                 return
 
             self._playback_paths(paths)
@@ -137,12 +111,12 @@ class Reset(SubCommand):
             self.logger.error("Error during operation. Resetting.")
             for t in reset_done:
                 try:
-                    self._git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
+                    git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
                 except Exception:
                     self.logger.exception("Failed to rollback %s", t["workdir"])
             for t in stashed:
                 try:
-                    self._git_run(t["workdir"], "stash", "pop")
+                    git_run(t["workdir"], "stash", "pop")
                 except Exception:
                     self.logger.exception("Failed to pop stash in %s", t["workdir"])
             if not self.args.dry_run and paths:
@@ -157,17 +131,15 @@ class Reset(SubCommand):
 
         # Pop stashes on success
         for t in stashed:
-            self._git_run(t["workdir"], "stash", "pop")
+            git_run(t["workdir"], "stash", "pop")
 
         # Emit rollback command hint for single bare-target (backward compat)
         if is_bare:
             wd = targets[0]["workdir"]
             orig = targets[0]["orig_commit"]
-            is_ancestor = (
-                self._git_try(wd, "merge-base", "--is-ancestor", orig, "HEAD") == 0
-            )
+            is_ancestor = git_try(wd, "merge-base", "--is-ancestor", orig, "HEAD") == 0
             if is_ancestor:
-                merge_commits = self._git_output(
+                merge_commits = git_output(
                     wd,
                     "log",
                     "--oneline",
@@ -175,6 +147,6 @@ class Reset(SubCommand):
                     f"{orig}..HEAD",
                 ).strip()
                 if not merge_commits:
-                    head_commit = self._git_output(wd, "rev-parse", "HEAD").strip()
+                    head_commit = git_output(wd, "rev-parse", "HEAD").strip()
                     cmd = f'zodbsync exec "git revert {orig}..{head_commit}"'
                     self.logger.info("Prepared Command for Rollback:\n%s", cmd)
