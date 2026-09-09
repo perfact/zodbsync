@@ -831,13 +831,13 @@ class ZODBSync:
         at_boundary = (parent_layer_idx is None and target_layer_idx != 0) or (
             parent_layer_idx is not None and target_layer_idx != parent_layer_idx
         )
-        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", _UNSET)
         if at_boundary:
             if current_attr != path_layer:
                 with self.tm:
                     obj.zodbsync_layer = path_layer
         else:
-            if current_attr is not None:
+            if current_attr is not _UNSET:
                 with self.tm:
                     del obj.zodbsync_layer
 
@@ -1026,12 +1026,12 @@ class ZODBSync:
         at_boundary = (parent_layer is None and path_layer != "") or (
             parent_layer is not None and path_layer != parent_layer
         )
-        current_attr = getattr(aq_base(obj), "zodbsync_layer", None)
+        current_attr = getattr(aq_base(obj), "zodbsync_layer", _UNSET)
         if at_boundary:
             if current_attr != path_layer:
                 obj.zodbsync_layer = path_layer
         else:
-            if current_attr is not None:
+            if current_attr is not _UNSET:
                 del obj.zodbsync_layer
 
         self.num_obj_total += len(contents)
