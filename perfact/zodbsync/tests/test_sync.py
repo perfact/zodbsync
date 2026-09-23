@@ -986,6 +986,32 @@ class TestSync:
                 os.path.join(self.repo.path, "__root__", "LayerObj")
             )
 
+    def test_exec_no_layer_cwd_in_named_workdir(self):
+        """
+        Without --layer, a cwd inside a named layer's workdir resolves the
+        target workdir to that layer instead of the fallback layer.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+
+            orig_cwd = os.getcwd()
+            os.chdir(os.path.join(workdir, "__root__"))
+            try:
+                command = self.mkrunner("exec", "true")
+            finally:
+                os.chdir(orig_cwd)
+
+            assert command._git_workdir == workdir
+
+    def test_exec_no_layer_cwd_outside_any_workdir(self):
+        """
+        Without --layer, a cwd outside any named layer's workdir keeps the
+        fallback layer as target workdir.
+        """
+        with self.addlayer():
+            command = self.mkrunner("exec", "true")
+            assert command._git_workdir == self.repo.path
+
     def test_exec_layer_nocd(self):
         """
         exec --layer --nocd runs command without cd but diff-checks named
