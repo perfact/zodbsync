@@ -17,7 +17,9 @@ class Exec(SubCommand):
             type=str,
             default=None,
             help=(
-                "Named layer ident to run command in (empty string for fallback layer)"
+                "Named layer ident to run command in (empty string for fallback"
+                " layer). If omitted, the named layer whose workdir the cwd is"
+                " in is used, if any."
             ),
         )
         parser.add_argument(

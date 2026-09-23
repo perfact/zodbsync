@@ -13,7 +13,9 @@ class Checkout(SubCommand):
             type=str,
             default=None,
             help=(
-                "Named layer ident to check out into (empty string for fallback layer)"
+                "Named layer ident to check out into (empty string for fallback"
+                " layer). If omitted, the named layer whose workdir the cwd is"
+                " in is used, if any."
             ),
         )
         parser.add_argument(

@@ -16,7 +16,8 @@ class Pick(SubCommand):
             default=None,
             help=(
                 "Named layer ident to cherry-pick into"
-                " (empty string for fallback layer)"
+                " (empty string for fallback layer). If omitted, the named"
+                " layer whose workdir the cwd is in is used, if any."
             ),
         )
         parser.add_argument(

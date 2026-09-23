@@ -45,9 +45,14 @@ class SubCommand(Namespace):
         # Some subcommands are instantiated programmatically without an
         # "args" kwarg at all (e.g. Record's --autoreset spinning up a
         # Reset), hence the inner getattr. Subcommands without a --layer
-        # argument, or with it left unset (None), keep the default
-        # fallback-layer workdir.
-        layer_ident = getattr(getattr(self, "args", None), "layer", None)
+        # argument keep the default fallback-layer workdir. Subcommands
+        # with a --layer argument left unset (None) fall back to the
+        # named layer whose workdir the cwd is in, if any, before finally
+        # defaulting to the fallback layer.
+        args = getattr(self, "args", None)
+        layer_ident = getattr(args, "layer", None)
+        if layer_ident is None and hasattr(args, "layer"):
+            layer_ident = self._layer_ident_from_cwd()
         if layer_ident is not None:
             layer = next(
                 (la for la in self.sync.layers if la["ident"] == layer_ident),
@@ -63,6 +68,25 @@ class SubCommand(Namespace):
     def add_args(parser):
         """Overwrite to add arguments specific to sub-command."""
         pass
+
+    def _layer_ident_from_cwd(self):
+        """
+        Return the ident of the named layer (ident != "") whose workdir the
+        cwd is in or below, or None if the cwd is not inside any named
+        layer's workdir. If several match (nested workdirs), the most
+        specific (longest) one wins.
+        """
+        cwd = os.path.realpath(os.getcwd())
+        match = None
+        match_workdir = ""
+        for layer in self.sync.layers:
+            if not layer["ident"]:
+                continue
+            workdir = os.path.realpath(layer["workdir"])
+            if cwd == workdir or cwd.startswith(workdir + os.sep):
+                if len(workdir) > len(match_workdir):
+                    match, match_workdir = layer, workdir
+        return match["ident"] if match else None
 
     def acquire_lock(self, timeout=10):
         if self.args.no_lock:
