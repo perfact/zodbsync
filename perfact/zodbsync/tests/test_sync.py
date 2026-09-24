@@ -876,6 +876,27 @@ class TestSync:
                 os.path.join(self.repo.path, "__root__", "LayerObj")
             )
 
+    def test_reset_bare_cwd_in_named_workdir(self):
+        """
+        reset <ref> (bare, no ident) resets the named layer whose workdir
+        the cwd is in, instead of the fallback layer.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+
+            orig_cwd = os.getcwd()
+            os.chdir(workdir)
+            try:
+                self.run("reset", "feature")
+            finally:
+                os.chdir(orig_cwd)
+
+            assert "LayerObj" in self.app.objectIds()
+            assert not os.path.isdir(
+                os.path.join(self.repo.path, "__root__", "LayerObj")
+            )
+
     def test_reset_multi_layer(self):
         """
         reset <ident1>:<ref1> <ident2>:<ref2> resets both repos and plays back
