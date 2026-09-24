@@ -184,12 +184,18 @@ class Watch(SubCommand):
         obj = self.app._p_jar[oid]
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
-        pathinfo = self.sync.fs_write(path=path, data=data)
-        path_layer = pathinfo["layers"][pathinfo["layeridx"]]["ident"]
-        current_layer = getattr(obj, "zodbsync_layer", None)
-        if current_layer != path_layer:
-            with self.sync.tm:
-                obj.zodbsync_layer = path_layer
+        target_layer_idx, _, old_pathinfo = self.sync.resolve_target_layer(path, obj)
+        if old_pathinfo is None:
+            old_pathinfo = self.sync.fs_pathinfo(path)
+        old_idx = old_pathinfo["layeridx"]
+        if old_idx is not None and old_idx != target_layer_idx:
+            self.sync.fs_delete_files(old_pathinfo["fspath"])
+        self.sync.fs_write(
+            path=path,
+            data=data,
+            target_layer_idx=target_layer_idx,
+            pathinfo=old_pathinfo,
+        )
 
     def _update_objects(self):
         """
@@ -418,7 +424,7 @@ class Watch(SubCommand):
         finally:
             self.release_lock()
 
-    def run(self, interval=10):
+    def run(self, interval=1):
         """Setup and run in a loop."""
         if self.args.init:
             self.setup()

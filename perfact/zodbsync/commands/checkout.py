@@ -9,6 +9,16 @@ class Checkout(SubCommand):
     @staticmethod
     def add_args(parser):
         parser.add_argument(
+            "--layer",
+            type=str,
+            default=None,
+            help=(
+                "Named layer ident to check out into (empty string for fallback"
+                " layer). If omitted, the named layer whose workdir the cwd is"
+                " in is used, if any."
+            ),
+        )
+        parser.add_argument(
             "--skip-errors",
             action="store_true",
             default=False,
