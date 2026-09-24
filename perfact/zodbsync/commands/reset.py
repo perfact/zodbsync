@@ -25,8 +25,10 @@ class Reset(SubCommand):
             "commit",
             type=str,
             nargs="+",
-            help="""Target commit(s). Bare <commit> resets the fallback layer.
-            <ident>:<commit> resets the named layer with that ident.""",
+            help="""Target commit(s). Bare <commit> resets the named layer
+            whose workdir the cwd is in, if any, otherwise the fallback
+            layer. <ident>:<commit> resets the named layer with that
+            ident.""",
         )
 
     def _find_layer(self, ident):
@@ -46,7 +48,7 @@ class Reset(SubCommand):
             if ":" in arg:
                 ident, ref = arg.split(":", 1)
             else:
-                ident, ref = "", arg
+                ident, ref = self._layer_ident_from_cwd() or "", arg
             layer = self._find_layer(ident)
             if layer is None:
                 raise SystemExit(f"Unknown layer ident: {ident!r}")
