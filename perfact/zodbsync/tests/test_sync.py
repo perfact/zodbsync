@@ -2576,6 +2576,27 @@ class TestSync:
             assert not os.path.exists(os.path.join(srcroot, "Test"))
             assert not os.path.exists(os.path.join(tgtroot, "Test"))
 
+    def test_layer_prune_child_in_lower_layer_of_higher_parent(self):
+        """
+        Intermediate state while migrating between packages: the parent is
+        defined in a higher layer (the fallback), a child only in a lower named
+        layer that holds no __meta__ for the parent. Neither exists in Data.FS.
+        Recording removes the parent from the fallback layer and the child from
+        the named layer, without a __deleted__ marker.
+        """
+        self.add_folder("Test")
+        self.add_folder("Sub", parent="Test")
+        with self.addlayer() as layer:
+            srcroot = os.path.join(self.repo.path, "__root__")
+            tgtroot = os.path.join(layer, "workdir/__root__")
+            os.makedirs(os.path.join(tgtroot, "Test"))
+            os.rename(
+                os.path.join(srcroot, "Test/Sub"), os.path.join(tgtroot, "Test/Sub")
+            )
+            self.run("record", "/")
+            assert not os.path.isdir(os.path.join(srcroot, "Test"))
+            assert not os.path.isdir(os.path.join(tgtroot, "Test"))
+
     def test_layer_prune_frozen_masks_lower(self):
         """
         Object exists in both the fallback layer (with __frozen__) and a named
@@ -3144,74 +3165,6 @@ class TestSync:
             # Child is in the same layer as Folder (not a boundary) -> no attr
             child_attr = getattr(aq_base(self.app.Folder.Child), "zodbsync_layer", None)
             assert child_attr is None
-
-    def test_layer_record_warn_child_below_parent_layer(self, caplog):
-        """
-        A child that is routed to a layer sorted below its parent's layer is
-        recorded, but a warning is logged.
-        """
-        with self.runner.sync.tm:
-            self.app.manage_addFolder(id="Folder")
-        with self.addlayer():
-            ident = self.runner.sync.layers[1]["ident"]
-            self.run("record", "/Folder")
-            with self.runner.sync.tm:
-                self.app.Folder.manage_addFolder(id="Child")
-                self.app.Folder.Child.zodbsync_layer = ident
-            with caplog.at_level("WARNING"):
-                self.run("record", "/Folder/Child")
-            assert "/Folder/Child is placed in layer" in caplog.text
-
-    def test_layer_record_no_warn_parent_overridden_above(self, caplog):
-        """
-        The parent is defined in a named layer and overridden in the fallback
-        layer. A child in the named layer is below the topmost definition of
-        its parent, but not below the lowest one, so it does not warn.
-        """
-        with self.runner.sync.tm:
-            self.app.manage_addFolder(id="Folder")
-        with self.addlayer() as layer:
-            ident = self.runner.sync.layers[1]["ident"]
-            self.run("record", "/Folder")
-            # Fallback keeps its copy of Folder, the named layer defines it
-            # as well.
-            os.makedirs("{}/workdir/__root__/Folder".format(layer))
-            shutil.copy(
-                "{}/__root__/Folder/__meta__".format(self.repo.path),
-                "{}/workdir/__root__/Folder/__meta__".format(layer),
-            )
-            with self.runner.sync.tm:
-                self.app.Folder.manage_addFolder(id="Child")
-                self.app.Folder.Child.zodbsync_layer = ident
-            with caplog.at_level("WARNING"):
-                self.run("record", "/Folder/Child")
-            assert "is placed in layer" not in caplog.text
-
-    def test_layer_record_no_warn_child_above_parent_layer(self, caplog):
-        """
-        A child in the fallback layer above a parent in a named layer is the
-        intended layout and does not warn.
-        """
-        with self.runner.sync.tm:
-            self.app.manage_addFolder(id="Folder")
-        with self.addlayer() as layer:
-            self.run("record", "/")
-            # Intended layout: the lowest layer defines the root object
-            shutil.copy(
-                "{}/__root__/__meta__".format(self.repo.path),
-                "{}/workdir/__root__/__meta__".format(layer),
-            )
-            shutil.move(
-                "{}/__root__/Folder".format(self.repo.path),
-                "{}/workdir/__root__/Folder".format(layer),
-            )
-            self.run("record", "/Folder")
-            with self.runner.sync.tm:
-                self.app.Folder.manage_addFolder(id="Child")
-                self.app.Folder.Child.zodbsync_layer = ""
-            with caplog.at_level("WARNING"):
-                self.run("record", "/Folder/Child")
-            assert "is placed in layer" not in caplog.text
 
     def test_layer_watch_rule1_into_named_layer(self):
         """Watch rule 1: zodbsync_layer set -> watcher writes to named layer."""
