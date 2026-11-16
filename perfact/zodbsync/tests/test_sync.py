@@ -3432,6 +3432,68 @@ class TestSync:
                 os.path.join(self.repo.path, "__root__/Folder/__meta__")
             )
 
+    @pytest.mark.parametrize("args", [[], ["--no-recurse"]])
+    def test_move_refuses_to_overwrite_target(self, args):
+        """If the object is already defined in the target layer, move fails
+        without changing anything."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child.txt")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            named = f"{layer}/workdir/__root__/Folder"
+            shutil.copytree(os.path.join(self.repo.path, "__root__/Folder"), named)
+            with open(f"{named}/__meta__", "a") as f:
+                f.write("# marker\n")
+            with pytest.raises(SystemExit):
+                self.run("move", *args, "/Folder", ident)
+            # Nothing was removed from the source or overwritten in the target
+            assert os.path.exists(
+                os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            )
+            with open(f"{named}/__meta__") as f:
+                assert f.read().endswith("# marker\n")
+
+    def test_move_refuses_overlapping_descendant(self):
+        """A descendant that is defined in both layers blocks a recursive move,
+        even if the moved object itself is not defined in the target."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="child.txt")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            named = f"{layer}/workdir/__root__/Folder/child.txt"
+            shutil.copytree(
+                os.path.join(self.repo.path, "__root__/Folder/child.txt"), named
+            )
+            with pytest.raises(SystemExit):
+                self.run("move", "/Folder", ident)
+            assert os.path.exists(
+                os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            )
+
+    def test_move_merges_into_target_with_only_descendants(self):
+        """A target layer that only holds other descendants is not an overlap."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="a")
+            self.app.Folder.manage_addProduct["OFSP"].manage_addFile(id="b")
+        with self.addlayer() as layer:
+            self.run("record", "/Folder")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # Child b already lives in the named layer, without Folder/__meta__
+            os.makedirs(f"{layer}/workdir/__root__/Folder")
+            shutil.move(
+                os.path.join(self.repo.path, "__root__/Folder/b"),
+                f"{layer}/workdir/__root__/Folder/b",
+            )
+            self.run("move", "/Folder", ident)
+            assert os.path.exists(f"{layer}/workdir/__root__/Folder/__meta__")
+            assert os.path.exists(f"{layer}/workdir/__root__/Folder/a/__meta__")
+            assert os.path.exists(f"{layer}/workdir/__root__/Folder/b/__meta__")
+
     def test_move_no_recurse(self):
         """--no-recurse moves only the named object, not its children."""
         with self.runner.sync.tm:

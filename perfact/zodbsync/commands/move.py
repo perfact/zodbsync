@@ -72,6 +72,33 @@ class Move(SubCommand):
                 child_acquired = acquired_ident
             Move._clear_src_attrs(child, src_ident, tgt_ident, child_acquired)
 
+    @staticmethod
+    def _overlap(src_dir, tgt_dir, recurse):
+        """Return the relative paths of objects that are defined in both the
+        source and the target directory (only the object itself if not
+        recursing)."""
+        if not recurse:
+            names = [""] if os.path.exists(f"{src_dir}/__meta__") else []
+        else:
+            names = [
+                "" if root == src_dir else os.path.relpath(root, src_dir)
+                for root, _, files in os.walk(src_dir)
+                if "__meta__" in files
+            ]
+        return sorted(
+            name or "."
+            for name in names
+            if os.path.exists(os.path.join(tgt_dir, name, "__meta__"))
+        )
+
+    def _check_no_overlap(self, src_dir, tgt_dir, path, recurse):
+        overlap = self._overlap(src_dir, tgt_dir, recurse)
+        if overlap:
+            raise SystemExit(
+                f"Target layer already defines objects below {path!r}, "
+                f"refusing to overwrite: {overlap}"
+            )
+
     @SubCommand.with_lock
     def run(self):
         path = self.args.path
@@ -106,6 +133,7 @@ class Move(SubCommand):
                     )
                     tgt_dir = os.path.join(tgt_workdir, rel_path)
                     if src_dir != tgt_dir and os.path.isdir(src_dir):
+                        self._check_no_overlap(src_dir, tgt_dir, path, True)
                         os.makedirs(os.path.dirname(tgt_dir), exist_ok=True)
                         shutil.copytree(src_dir, tgt_dir, dirs_exist_ok=True)
                         shutil.rmtree(src_dir)
@@ -117,6 +145,7 @@ class Move(SubCommand):
                     src_dir = pathinfo["fspath"]
                     tgt_dir = os.path.join(tgt_workdir, rel_path)
                     if src_dir != tgt_dir:
+                        self._check_no_overlap(src_dir, tgt_dir, path, False)
                         os.makedirs(tgt_dir, exist_ok=True)
                         for name in os.listdir(src_dir):
                             if name == "__meta__" or name.startswith("__source"):
