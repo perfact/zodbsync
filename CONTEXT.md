@@ -29,7 +29,7 @@ An object is a layer boundary if its resolved target layer differs from the laye
 
 ## Layering Rule
 
-A layer should only contribute children to parents that it defines itself or that are defined in a layer sorted below it. Intended stack: a toolkit layer at the bottom defines everything up to `__root__/__meta__`; customer layers above override properties and add children. Not enforced: `record`/`watch` warn when an object sits below the lowest layer defining its parent. See ADR 0006.
+Long-term intention: a layer only contributes children to parents that it defines itself or that are defined in a layer further down the stack, with the lowest layer defining `__root__/__meta__`. Not enforced and not warned about, because migrations between packages (e.g. `00-complete` to `10-core`, `20-toolkit`, ...) pass through states where a child sits in a lower layer than its parent. See ADR 0006.
 
 ## Layer Resolution
 
