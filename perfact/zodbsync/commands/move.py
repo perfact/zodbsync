@@ -87,7 +87,11 @@ class Move(SubCommand):
         for part in path.split("/"):
             if not part:
                 continue
-            obj = getattr(obj, part)
+            # _getOb does not acquire from parents, unlike getattr
+            child = obj._getOb(part, None)
+            if child is None:
+                raise SystemExit(f"Unknown path: {path!r}")
+            obj = child
 
         src_ident = self._source_ident(obj, path)
 
