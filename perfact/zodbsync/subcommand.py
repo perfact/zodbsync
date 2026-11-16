@@ -8,24 +8,13 @@ import sys
 
 import filelock
 
-from .helpers import Namespace
+from .helpers import Namespace, git_abort, git_branch_info, git_state_clean
 
 
 class SubCommand(Namespace):
     """
     Base class for different sub-commands to be used by zodbsync.
     """
-
-    # The presence of one of these in the .git folder indicates that some
-    # process was not finished correctly, which is used to trigger a rollback
-    # in some operations. Are these all?
-    git_state_indicators = [
-        "rebase-merge",
-        "rebase-apply",
-        "CHERRY_PICK_HEAD",
-        "MERGE_HEAD",
-        "REVERT_HEAD",
-    ]
 
     # Set by subclasses to disallow stashing away unstaged changes (used for
     # layer-scoped operations where stashing would be surprising).
@@ -209,20 +198,6 @@ class SubCommand(Namespace):
                 continue
             shutil.rmtree(f"{tgt}/{entry}")
 
-    def _branch_info(self):
-        """Returns currently checked out branch as well as where each branch
-        points."""
-        current = self.gitcmd_output("rev-parse", "--abbrev-ref", "HEAD").strip()
-
-        branches = {}  # branchname -> commitid
-        output = self.gitcmd_output("show-ref", "--heads")
-        for line in output.strip().split("\n"):
-            commit, refname = line.split()
-            refname = refname[len("refs/heads/") :]
-            branches[refname] = commit
-
-        return (current, branches)
-
     def check_repo(self):
         """Check for unstaged changes and memorize current commit. Move
         unstaged changes away via git stash"""
@@ -234,7 +209,7 @@ class SubCommand(Namespace):
             if line
         ]
 
-        self.orig_branch, self.branches = self._branch_info()
+        self.orig_branch, self.branches = git_branch_info(self._git_workdir)
 
         if self.unstaged_changes:
             if self._no_stash:
@@ -333,9 +308,7 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
-                for fname in self.git_state_indicators:
-                    path = os.path.join(self._git_workdir, ".git", fname)
-                    assert not os.path.exists(path), "Git state not clean"
+                assert git_state_clean(self._git_workdir), "Git state not clean"
 
                 files = {
                     line
@@ -441,29 +414,12 @@ class SubCommand(Namespace):
     def abort(self):
         """Abort actions on repo and revert stash. check_repo must be
         called before this can be used"""
-        current, branches = self._branch_info()
-        # reset currently checked out branch
-        target = self.branches.get(current)
-        if target is None:
-            # The branch was not originally present - we still need to reset it
-            # to abort any operation
-            target = branches[current]
-        self.gitcmd_run("reset", "--hard", target)
-
-        # reset all other branches
-        for branch in self.branches:
-            if branch == current:
-                continue
-            if branches[branch] == self.branches[branch]:
-                continue
-            self.gitcmd_run("branch", "-f", branch, self.branches[branch])
-
-        # check out original branch
-        if current != self.orig_branch:
-            self.gitcmd_run("checkout", self.orig_branch)
-
-        if self.unstaged_changes:
-            self.gitcmd_run("stash", "pop")
+        git_abort(
+            self._git_workdir,
+            self.orig_branch,
+            self.branches,
+            pop_stash=bool(self.unstaged_changes),
+        )
 
     def run(self):
         """

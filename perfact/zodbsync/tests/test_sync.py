@@ -1125,6 +1125,72 @@ class TestSync:
             )
             assert "LayerObj" not in self.app.objectIds()
 
+    def test_exec_nocd_failure_restores_branches(self):
+        """
+        If cmd switches a layer to another branch and then fails, the rollback
+        restores the original branch and leaves the other branch untouched.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            feature = self._prepare_named_layer_commit(workdir, "LayerObj")
+            orig_branch = self._layer_workdir_git_output(
+                workdir, "rev-parse", "--abbrev-ref", "HEAD"
+            )
+            orig_head = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+
+            with pytest.raises(subprocess.CalledProcessError):
+                self.run(
+                    "exec", "--nocd", f"git -C {workdir} checkout feature && false"
+                )
+
+            assert (
+                self._layer_workdir_git_output(
+                    workdir, "rev-parse", "--abbrev-ref", "HEAD"
+                )
+                == orig_branch
+            )
+            assert (
+                self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+                == orig_head
+            )
+            assert (
+                self._layer_workdir_git_output(workdir, "rev-parse", "feature")
+                == feature
+            )
+
+    def test_exec_nocd_conflict_with_unstaged(self):
+        """
+        If cmd changes a file that has unstaged changes, exec --nocd aborts and
+        rolls back instead of failing on the stash pop after playback.
+        """
+        with self.addlayer() as layer_dir:
+            workdir = f"{layer_dir}/workdir"
+            self._prepare_named_layer_commit(workdir, "LayerObj")
+            orig_head = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+            # An unstaged change to a file that the command also changes
+            tracked = os.path.join(workdir, "tracked")
+            with open(tracked, "w") as f:
+                f.write("one")
+            self._layer_workdir_git(workdir, "add", "tracked")
+            self._layer_workdir_git(workdir, "commit", "-m", "tracked")
+            orig_head = self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+            with open(tracked, "w") as f:
+                f.write("unstaged")
+
+            with pytest.raises(AssertionError):
+                self.run(
+                    "exec",
+                    "--nocd",
+                    f"echo two > {tracked}; git -C {workdir} commit -qam two",
+                )
+
+            assert (
+                self._layer_workdir_git_output(workdir, "rev-parse", "HEAD")
+                == orig_head
+            )
+            with open(tracked) as f:
+                assert f.read() == "unstaged"
+
     def test_withlock(self):
         "Running with-lock and, inside that, --no-lock, works"
         self.run(
