@@ -2,7 +2,15 @@
 
 import subprocess
 
-from ..helpers import git_changed, git_head, git_run, git_unstaged
+from ..helpers import (
+    git_abort,
+    git_branch_info,
+    git_changed,
+    git_head,
+    git_run,
+    git_state_clean,
+    git_unstaged,
+)
 from ..subcommand import SubCommand
 
 
@@ -55,21 +63,25 @@ class Exec(SubCommand):
 
     @SubCommand.with_lock
     def _run_all_layers(self):
-        targets = [
-            {
-                "workdir": la["workdir"],
-                "orig_commit": git_head(la["workdir"]),
-                "unstaged": git_unstaged(la["workdir"]),
-            }
-            for la in self.sync.layers
-        ]
+        targets = []
+        for la in self.sync.layers:
+            wd = la["workdir"]
+            orig_branch, branches = git_branch_info(wd)
+            targets.append(
+                {
+                    "workdir": wd,
+                    "orig_commit": git_head(wd),
+                    "orig_branch": orig_branch,
+                    "branches": branches,
+                    "unstaged": git_unstaged(wd),
+                }
+            )
 
-        stashed = []
         for t in targets:
             if t["unstaged"]:
                 self.logger.warning("Unstaged changes in %s, stashing.", t["workdir"])
                 git_run(t["workdir"], "stash", "push", "--include-untracked")
-                stashed.append(t)
+            t["stashed"] = bool(t["unstaged"])
 
         paths = []
         try:
@@ -77,30 +89,24 @@ class Exec(SubCommand):
 
             all_files = set()
             for t in targets:
-                all_files |= git_changed(t["workdir"], t["orig_commit"])
+                assert git_state_clean(t["workdir"]), "Git state not clean"
+                files = git_changed(t["workdir"], t["orig_commit"])
+                conflicts = files & set(t["unstaged"])
+                assert not conflicts, "Change in unstaged files, aborting"
+                all_files |= files
             paths = sorted(f for f in all_files if f.startswith(self.sync.site))
-
-            if self.args.dry_run:
-                for t in targets:
-                    git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
-                for t in stashed:
-                    git_run(t["workdir"], "stash", "pop")
-                return
 
             self._playback_paths(paths)
 
+            if self.args.dry_run:
+                self._abort_layers(targets)
+                return
+
         except Exception:
             self.logger.error("Error during operation. Resetting.")
-            for t in targets:
-                try:
-                    git_run(t["workdir"], "reset", "--hard", t["orig_commit"])
-                except Exception:
-                    self.logger.exception("Failed to rollback %s", t["workdir"])
-            for t in stashed:
-                try:
-                    git_run(t["workdir"], "stash", "pop")
-                except Exception:
-                    self.logger.exception("Failed to pop stash in %s", t["workdir"])
+            self._abort_layers(targets)
+            # We can't be sure that nothing was committed to the Data.FS
+            # before the error, so play back all paths again
             if not self.args.dry_run and paths:
                 self.sync.playback_paths(
                     paths=self.sync.prepare_paths(paths),
@@ -111,5 +117,15 @@ class Exec(SubCommand):
                 )
             raise
 
-        for t in stashed:
-            git_run(t["workdir"], "stash", "pop")
+        for t in targets:
+            if t["stashed"]:
+                git_run(t["workdir"], "stash", "pop")
+
+    def _abort_layers(self, targets):
+        """Restore branches and stashes in all layers, ignoring failures of
+        single layers so the others are still restored."""
+        for t in targets:
+            try:
+                git_abort(t["workdir"], t["orig_branch"], t["branches"], t["stashed"])
+            except Exception:
+                self.logger.exception("Failed to roll back %s", t["workdir"])

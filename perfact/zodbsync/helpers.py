@@ -372,3 +372,56 @@ def git_changed(workdir, orig):
     """Return the set of files changed between orig and the current state."""
     output = git_output(workdir, "diff", orig, "--name-only", "--no-renames")
     return {line for line in output.strip().split("\n") if line}
+
+
+# Markers of an interrupted git process (merge/rebase/cherry-pick/etc.)
+GIT_STATE_INDICATORS = [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "REVERT_HEAD",
+]
+
+
+def git_branch_info(workdir):
+    """Return the checked out branch and a dict mapping branches to commits."""
+    current = git_output(workdir, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    branches = {}
+    for line in git_output(workdir, "show-ref", "--heads").strip().split("\n"):
+        commit, refname = line.split()
+        branches[refname[len("refs/heads/") :]] = commit
+    return current, branches
+
+
+def git_state_clean(workdir):
+    """Check that no operation like merge or cherry-pick is in progress."""
+    return not any(
+        os.path.exists(os.path.join(workdir, ".git", name))
+        for name in GIT_STATE_INDICATORS
+    )
+
+
+def git_abort(workdir, orig_branch, orig_branches, pop_stash):
+    """
+    Restore the repo in workdir to the state described by orig_branch and
+    orig_branches (as returned by git_branch_info before the operation):
+    reset all branches, check out the original branch and optionally pop the
+    stash that was created before.
+    """
+    current, branches = git_branch_info(workdir)
+    # reset currently checked out branch. If it was not originally present, we
+    # still need to reset it to abort any operation
+    git_run(workdir, "reset", "--hard", orig_branches.get(current, branches[current]))
+
+    # reset all other branches
+    for branch, commit in orig_branches.items():
+        if branch == current or branches.get(branch) == commit:
+            continue
+        git_run(workdir, "branch", "-f", branch, commit)
+
+    if current != orig_branch:
+        git_run(workdir, "checkout", orig_branch)
+
+    if pop_stash:
+        git_run(workdir, "stash", "pop")
