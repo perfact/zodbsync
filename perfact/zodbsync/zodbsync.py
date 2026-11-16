@@ -524,6 +524,41 @@ class ZODBSync:
             return parent_layer_idx, parent_layer_idx, pathinfo
         return 0, parent_layer_idx, pathinfo
 
+    def warn_inverted_layer(self, path, target_layer_idx, parent_layer_idx):
+        """Warn if an object is placed in a layer below all parent definitions.
+
+        A layer should only contribute children to parents that it defines
+        itself or that are defined in a layer further down the stack (lower
+        priority, i.e. a lower config file prefix).
+        Overrides of the parent in layers above the child are fine, so the
+        object is compared to the lowest layer that defines the parent. This
+        is not enforced, but such a layout is most likely unintended.
+        """
+        if parent_layer_idx is None or target_layer_idx <= parent_layer_idx:
+            return
+        # parent_layer_idx is the topmost layer defining the parent. Only now,
+        # in the unusual case, look for the lowest one.
+        parent = path.rstrip("/").rsplit("/", 1)[0] or "/"
+        parent_rel = os.path.join(self.site, parent.lstrip("/"), "__meta__")
+        lowest_idx = max(
+            (
+                idx
+                for idx, layer in enumerate(self.layers)
+                if os.path.exists(os.path.join(layer["workdir"], parent_rel))
+            ),
+            default=parent_layer_idx,
+        )
+        if target_layer_idx <= lowest_idx:
+            return
+        self.logger.warning(
+            "%s is placed in layer %r, which is above the layer %r that "
+            "defines its parent. A layer should only contribute children to "
+            "parents defined in the same or a lower layer.",
+            path,
+            self.layers[target_layer_idx]["ident"],
+            self.layers[lowest_idx]["ident"],
+        )
+
     def fs_write(self, path, data, target_layer_idx=0, pathinfo=None):
         """
         Write object data out to a folder with the given path.
@@ -674,7 +709,10 @@ class ZODBSync:
             ]
             self.logger.info("Removing old item %s from filesystem" % item)
             if len(item_layers) <= 1:
-                for layer in item_layers:
+                # Defined in at most one layer: nothing to shadow. Remove the
+                # whole subtree wherever it has files, which also covers
+                # descendants contributed by other layers.
+                for layer in visible_layers:
                     tgt = os.path.join(layer["workdir"], relpath, item)
                     if os.path.isdir(tgt):
                         shutil.rmtree(tgt)
@@ -818,6 +856,7 @@ class ZODBSync:
             _parent_layer_idx=_parent_layer_idx,
             _parent_layers=_parent_layers,
         )
+        self.warn_inverted_layer(path, target_layer_idx, parent_layer_idx)
         if old_pathinfo is None:
             old_pathinfo = self.fs_pathinfo(path, _parent_layers=_parent_layers)
         old_idx = old_pathinfo["layeridx"]

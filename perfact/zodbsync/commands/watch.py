@@ -184,7 +184,10 @@ class Watch(SubCommand):
         obj = self.app._p_jar[oid]
         data = mod_read(obj=obj, default_owner=self.sync.default_owner)
 
-        target_layer_idx, _, old_pathinfo = self.sync.resolve_target_layer(path, obj)
+        target_layer_idx, parent_layer_idx, old_pathinfo = (
+            self.sync.resolve_target_layer(path, obj)
+        )
+        self.sync.warn_inverted_layer(path, target_layer_idx, parent_layer_idx)
         if old_pathinfo is None:
             old_pathinfo = self.sync.fs_pathinfo(path)
         old_idx = old_pathinfo["layeridx"]

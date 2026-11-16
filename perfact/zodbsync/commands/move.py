@@ -19,7 +19,7 @@ class Move(SubCommand):
         parser.add_argument(
             "layer",
             type=str,
-            help="Target layer ident (empty string for the custom/fallback layer)",
+            help="Target layer ident (empty string for the fallback layer)",
         )
         parser.add_argument(
             "--no-recurse",
