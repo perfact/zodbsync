@@ -3334,6 +3334,22 @@ class TestSync:
             assert not os.path.exists(custom_meta)
             assert getattr(self.app.blob, "zodbsync_layer") == ident
 
+    def test_move_path_does_not_acquire(self):
+        """A path that only resolves via acquisition is rejected, not moved."""
+        with self.runner.sync.tm:
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Folder")
+            self.app.manage_addProduct["OFSP"].manage_addFolder(id="Other")
+        with self.addlayer() as layer:
+            self.run("record", "/")
+            ident = self.runner.sync.layers[-1]["ident"]
+            # /Other/Folder does not exist, but acquires /Folder
+            with pytest.raises(SystemExit):
+                self.run("move", "/Other/Folder", ident)
+            assert not os.path.exists(f"{layer}/workdir/__root__/Folder/__meta__")
+            assert os.path.exists(
+                os.path.join(self.repo.path, "__root__/Folder/__meta__")
+            )
+
     def test_move_no_recurse(self):
         """--no-recurse moves only the named object, not its children."""
         with self.runner.sync.tm:
