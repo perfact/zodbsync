@@ -7,7 +7,7 @@ A named filesystem workdir that stores recorded Zope objects. Each layer has:
 - `workdir`: writable filesystem path where object representations are stored
 - `source` (optional): read-only origin that `layer-update` syncs from into `workdir`
 
-Layers are ordered by priority. Lower list index = higher priority (wins over lower layers). The fallback layer is always index 0 (highest priority).
+Layers are ordered by priority. Lower list index = higher priority (wins over lower layers). The fallback layer is always index 0 (highest priority). A layer's list index is the reverse of its config file prefix: `00-…` is the last entry and the lowest layer in the stack.
 
 ## Fallback Layer
 
@@ -26,6 +26,10 @@ _Avoid_: treating absence of the attribute as meaning "unrecorded"; absence mean
 ## Layer Boundary
 
 An object is a layer boundary if its resolved target layer differs from the layer where its parent's `__meta__` file lives (or, for root-level objects, if its layer is not the fallback layer). Only layer-boundary objects carry `obj.zodbsync_layer`. Non-boundary objects rely on filesystem rules 2–3 for routing.
+
+## Layering Rule
+
+A layer should only contribute children to parents that it defines itself or that are defined in a layer sorted below it. Intended stack: a toolkit layer at the bottom defines everything up to `__root__/__meta__`; customer layers above override properties and add children. Not enforced: `record`/`watch` warn when an object sits below the lowest layer defining its parent. See ADR 0006.
 
 ## Layer Resolution
 

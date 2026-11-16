@@ -326,7 +326,7 @@ def set_zodbsync_layer(obj, layer_ident):
 
     Pass None to clear the attribute so that record/watch fall back to
     FS-presence and parent-layer resolution on the next run. Pass "" to set
-    sticky fallback (routes to the top-level custom layer via Rule 1).
+    sticky fallback (routes to the fallback layer via Rule 1).
     """
     if layer_ident is not None:
         obj.zodbsync_layer = layer_ident
