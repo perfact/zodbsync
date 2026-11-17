@@ -32,15 +32,18 @@ class SubCommand(Namespace):
         """Overwrite to add arguments specific to sub-command."""
         pass
 
-    def acquire_lock(self, timeout=10):
+    def acquire_lock(self, timeout=None):
+        """Acquire the lock. If no timeout is given, use --lock-timeout."""
         if self.args.no_lock:
             return
+        if timeout is None:
+            timeout = self.args.lock_timeout
         try:
             self.lock.acquire(timeout=1)
         except filelock.Timeout:
             self.logger.debug("Acquiring exclusive lock...")
             try:
-                self.lock.acquire(timeout=timeout - 1)
+                self.lock.acquire(timeout=max(timeout - 1, 0))
             except filelock.Timeout:
                 self.logger.error("Unable to acquire lock.")
                 sys.exit(1)
