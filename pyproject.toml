@@ -32,12 +32,16 @@ requires-python = ">=3.8"
 perfact-zoperecord = "perfact.zodbsync.scripts:zoperecord"
 perfact-zopeplayback = "perfact.zodbsync.scripts:zopeplayback"
 zodbsync = "perfact.zodbsync.scripts:zodbsync"
+zodbsync-benchmark = "perfact.zodbsync.benchmark:main"
 
 [tool.distutils.bdist_wheel]
 universal = 1
 
 [tool.setuptools]
 include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["perfact*"]
 
 [tool.setuptools_scm]
 
