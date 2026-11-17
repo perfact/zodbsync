@@ -1,3 +1,6 @@
+26.6.0
+  * Add --lock-timeout parameter
+
 26.5.0
   * Clear target ourselves instead of using tar --recursive-unlink, which
     fails on tar < 1.35 if the tarball contains "."
