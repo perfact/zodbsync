@@ -260,6 +260,10 @@ option `--no-lock`. For example:
 
     zodbsync with-lock "git rebase origin/main && zodbsync --no-lock playback /"
 
+Commands that take the lock wait up to 10 seconds for it by default. This can
+be changed using the global option `--lock-timeout SECONDS` (not used by
+`watch`).
+
 Although this particular example can now be better achieved with `zodbsync
 exec`.
 

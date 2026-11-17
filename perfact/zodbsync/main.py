@@ -75,6 +75,13 @@ class Runner(object):
             action="store_true",
             help="Do not acquire lock. Only use inside a with-lock wrapper.",
         )
+        parser.add_argument(
+            "--lock-timeout",
+            type=float,
+            default=10,
+            help="Seconds to wait for the lock before giving up (default: 10). "
+            "Not used by watch.",
+        )
         if "perfact.loggingtools" in sys.modules:
             perfact.loggingtools.addArgs(parser, name="ZODBSync")
 

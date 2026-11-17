@@ -790,6 +790,15 @@ class TestSync:
             "zodbsync --config {} --no-lock record /".format(self.config.path),
         )
 
+    def test_lock_timeout(self):
+        "A held lock makes a command fail after --lock-timeout"
+        import filelock
+
+        lock = filelock.FileLock(os.path.join(self.repo.path, ".zodbsync.lock"))
+        with lock:
+            with pytest.raises(SystemExit):
+                self.run("--lock-timeout", "1", "record", "/")
+
     def test_extedit(self, encoding=None):
         """
         Update /index_html using the external editor launcher
