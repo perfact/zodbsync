@@ -127,7 +127,7 @@ def test_literal_eval():
         assert helpers.literal_eval(orig) == compare
     assert helpers.literal_eval("1 + 2") == 3
     assert helpers.literal_eval("-True") == -1
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Unsupported type"):
         helpers.literal_eval("f(1)")
 
 

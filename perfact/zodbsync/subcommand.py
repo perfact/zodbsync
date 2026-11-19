@@ -308,7 +308,8 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
-                assert git_state_clean(self._git_workdir), "Git state not clean"
+                if not git_state_clean(self._git_workdir):
+                    raise AssertionError("Git state not clean")
 
                 files = {
                     line
@@ -320,7 +321,8 @@ class SubCommand(Namespace):
                     if line
                 }
                 conflicts = files & set(self.unstaged_changes)
-                assert not conflicts, "Change in unstaged files, aborting"
+                if conflicts:
+                    raise AssertionError("Change in unstaged files, aborting")
 
                 # Make unique and sort
                 self.paths = sorted(

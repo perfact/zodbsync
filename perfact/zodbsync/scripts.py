@@ -55,7 +55,7 @@ def zoperecord():
 
 
 def zopeplayback():
-    assert False, (
+    raise AssertionError(
         "perfact-zopeplayback is no longer supported as executable, please use"
         " zodbsync instead."
     )

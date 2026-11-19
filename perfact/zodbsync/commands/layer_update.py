@@ -98,7 +98,8 @@ class LayerUpdate(SubCommand):
         if idents == ["*"]:
             idents = layers.keys()
         for ident in idents:
-            assert ident in layers, "Invalid ident"
+            if ident not in layers:
+                raise AssertionError("Invalid ident")
             paths.update(self.run_layer(layers[ident]))
 
         if not paths:

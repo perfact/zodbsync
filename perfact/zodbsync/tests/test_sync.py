@@ -731,7 +731,7 @@ class TestSync:
         false.
         """
         success = False
-        for i in range(5):
+        for _ in range(5):
             watcher.step()
             success = cond()
             if success:
@@ -3082,7 +3082,7 @@ class TestSync:
                 "{}/workdir/__root__/blob".format(layer),
             )
             self.run("record", "/")
-            assert getattr(self.app.blob, "zodbsync_layer") is not None
+            assert self.app.blob.zodbsync_layer is not None
             # Change file in Data.FS and verify that layer info is preserved
             with self.runner.sync.tm:
                 self.app.blob.manage_edit(
@@ -3091,7 +3091,7 @@ class TestSync:
             self.run("record", "/")
             # rule 1 routes back to named layer because zodbsync_layer was set above
             ident = self.runner.sync.layers[-1]["ident"]
-            assert getattr(self.app.blob, "zodbsync_layer") == ident
+            assert self.app.blob.zodbsync_layer == ident
 
     def test_layer_record_rule4_fallback_custom(self):
         """Rule 4: root in fallback -> not a boundary -> no zodbsync_layer attr."""
@@ -3367,7 +3367,7 @@ class TestSync:
             named_meta = f"{layer}/workdir/__root__/blob/__meta__"
             assert os.path.exists(named_meta)
             assert not os.path.exists(custom_meta)
-            assert getattr(self.app.blob, "zodbsync_layer") == ident
+            assert self.app.blob.zodbsync_layer == ident
 
     def test_move_path_does_not_acquire(self):
         """A path that only resolves via acquisition is rejected, not moved."""
@@ -3485,7 +3485,7 @@ class TestSync:
             assert os.path.exists(named_child)
             assert not os.path.exists(custom_folder)
             assert not os.path.exists(custom_child)
-            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+            assert self.app.Folder.zodbsync_layer == ident
             # child is non-boundary (same layer as Folder) -> no attr
             child_attr = getattr(aq_base(self.app.Folder.child), "zodbsync_layer", None)
             assert child_attr is None
@@ -3517,7 +3517,7 @@ class TestSync:
                 assert not os.path.exists(custom_folder)
                 # child stays in layerB (not moved to layerA)
                 assert os.path.exists(named_child_b)
-                assert getattr(self.app.Folder.child, "zodbsync_layer") == ident_b
+                assert self.app.Folder.child.zodbsync_layer == ident_b
 
     def test_move_skips_child_in_different_layer_no_attr(self):
         """Recursive move skips a child in a different layer even without attr.
@@ -3582,7 +3582,7 @@ class TestSync:
             custom_meta = os.path.join(self.repo.path, "__root__/blob/__meta__")
             assert os.path.exists(custom_meta)
             assert not os.path.exists(named_meta)
-            assert getattr(self.app.blob, "zodbsync_layer") == ""
+            assert self.app.blob.zodbsync_layer == ""
 
     def test_move_processes_unrecorded_child(self):
         """Recursive move processes a child with no FS presence (not yet recorded)."""
@@ -3597,7 +3597,7 @@ class TestSync:
             # Folder moved; child has no __meta__ to copy but no crash.
             named_folder = f"{layer}/workdir/__root__/Folder/__meta__"
             assert os.path.exists(named_folder)
-            assert getattr(self.app.Folder, "zodbsync_layer") == ident
+            assert self.app.Folder.zodbsync_layer == ident
 
     def test_move_clears_stale_src_attr_on_child(self):
         """Recursive move clears zodbsync_layer on child if it equals src_ident.

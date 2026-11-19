@@ -59,7 +59,7 @@ class Exec(SubCommand):
     @SubCommand.gitexec
     def _run_single_layer(self):
         cwd = None if self.args.nocd else self._git_workdir
-        subprocess.check_call(self.args.cmd, cwd=cwd, shell=True)
+        subprocess.check_call(self.args.cmd, cwd=cwd, shell=True)  # noqa: S602 (shell is the feature)
 
     @SubCommand.with_lock
     def _run_all_layers(self):
@@ -85,14 +85,16 @@ class Exec(SubCommand):
 
         paths = []
         try:
-            subprocess.check_call(self.args.cmd, cwd=None, shell=True)
+            subprocess.check_call(self.args.cmd, cwd=None, shell=True)  # noqa: S602 (shell is the feature)
 
             all_files = set()
             for t in targets:
-                assert git_state_clean(t["workdir"]), "Git state not clean"
+                if not git_state_clean(t["workdir"]):
+                    raise AssertionError("Git state not clean")
                 files = git_changed(t["workdir"], t["orig_commit"])
                 conflicts = files & set(t["unstaged"])
-                assert not conflicts, "Change in unstaged files, aborting"
+                if conflicts:
+                    raise AssertionError("Change in unstaged files, aborting")
                 all_files |= files
             paths = sorted(f for f in all_files if f.startswith(self.sync.site))
 
