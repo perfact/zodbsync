@@ -27,7 +27,8 @@ class LayerInit(SubCommand):
         if idents == ["*"]:
             idents = layers.keys()
         for ident in idents:
-            assert ident in layers, "Invalid ident"
+            if ident not in layers:
+                raise AssertionError("Invalid ident")
         for ident in idents:
             layer = layers[ident]
             source = layer["source"]

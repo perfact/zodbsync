@@ -21,4 +21,4 @@ class WithLock(SubCommand):
 
     @SubCommand.with_lock
     def run(self):
-        subprocess.check_call(self.args.cmd, shell=True)
+        subprocess.check_call(self.args.cmd, shell=True)  # noqa: S602 (shell is the feature)

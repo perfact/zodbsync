@@ -116,7 +116,8 @@ def controlfile(context, path, url):
     for prop in props:
         if ("id", "content_type") in prop:
             value = [pair for pair in prop if pair[0] == "value"]
-            assert len(value), "Invalid property"
+            if not value:
+                raise AssertionError("Invalid property")
             headers.append(("content-type", value[0][1]))
             break
 
@@ -137,7 +138,8 @@ def update(context, path, source, orig_source, encoding):
     If encoding is set to base64, the sources are considered to be base64
     encoded.
     """
-    assert encoding in (None, "base64"), "Invalid encoding"
+    if encoding not in (None, "base64"):
+        raise AssertionError("Invalid encoding")
 
     try:
         data = read_obj(context, path, force_encoding=encoding)

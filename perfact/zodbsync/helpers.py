@@ -3,6 +3,7 @@ import ast
 import importlib
 import operator
 import os
+import subprocess
 
 
 class Namespace(object):
@@ -306,9 +307,121 @@ def load_layer_config(config=None, path=None):
     # Append default top-level layer
     layers.append(
         {
-            "ident": None,
+            "ident": "",
             "workdir": config["base_dir"],
         }
     )
     # Reverse order - index zero is the topmost fallback layer
     return list(reversed(layers))
+
+
+def set_zodbsync_layer(obj, layer_ident):
+    """
+    Set zodbsync_layer on a Zope object.
+
+    Intended to be imported and called from Zope Python Scripts (requires
+    allow_module for the perfact namespace). Python Scripts cannot set
+    attributes directly (RestrictedPython raises TypeError), but calling
+    a module function bypasses that restriction.
+
+    Pass None to clear the attribute so that record/watch fall back to
+    FS-presence and parent-layer resolution on the next run. Pass "" to set
+    sticky fallback (routes to the fallback layer via Rule 1).
+    """
+    if layer_ident is not None:
+        obj.zodbsync_layer = layer_ident
+    else:
+        try:
+            del obj.zodbsync_layer
+        except AttributeError:
+            pass
+
+
+def git_cmd(workdir, *args):
+    """Build a git command line running against an explicit workdir."""
+    return ["git", "--no-pager", "-C", workdir] + list(args)
+
+
+def git_run(workdir, *args):
+    """Run a git command in the given workdir."""
+    subprocess.check_call(git_cmd(workdir, *args))
+
+
+def git_try(workdir, *args):
+    """Run a git command in the given workdir, returning the return code."""
+    return subprocess.call(git_cmd(workdir, *args))
+
+
+def git_output(workdir, *args):
+    """Run a git command in the given workdir and return its output."""
+    return subprocess.check_output(git_cmd(workdir, *args), universal_newlines=True)
+
+
+def git_head(workdir):
+    """Return the current HEAD commit of the repo in workdir."""
+    return git_output(workdir, "rev-parse", "HEAD").strip()
+
+
+def git_unstaged(workdir):
+    """Return the list of unstaged (including untracked) files in workdir."""
+    raw = git_output(workdir, "status", "--untracked-files", "-z")
+    return [line[3:] for line in raw.split("\0") if line]
+
+
+def git_changed(workdir, orig):
+    """Return the set of files changed between orig and the current state."""
+    output = git_output(workdir, "diff", orig, "--name-only", "--no-renames")
+    return {line for line in output.strip().split("\n") if line}
+
+
+# Markers of an interrupted git process (merge/rebase/cherry-pick/etc.)
+GIT_STATE_INDICATORS = [
+    "MERGE_HEAD",
+    "CHERRY_PICK_HEAD",
+    "rebase-merge",
+    "rebase-apply",
+    "REVERT_HEAD",
+]
+
+
+def git_branch_info(workdir):
+    """Return the checked out branch and a dict mapping branches to commits."""
+    current = git_output(workdir, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    branches = {}
+    for line in git_output(workdir, "show-ref", "--heads").strip().split("\n"):
+        commit, refname = line.split()
+        branches[refname[len("refs/heads/") :]] = commit
+    return current, branches
+
+
+def git_state_clean(workdir):
+    """Check that no operation like merge or cherry-pick is in progress."""
+    return not any(
+        os.path.exists(os.path.join(workdir, ".git", name))
+        for name in GIT_STATE_INDICATORS
+    )
+
+
+def git_abort(workdir, orig_branch, orig_branches, pop_stash):
+    """
+    Restore the repo in workdir to the state described by orig_branch and
+    orig_branches (as returned by git_branch_info before the operation):
+    reset all branches, check out the original branch and optionally pop the
+    stash that was created before.
+    """
+    current, branches = git_branch_info(workdir)
+    # reset currently checked out branch. If it was not originally present, we
+    # still need to reset it to abort any operation
+    git_run(workdir, "reset", "--hard", orig_branches.get(current, branches[current]))
+
+    # reset all other branches
+    for branch, commit in orig_branches.items():
+        if branch == current or branches.get(branch) == commit:
+            continue
+        git_run(workdir, "branch", "-f", branch, commit)
+
+    if current != orig_branch:
+        git_run(workdir, "checkout", orig_branch)
+
+    if pop_stash:
+        git_run(workdir, "stash", "pop")

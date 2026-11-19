@@ -38,7 +38,7 @@ class Reformat(SubCommand):
         self.gitcmd_run("reset", "--hard", start)
         base = self.config["base_dir"]
         paths = []
-        for root, dirs, files in os.walk(os.path.join(base, "__root__")):
+        for root, _dirs, files in os.walk(os.path.join(base, "__root__")):
             if "__meta__" in files:
                 paths.append(os.path.join(root, "__meta__"))
         if self.reformat(paths):
