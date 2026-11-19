@@ -91,6 +91,7 @@ class Upload(SubCommand):
         warnings.warn(
             "Static external assets should not be included in the Data.FS",
             DeprecationWarning,
+            stacklevel=2,
         )
         self.check_repo()
 
@@ -108,7 +109,7 @@ class Upload(SubCommand):
 
         # conversion loop: iterate over source folder, create folders in
         # repodir and corresponding files
-        for cur_dir_path, dirs, files in os.walk(self.args.source):
+        for cur_dir_path, _dirs, files in os.walk(self.args.source):
             # relative path to be created in repodir
             cur_dir = os.path.relpath(cur_dir_path, self.args.source)
 

@@ -379,7 +379,7 @@ class Watch(SubCommand):
             "watch",
             "--init",
         ]
-        data = pickle.loads(subprocess.check_output(cmd))
+        data = pickle.loads(subprocess.check_output(cmd))  # noqa: S301 (output of our own subprocess)
         self.object_tree = data["tree"]
         self.additional_oids = data["add_oids"]
         self.last_visible_txn = self.txnid_on_disk = data["txn"]

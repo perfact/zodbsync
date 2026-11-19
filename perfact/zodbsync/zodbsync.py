@@ -58,7 +58,7 @@ def mod_format(data=None):
 
 def obj_contents(obj):
     """Fetch list of subitems"""
-    func = getattr(obj, "objectIds")
+    func = obj.objectIds
     return sorted(func()) if func else []
 
 
