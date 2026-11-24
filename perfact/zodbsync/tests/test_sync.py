@@ -2094,6 +2094,22 @@ class TestSync:
             assert "Conflict with object" not in caplog.text
             assert self.app.Test.title == "Changed"
 
+    def test_layer_update_whitespace(self):
+        """
+        Objects with whitespace in their ID must be played back by
+        layer-update, even though git quotes such paths in its status output.
+        """
+        with self.addlayer() as layer:
+            tgt = os.path.join(layer, "source/__root__")
+            self.run("layer-init", "*")
+            ident = self.runner.sync.layers[-1]["ident"]
+            os.makedirs(os.path.join(tgt, "Test Space"))
+            with open(os.path.join(tgt, "Test Space/__meta__"), "w") as f:
+                f.write(zodbsync.mod_format({"title": "Spaced", "type": "Folder"}))
+            self.run("layer-update", ident)
+            assert "Test Space" in self.app.objectIds()
+            assert self.app["Test Space"].title == "Spaced"
+
     def test_keep_acl(self):
         """
         Make sure deletions on top level acl_users are NOT synced into
