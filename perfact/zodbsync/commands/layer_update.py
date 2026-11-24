@@ -61,10 +61,10 @@ class LayerUpdate(SubCommand):
         changes = [
             line[3:]
             for line in sp.check_output(
-                ["git", "status", "--porcelain", "-u", "--no-renames"],
+                ["git", "status", "-z", "-u", "--no-renames"],
                 cwd=target,
                 text=True,
-            ).split("\n")
+            ).split("\0")
             if line
         ]
         commit = None
