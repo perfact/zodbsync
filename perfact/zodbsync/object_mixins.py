@@ -45,6 +45,32 @@ class AccessControlObj(MixinModObj):
         )
 
     @staticmethod
+    def perms(obj):
+        """Read explicitly configured permission settings."""
+        is_root = obj.isTopLevelPrincipiaApplicationObject
+
+        try:
+            perm_set = obj.ac_inherited_permissions(1)
+            perm_set = [
+                AccessControl.Permission.Permission(p[0], p[1], obj) for p in perm_set
+            ]
+        except AttributeError:
+            perm_set = []
+
+        perms = []
+        for perm in perm_set:
+            roles = perm.getRoles(default=[])
+            acquire = isinstance(roles, list)
+            roles = list(roles)
+            roles.sort()
+            if acquire and not len(roles) or is_root and roles == ["Manager"]:
+                continue
+            perms.append((perm.name, acquire, roles))
+
+        perms.sort()
+        return perms
+
+    @staticmethod
     def implements(obj):
         return True
 
@@ -70,40 +96,15 @@ class AccessControlObj(MixinModObj):
             pass
 
         # The object's settings where they differ from the default (acquire)
-        try:
-            # we can not use permission_settings() since it only yields
-            # permissions for currently valid roles - however, in watch mode,
-            # we do not have the acquisition context and therefore might not
-            # know all roles, so we need to go one step further down, using
-            # Permission.getRoles()
-            perm_set = obj.ac_inherited_permissions(1)
-            perm_set = [
-                AccessControl.Permission.Permission(p[0], p[1], obj) for p in perm_set
-            ]
-        except AttributeError:
-            perm_set = []
-
-        perms = []
-        for perm in perm_set:
-            roles = perm.getRoles(default=[])
-            # for some reason, someone decided to encode whether a permission
-            # is acquired by returning either a tuple or a list...
-            acquire = isinstance(roles, list)
-            roles = list(roles)
-            roles.sort()
-            if acquire and not len(roles) or is_root and roles == ["Manager"]:
-                # Does not deviate from default
-                continue
-            perms.append((perm.name, acquire, roles))
-
+        perms = AccessControlObj.perms(obj)
         if perms:
-            perms.sort()
             result["perms"] = perms
 
         return result
 
     @staticmethod
     def write(obj, data):
+        created = data.get("_created", False)
 
         # Set userdef roles
         cur = AccessControlObj.roles(obj)
@@ -125,29 +126,49 @@ class AccessControlObj(MixinModObj):
             elif cur.get(user) != tgt[user]:
                 obj.manage_setLocalRoles(user, tgt[user])
 
+        # Freshly created objects already start with default inherited
+        # permissions and no explicit role configuration.
+        if (
+            created
+            and "roles" not in data
+            and "local_roles" not in data
+            and "perms" not in data
+        ):
+            if "owner" in data:
+                owner = data["owner"]
+                if isinstance(owner, str):
+                    # backward compatibility for older behavior, where the
+                    # corresponding UserFolder was not included
+                    owner = (["acl_users"], owner)
+                if getattr(obj, "_owner", None) != owner:
+                    obj._owner = owner
+            return
+
         # Permission settings
         # permissions that are not stored are understood to be acquired, with
         # no additional roles being granted this permission
         # An exception is the root application object, which can not acquire
-        stored_perms = {
-            name: (acquire, roles) for name, acquire, roles in data.get("perms", [])
-        }
-        for role in obj.ac_inherited_permissions(1):
-            name = role[0]
-            if name in stored_perms:
-                roles = stored_perms[name][1]
-                if not stored_perms[name][0]:
-                    # no acquire, which ist stored in a tuple instead of a list
-                    roles = tuple(roles)
-            else:
-                # the default is to acquire without additional roles - except
-                # for the top-level object, where it is not to acquire and
-                # allow Manager
-                if obj.isTopLevelPrincipiaApplicationObject:
-                    roles = ("Manager",)
+        target_perms = data.get("perms", [])
+        if AccessControlObj.perms(obj) != target_perms:
+            stored_perms = {
+                name: (acquire, roles) for name, acquire, roles in target_perms
+            }
+            for role in obj.ac_inherited_permissions(1):
+                name = role[0]
+                if name in stored_perms:
+                    roles = stored_perms[name][1]
+                    if not stored_perms[name][0]:
+                        # no acquire, which ist stored in a tuple instead of a list
+                        roles = tuple(roles)
                 else:
-                    roles = []
-            AccessControl.Permission.Permission(name, [], obj).setRoles(roles)
+                    # the default is to acquire without additional roles - except
+                    # for the top-level object, where it is not to acquire and
+                    # allow Manager
+                    if obj.isTopLevelPrincipiaApplicationObject:
+                        roles = ("Manager",)
+                    else:
+                        roles = []
+                AccessControl.Permission.Permission(name, [], obj).setRoles(roles)
 
         # set ownership
         if "owner" in data:
@@ -157,7 +178,8 @@ class AccessControlObj(MixinModObj):
                 # corresponding UserFolder was not included
                 owner = (["acl_users"], owner)
 
-            obj._owner = data["owner"]
+            if getattr(obj, "_owner", None) != owner:
+                obj._owner = owner
 
 
 class PropertiesObj(MixinModObj):
