@@ -8,7 +8,7 @@ import sys
 
 import filelock
 
-from .helpers import Namespace
+from .helpers import Namespace, git_abort, git_branch_info, git_state_clean
 
 
 class SubCommand(Namespace):
@@ -16,21 +16,66 @@ class SubCommand(Namespace):
     Base class for different sub-commands to be used by zodbsync.
     """
 
-    # The presence of one of these in the .git folder indicates that some
-    # process was not finished correctly, which is used to trigger a rollback
-    # in some operations. Are these all?
-    git_state_indicators = [
-        "rebase-merge",
-        "rebase-apply",
-        "CHERRY_PICK_HEAD",
-        "MERGE_HEAD",
-        "REVERT_HEAD",
-    ]
+    # Set by subclasses to disallow stashing away unstaged changes (used for
+    # layer-scoped operations where stashing would be surprising).
+    _no_stash = False
+
+    # Set by subclasses (e.g. Pick) for which a dirty named-layer workdir
+    # must abort instead of being stashed away.
+    _layer_no_stash = False
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        # Git workdir to operate on, defaulting to the fallback layer.
+        # Resolved below to the target layer's workdir for subcommands whose
+        # add_args defines --layer.
+        self._git_workdir = self.config["base_dir"]
+
+        # Some subcommands are instantiated programmatically without an
+        # "args" kwarg at all (e.g. Record's --autoreset spinning up a
+        # Reset), hence the inner getattr. Subcommands without a --layer
+        # argument keep the default fallback-layer workdir. Subcommands
+        # with a --layer argument left unset (None) fall back to the
+        # named layer whose workdir the cwd is in, if any, before finally
+        # defaulting to the fallback layer.
+        args = getattr(self, "args", None)
+        layer_ident = getattr(args, "layer", None)
+        if layer_ident is None and hasattr(args, "layer"):
+            layer_ident = self._layer_ident_from_cwd()
+        if layer_ident is not None:
+            layer = next(
+                (la for la in self.sync.layers if la["ident"] == layer_ident),
+                None,
+            )
+            if layer is None:
+                raise SystemExit(f"Unknown layer ident: {layer_ident!r}")
+            self._git_workdir = layer["workdir"]
+            if self._layer_no_stash:
+                self._no_stash = True
 
     @staticmethod
     def add_args(parser):
         """Overwrite to add arguments specific to sub-command."""
         pass
+
+    def _layer_ident_from_cwd(self):
+        """
+        Return the ident of the named layer (ident != "") whose workdir the
+        cwd is in or below, or None if the cwd is not inside any named
+        layer's workdir. If several match (nested workdirs), the most
+        specific (longest) one wins.
+        """
+        cwd = os.path.realpath(os.getcwd())
+        match = None
+        match_workdir = ""
+        for layer in self.sync.layers:
+            if not layer["ident"]:
+                continue
+            workdir = os.path.realpath(layer["workdir"])
+            if cwd == workdir or cwd.startswith(workdir + os.sep):
+                if len(workdir) > len(match_workdir):
+                    match, match_workdir = layer, workdir
+        return match["ident"] if match else None
 
     def acquire_lock(self, timeout=None):
         """Acquire the lock. If no timeout is given, use --lock-timeout."""
@@ -70,7 +115,7 @@ class SubCommand(Namespace):
 
     def gitcmd(self, *args):
         # use "--no-pager" instead of "-P" for compatibility / readability
-        return ["git", "--no-pager", "-C", self.config["base_dir"]] + list(args)
+        return ["git", "--no-pager", "-C", self._git_workdir] + list(args)
 
     def gitcmd_run(self, *args):
         """Wrapper to run a git command."""
@@ -153,20 +198,6 @@ class SubCommand(Namespace):
                 continue
             shutil.rmtree(f"{tgt}/{entry}")
 
-    def _branch_info(self):
-        """Returns currently checked out branch as well as where each branch
-        points."""
-        current = self.gitcmd_output("rev-parse", "--abbrev-ref", "HEAD").strip()
-
-        branches = {}  # branchname -> commitid
-        output = self.gitcmd_output("show-ref", "--heads")
-        for line in output.strip().split("\n"):
-            commit, refname = line.split()
-            refname = refname[len("refs/heads/") :]
-            branches[refname] = commit
-
-        return (current, branches)
-
     def check_repo(self):
         """Check for unstaged changes and memorize current commit. Move
         unstaged changes away via git stash"""
@@ -178,9 +209,11 @@ class SubCommand(Namespace):
             if line
         ]
 
-        self.orig_branch, self.branches = self._branch_info()
+        self.orig_branch, self.branches = git_branch_info(self._git_workdir)
 
         if self.unstaged_changes:
+            if self._no_stash:
+                raise SystemExit("Named-layer workdir has unstaged changes; aborting.")
             self.logger.warning("Unstaged changes found. Moving them out of the way.")
             self.gitcmd_run("stash", "push", "--include-untracked")
 
@@ -275,9 +308,8 @@ class SubCommand(Namespace):
 
                 # Fail and roll back for any of the markers of an interrupted
                 # git process (merge/rebase/cherry-pick/etc.)
-                for fname in self.git_state_indicators:
-                    path = os.path.join(self.sync.base_dir, ".git", fname)
-                    assert not os.path.exists(path), "Git state not clean"
+                if not git_state_clean(self._git_workdir):
+                    raise AssertionError("Git state not clean")
 
                 files = {
                     line
@@ -289,7 +321,8 @@ class SubCommand(Namespace):
                     if line
                 }
                 conflicts = files & set(self.unstaged_changes)
-                assert not conflicts, "Change in unstaged files, aborting"
+                if conflicts:
+                    raise AssertionError("Change in unstaged files, aborting")
 
                 # Make unique and sort
                 self.paths = sorted(
@@ -308,7 +341,7 @@ class SubCommand(Namespace):
 
                 # Special handling in case of interrupted cherry-pick: show
                 # differences in affected files
-                cpfname = os.path.join(self.sync.base_dir, ".git/CHERRY_PICK_HEAD")
+                cpfname = os.path.join(self._git_workdir, ".git/CHERRY_PICK_HEAD")
                 if os.path.exists(cpfname):
                     with open(cpfname) as f:
                         failed_commit = f.read().strip()
@@ -383,29 +416,12 @@ class SubCommand(Namespace):
     def abort(self):
         """Abort actions on repo and revert stash. check_repo must be
         called before this can be used"""
-        current, branches = self._branch_info()
-        # reset currently checked out branch
-        target = self.branches.get(current)
-        if target is None:
-            # The branch was not originally present - we still need to reset it
-            # to abort any operation
-            target = branches[current]
-        self.gitcmd_run("reset", "--hard", target)
-
-        # reset all other branches
-        for branch in self.branches:
-            if branch == current:
-                continue
-            if branches[branch] == self.branches[branch]:
-                continue
-            self.gitcmd_run("branch", "-f", branch, self.branches[branch])
-
-        # check out original branch
-        if current != self.orig_branch:
-            self.gitcmd_run("checkout", self.orig_branch)
-
-        if self.unstaged_changes:
-            self.gitcmd_run("stash", "pop")
+        git_abort(
+            self._git_workdir,
+            self.orig_branch,
+            self.branches,
+            pop_stash=bool(self.unstaged_changes),
+        )
 
     def run(self):
         """
