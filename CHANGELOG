@@ -1,3 +1,6 @@
+26.7.0
+  * Play back objects with whitespace in ID on layer-update (#171)
+
 26.6.0
   * Add --lock-timeout parameter
 
